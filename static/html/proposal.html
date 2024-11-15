@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proposal Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container">
+            <a class="navbar-brand" href="/ui">DAO Node</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/proposals">Proposals</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/delegates">Delegates</a>
+                    </li>
+                </ul>
+                <div class="ms-auto">
+                    <span class="navbar-text" id="loadTime">
+                        <small class="text-secondary">Loading...</small>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div id="proposalDetails">
+            <h2>Proposal <span id="proposalId"></span></h2>
+            
+            <!-- Basic Info -->
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Overview</h5>
+                            <dl class="row">
+                                <dt class="col-sm-4">Proposer</dt>
+                                <dd class="col-sm-8" id="proposer"></dd>
+                                <dt class="col-sm-4">Status</dt>
+                                <dd class="col-sm-8" id="status"></dd>
+                                <dt class="col-sm-4">Block Range</dt>
+                                <dd class="col-sm-8" id="blockRange"></dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Results</h5>
+                            <dl class="row">
+                                <dt class="col-sm-4">For</dt>
+                                <dd class="col-sm-8" id="votesFor"></dd>
+                                <dt class="col-sm-4">Against</dt>
+                                <dd class="col-sm-8" id="votesAgainst"></dd>
+                                <dt class="col-sm-4">Abstain</dt>
+                                <dd class="col-sm-8" id="votesAbstain"></dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Voting Chart -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h5 class="card-title">Voting Activity</h5>
+                    <canvas id="votingChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h5 class="card-title">Description</h5>
+                    <div id="description" class="markdown-body"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        function formatAddress(addr) {
+            return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+        }
+
+        function formatVotes(votes) {
+            const eth = BigInt(votes) / BigInt(10 ** 18);
+            return eth.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        }
+
+        function updateLoadTime(response) {
+            const timing = response.headers.get('server-timing');
+            if (timing) {
+                const matches = timing.match(/total;dur=([0-9.]+)/);
+                if (matches && matches[1]) {
+                    const duration = parseFloat(matches[1]);
+                    document.getElementById('loadTime').innerHTML = 
+                        `<small class="text-secondary">Server response time: ${duration.toFixed(3)}ms</small>`;
+                }
+            }
+        }
+
+        function getProposalStatus(proposal) {
+            if (proposal.execute_event) return 'Executed';
+            if (proposal.queue_event) return 'Queued';
+            if (proposal.end_block > proposal.block_number) return 'Active';
+            return 'Pending';
+        }
+
+        function createVotingChart(votingRecord) {
+            const ctx = document.getElementById('votingChart').getContext('2d');
+            
+            // Sort records by block number
+            const sortedRecords = votingRecord.sort((a, b) => a.block_number - b.block_number);
+            
+            // Initialize cumulative sums
+            let forSum = 0n;
+            let againstSum = 0n;
+            let abstainSum = 0n;
+            
+            // Calculate cumulative sums for each support type
+            const cumulativeVotes = sortedRecords.map(record => {
+                const votes = BigInt(record.votes);
+                switch (record.support) {
+                    case 1: // For
+                        forSum += votes;
+                        break;
+                    case 0: // Against
+                        againstSum += votes;
+                        break;
+                    case 2: // Abstain
+                        abstainSum += votes;
+                        break;
+                }
+                return {
+                    block: record.block_number,
+                    for: Number(forSum) / 1e18,
+                    against: Number(againstSum) / 1e18,
+                    abstain: Number(abstainSum) / 1e18
+                };
+            });
+
+            const data = {
+                labels: cumulativeVotes.map(v => v.block),
+                datasets: [
+                    {
+                        label: 'For',
+                        data: cumulativeVotes.map(v => v.for),
+                        borderColor: 'rgb(75, 192, 75)',
+                        backgroundColor: 'rgba(75, 192, 75, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    },
+                    {
+                        label: 'Against',
+                        data: cumulativeVotes.map(v => v.against),
+                        borderColor: 'rgb(192, 75, 75)',
+                        backgroundColor: 'rgba(192, 75, 75, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    },
+                    {
+                        label: 'Abstain',
+                        data: cumulativeVotes.map(v => v.abstain),
+                        borderColor: 'rgb(75, 75, 192)',
+                        backgroundColor: 'rgba(75, 75, 192, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    }
+                ]
+            };
+
+            const config = {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    scales: {
+                        y: {
+                            stacked: false,
+                            title: {
+                                display: true,
+                                text: 'Cumulative Voting Power (ETH)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Block Number'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} ETH`;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            new Chart(ctx, config);
+        }
+
+        async function fetchProposalDetails() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const proposalId = urlParams.get('id');
+                if (!proposalId) throw new Error('No proposal ID specified');
+
+                const startTime = performance.now();
+                const response = await fetch(`/v1/proposal/${proposalId}`);
+                const endTime = performance.now();
+                
+                // Update load time
+                const loadTimeElement = document.getElementById('loadTime');
+                loadTimeElement.innerHTML = 
+                    `<small class="text-secondary">Server response time: ${(endTime - startTime).toFixed(3)}ms</small>`;
+                updateLoadTime(response);
+
+                const data = await response.json();
+                const proposal = data.proposal;
+
+                // Update basic info
+                document.getElementById('proposalId').textContent = proposal.id;
+                document.getElementById('proposer').textContent = formatAddress(proposal.proposer);
+                document.getElementById('status').textContent = getProposalStatus(proposal);
+                document.getElementById('blockRange').textContent = 
+                    `${proposal.start_block} - ${proposal.end_block}`;
+
+                // Update vote counts
+                document.getElementById('votesFor').textContent = formatVotes(proposal.proposal_results['1']) + ' ETH';
+                document.getElementById('votesAgainst').textContent = formatVotes(proposal.proposal_results['0']) + ' ETH';
+                document.getElementById('votesAbstain').textContent = formatVotes(proposal.proposal_results['2']) + ' ETH';
+
+                // Update description
+                document.getElementById('description').innerHTML = marked.parse(proposal.description);
+
+                // Create voting chart
+                createVotingChart(proposal.voting_record);
+
+            } catch (error) {
+                console.error('Error fetching proposal details:', error);
+                document.getElementById('proposalDetails').innerHTML = `
+                    <div class="alert alert-danger">
+                        Error loading proposal: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Initial load
+        fetchProposalDetails();
+    </script>
+</body>
+</html>
