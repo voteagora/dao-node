@@ -1,0 +1,18 @@
+aiofiles
+cffi
+cryptography
+docutils
+dotty-dict
+gitdb
+httptools
+jwt
+multidict
+pycparser
+PyJWT
+sanic
+sanic-routing
+ujson
+uvloop
+websockets
+google-cloud-storage
+abifsm @ git+https://github.com/voteagora/abifsm@master

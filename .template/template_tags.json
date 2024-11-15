@@ -1,0 +1,13 @@
+{
+  "package_name": "dao-node",
+  "project_slug": "dao_node",
+  "project_title": "DAO Node",
+  "project_short_description": "A pnode for serving indexing, abstracted, objectified & forked-chain data to DAO clients.",
+  "app_name": "DAONode",
+  "full_name": "DAO Node",
+  "version": "0.0.0",
+  "github_username": "jefag",
+  "email": "jeff@voteagora.com",
+  "port": "765432",
+  "open_source_license": "MIT license"
+}
