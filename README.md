@@ -26,15 +26,13 @@ This service will take the following config:
 
 The service relies on booting using archives of events pulled from a waterfall of sources, each with speed-vs-cost trade-offs.
 
-...
-
 ## Get Started <a name="getstarted"></a>
 
 Before you can run this project, you need to have python installed.
 
 You can use [pyenv](https://github.com/pyenv/pyenv) to create a virtual environment.
 
-### Python >= 3.7:
+### Python >= 3.11:
 Consider installing with [Homebrew](https://docs.brew.sh/):
 ```bash
 brew update
@@ -43,17 +41,37 @@ brew install pyenv
 # confirm installation
 pyenv --version  # pyenv 1.2.26
 # create a python virtual env
-pyenv virtualenv 3.8.9 python-starter-3.8.9
+pyenv virtualenv 3.11 daonode-env
 # activate the virtual env
-pyenv activate python-starter-3.8.9
+pyenv activate daonode-env
 ```
 
 ----
 ### How to run the project <a name="run"></a>
-Docker:
+
+#### Via Python
+
+TODO 
+
+#### Via Docker
+
+##### Build
 ```bash
-docker build -p
+cd app
+docker build -t daonode .
 ```
+
+##### Sync Archive Data for Tenant
+```bash
+docker run daonode -e AGORA_CONFIG_FILE="/path/to/your/config.yaml" DAO_NODE_GCLOUD_BUCKET="daonode-us-public" CONTRACT_DEPLOYMENT="main" python app/cli.py sync-from-gcs .
+```
+
+##### Run Serverfor Tenant
+```bash
+docker run daonode -e AGORA_CONFIG_FILE="/path/to/your/config.yaml" CONTRACT_DEPLOYMENT="main"
+```
+
+##### Run Service
 
 
 ----

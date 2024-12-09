@@ -16,3 +16,7 @@ uvloop
 websockets
 google-cloud-storage
 abifsm @ git+https://github.com/voteagora/abifsm@master
+pyaml
+argh
+web3
+psycopg2-binary
