@@ -13,7 +13,6 @@ This service will take the following config:
 - A JSON-RPC Endpoint
 - Optionally, pointers for one or more archive data sources
 
-----
 ## Table of contents
 - [Introduction]()
 - [Get Started](#getstarted)
@@ -32,7 +31,8 @@ Before you can run this project, you need to have python installed.
 
 You can use [pyenv](https://github.com/pyenv/pyenv) to create a virtual environment.
 
-### Python >= 3.11:
+### Installing Python >= 3.11:
+
 Consider installing with [Homebrew](https://docs.brew.sh/):
 ```bash
 brew update
@@ -46,7 +46,6 @@ pyenv virtualenv 3.11 daonode-env
 pyenv activate daonode-env
 ```
 
-----
 ### How to run the project <a name="run"></a>
 
 #### Via Python
@@ -66,24 +65,7 @@ docker build -t daonode .
 docker run daonode -e AGORA_CONFIG_FILE="/path/to/your/config.yaml" DAO_NODE_GCLOUD_BUCKET="daonode-us-public" CONTRACT_DEPLOYMENT="main" python app/cli.py sync-from-gcs .
 ```
 
-##### Run Serverfor Tenant
+##### Run Server for Tenant
 ```bash
 docker run daonode -e AGORA_CONFIG_FILE="/path/to/your/config.yaml" CONTRACT_DEPLOYMENT="main"
-```
-
-##### Run Service
-
-
-----
-### Deployment
-
-// TODO: To ECS
-
-----
-### Dev commands  <a name="commands"></a>
-
-Automatically create requirements
-```bash
-python -m pip freeze > requirements.txt
-python -m pip install -r requirements.txt
 ```
