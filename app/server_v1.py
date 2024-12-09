@@ -9,8 +9,6 @@ from sanic.worker.manager import WorkerManager
 
 WorkerManager.THRESHOLD = 1200 # 2 minutes
 
-from auth.auth import protected
-from auth.login import login
 # from configs.config import get_config
 from google.cloud import storage
 

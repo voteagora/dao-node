@@ -21,8 +21,7 @@ WorkerManager.THRESHOLD = 600 * 10 # 2 minutes
 
 os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/checked/'
 
-from auth.auth import protected
-from auth.login import login
+
 # from configs.config import get_config
 from google.cloud import storage
 
@@ -120,7 +119,7 @@ class CSVClient:
                     break
 
 def test_csv_client():
-    csvc = CSVClient('/Users/jm/code/dao_node_disk')
+    csvc = CSVClient('TODO')
 
     abi = ABI.from_internet('token', '0x4200000000000000000000000000000000000042')
     abis = ABISet('mydao', [abi])
