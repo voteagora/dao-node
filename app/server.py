@@ -1,4 +1,6 @@
 
+from pathlib import Path
+
 from sanic import Sanic
 from sanic.response import text, html
 import multiprocessing
@@ -19,8 +21,10 @@ from sanic.worker.manager import WorkerManager
 
 WorkerManager.THRESHOLD = 600 * 10 # 2 minutes
 
-os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/checked/'
+os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 
+DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', '.'))
+AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
 
 # from configs.config import get_config
 from google.cloud import storage
@@ -91,7 +95,7 @@ class CSVClient:
 
         abi_frag = abis.get_by_signature(signature)
 
-        fname = self.path + f'/{chain_id}/{address}/{signature}.csv'
+        fname = self.path / f'{chain_id}/{address}/{signature}.csv'
 
         int_fields = [o['name'] for o in abi_frag.inputs if 'int' in o['type']]
 
@@ -436,13 +440,11 @@ async def top(request, k):
 	return text(str(app.ctx.balances.top(k)))
 
 
-@app.before_server_start(priority=0)
+# @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
 
-    data_path = os.getenv('DAO_NODE_DATA_PATH', '.')
-
     # gcsc = GCSClient('gs://eth-event-feed')
-    csvc = CSVClient(data_path)
+    csvc = CSVClient(DATA_PATH)
     # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
     # rpcc = JsonRpcHistClient('http://localhost:8545')
     # jwsc = JsonRpcWsClient('ws://localhost:8545')
@@ -455,7 +457,7 @@ async def bootstrap_event_feeds(app, loop):
     ##########################
     # Get a full picture of all available contracts relevant for this app.
 
-    abi = ABI.from_internet('token', '0x4200000000000000000000000000000000000042')
+    abi = ABI.from_internet('token', '0x4200000000000000000000000000000000000042', chain_id=10)
     abis = ABISet('optimism', [abi])
 
     ##########################
@@ -476,12 +478,51 @@ async def bootstrap_event_feeds(app, loop):
 
     app.add_task(ev.boot(app))
 
-@app.after_server_start
+# @app.after_server_start
 async def subscribe_event_fees(app, loop):
 
     print("Adding signal handler for each event feed.")
     for ev in app.ctx.event_feeds:
         app.add_task(ev.run(app))
+
+
+##################################
+#
+# Tactical DevOps Testing Endpoint
+#
+##################################
+
+import socket
+from sanic import response
+
+@app.get("/health")
+async def health_check(request):
+    # Get list of files
+    try:
+        files = os.listdir(DATA_PATH)
+    except Exception as e:
+        # If directory listing fails for some reason, handle it gracefully
+        return response.json({"status": "error", "message": str(e)}, status=500)
+
+    # Get server IP address
+    try:
+        ip_address = socket.gethostbyname(socket.gethostname())
+    except Exception as e:
+        # If IP resolution fails
+        ip_address = "unknown"
+
+    try:
+        with open(AGORA_CONFIG_FILE, 'r') as f:
+            config = yaml.safe_load(f)
+    except Exception as e:
+        config = str(e)
+
+    return response.json({
+        "status": "ok",
+        "files": files,
+        "ip_address": ip_address,
+        "config" : config
+    })
 
     
 
