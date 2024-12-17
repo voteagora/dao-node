@@ -439,16 +439,18 @@ async def top(request, k):
 @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
 
-    gcsc = GCSClient('gs://eth-event-feed')
-    csvc = CSVClient('/Users/jm/code/dao_node_disk')
-    sqlc = PostGresClient('postgres://postgres:...:5432/prod')
-    rpcc = JsonRpcHistClient('http://localhost:8545')
-    jwsc = JsonRpcWsClient('ws://localhost:8545')
+    data_path = os.getenv('DAO_NODE_DATA_PATH', '.')
+
+    # gcsc = GCSClient('gs://eth-event-feed')
+    csvc = CSVClient(data_path)
+    # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
+    # rpcc = JsonRpcHistClient('http://localhost:8545')
+    # jwsc = JsonRpcWsClient('ws://localhost:8545')
 
 
     ##########################
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
-    dcqs = ClientSequencer([csvc, sqlc, rpcc, jwsc]) 
+    dcqs = ClientSequencer([csvc]) 
 
     ##########################
     # Get a full picture of all available contracts relevant for this app.
@@ -484,6 +486,6 @@ async def subscribe_event_fees(app, loop):
     
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=7656, dev=True, debug=True)
+    app.run(host="0.0.0.0", port=8000, dev=True, debug=True)
     #app.run(host="0.0.0.0", port=7654, dev=True, workers=1, access_log=True, debug=True)
 
