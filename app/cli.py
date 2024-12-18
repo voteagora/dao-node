@@ -38,7 +38,7 @@ def sync_from_gcs(dir: str, multi_processing=False, strict=False):
             pass
 
         if address:
-            addresses.append(address)
+            addresses.append(address.lower())
 
     for address in addresses:
 
