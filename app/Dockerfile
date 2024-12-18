@@ -11,12 +11,12 @@ RUN pip install gsutil
 WORKDIR /app
 
 # copy the dependencies file to the working directory
-COPY requirements.txt /app
+COPY requirements.txt .
 
 # install dependencies
 RUN pip install -r requirements.txt  --no-cache-dir
 
 # copy the content of the local dao_node directory to the working directory
-COPY . /app
+COPY . .
 EXPOSE 8000
 CMD ["sanic", "server.app"]
