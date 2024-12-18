@@ -3,6 +3,7 @@ import os
 import subprocess
 from argh import arg, dispatch_commands
 import yaml
+from pprint import pprint
 
 @arg('dir', help='Disk or RAM directory to download blobs into.')
 def sync_from_gcs(dir: str, multi_processing=False, strict=False):
@@ -18,6 +19,8 @@ def sync_from_gcs(dir: str, multi_processing=False, strict=False):
 
     with open(agora_config_file, "r") as file:
         config = yaml.safe_load(file)
+
+    pprint(config)
 
     deployment = config['deployments'][contract_deployment]
 
