@@ -1,3 +1,4 @@
+import yaml
 
 from pathlib import Path
 
@@ -23,7 +24,7 @@ WorkerManager.THRESHOLD = 600 * 10 # 2 minutes
 
 os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 
-DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', '.'))
+DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
 AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
 
 # from configs.config import get_config
