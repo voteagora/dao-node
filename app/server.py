@@ -8,10 +8,10 @@ import multiprocessing
 import csv, time, pdb, os
 import datetime as dt
 from collections import defaultdict
-from abifsm import ABI, ABISet
 import asyncio
 import psycopg2 
 import psycopg2.extras
+
 from web3 import AsyncWeb3
 from web3.providers.persistent import (
     AsyncIPCProvider,
@@ -19,16 +19,41 @@ from web3.providers.persistent import (
 )
 
 from sanic.worker.manager import WorkerManager
+from google.cloud import storage
 
-WorkerManager.THRESHOLD = 600 * 10 # 2 minutes
+from middleware import with_duration
 
+
+######################################################################
+#
+# ABIs need to be available somewhere to be picked up by teh abifsm
+# library.  A future enhancement would be to ship these with DAOnode.
+#
+######################################################################
+
+from abifsm import ABI, ABISet
 os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 
-DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
-AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
+######################################################################
+#
+# We need a YAML config matching the Agora Governor Deployment Spec.
+#
+######################################################################
 
-# from configs.config import get_config
-from google.cloud import storage
+CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
+
+DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
+
+AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
+with open(AGORA_CONFIG_FILE, 'r') as f:
+    config = yaml.safe_load(f)
+
+deployment = config['deployments'][CONTRACT_DEPLOYMENT]
+del config['deployments']
+
+########################################################################
+
+WorkerManager.THRESHOLD = 600 * 10 # 2 minutes
 
 DEBUG = False
 
@@ -432,16 +457,18 @@ async def log_event_signal_handler(chain_id_contract_signature, **context):
     app.ctx.handle_dispatch(chain_id_contract_signature, context)
 
 
-@app.route('/balance/<addr>')
+@app.route('v1/balance/<addr>')
+@with_duration
 async def balances(request, addr):
-	return text(str(app.ctx.balances.balance_of(addr)))
+	return {'balance' : str(app.ctx.balances.balance_of(addr))}
 
-@app.route('/top/<k>')
+@app.route('v1/top/<k>')
+@with_duration
 async def top(request, k):
-	return text(str(app.ctx.balances.top(k)))
+	return {'balance' : str(app.ctx.balances.top(k))}
 
 
-# @app.before_server_start(priority=0)
+@app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
 
     # gcsc = GCSClient('gs://eth-event-feed')
@@ -458,7 +485,10 @@ async def bootstrap_event_feeds(app, loop):
     ##########################
     # Get a full picture of all available contracts relevant for this app.
 
-    abi = ABI.from_internet('token', '0x4200000000000000000000000000000000000042', chain_id=10)
+    chain_id = int(deployment['chain_id'])
+    token_addr = deployment['token']['address'].lower()
+
+    abi = ABI.from_internet('token', token_addr, chain_id=chain_id)
     abis = ABISet('optimism', [abi])
 
     ##########################
@@ -467,19 +497,19 @@ async def bootstrap_event_feeds(app, loop):
     #   - a fully-qualified ABI for all contracts in use globally across the app.
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
-    ev = EventFeed(10, '0x4200000000000000000000000000000000000042', 'Transfer(address,address,uint256)', abis, dcqs)
+    ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
 
     ##########################
     # Instatiate a "Data Product", that would need to be maintained given one or more events.
 
-    app.ctx.register('10.0x4200000000000000000000000000000000000042.Transfer(address,address,uint256)', Balances())
-    app.ctx.register('10.0x4200000000000000000000000000000000000042.Transfer(address,address,uint256)', TransferCounts())
+    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
+    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', TransferCounts())
 
     app.ctx.add_event_feed(ev)
 
     app.add_task(ev.boot(app))
 
-# @app.after_server_start
+@app.after_server_start
 async def subscribe_event_fees(app, loop):
 
     print("Adding signal handler for each event feed.")
@@ -497,6 +527,7 @@ import socket
 from sanic import response
 
 @app.get("/health")
+@with_duration
 async def health_check(request):
     # Get list of files
     try:
@@ -512,19 +543,19 @@ async def health_check(request):
         # If IP resolution fails
         ip_address = "unknown"
 
-    try:
-        with open(AGORA_CONFIG_FILE, 'r') as f:
-            config = yaml.safe_load(f)
-    except Exception as e:
-        config = str(e)
-
-    return response.json({
-        "status": "ok",
+    return {
         "files": files,
         "ip_address": ip_address,
-        "config" : config
-    })
+        "config" : config,
+        "deployment": deployment
+    }
 
+from sanic_ext import Extend
+Extend(app, config={
+    "openapi_title": "DAO Node",
+    "openapi_description": "API Documentation for My Sanic Service",
+    "openapi_version": "1.0.0",
+})
     
 
 if __name__ == "__main__":
