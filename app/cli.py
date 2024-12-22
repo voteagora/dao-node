@@ -4,6 +4,7 @@ import subprocess
 from argh import arg, dispatch_commands
 import yaml
 from pprint import pprint
+from pathlib import Path
 
 @arg('dir', help='Disk or RAM directory to download blobs into.')
 def sync_from_gcs(dir: str, multi_processing=False, strict=False):
@@ -50,8 +51,12 @@ def sync_from_gcs(dir: str, multi_processing=False, strict=False):
 
         if multi_processing:
             cmd.append("-m")
+
+        dest = (Path(dir) / str(chain_id))
+
+        dest.mkdir(parents=True, exist_ok=True)
         
-        cmd.extend(["cp", "-r", source_path, dir])
+        cmd.extend(["cp", "-r", source_path, dest])
 
         try:
             subprocess.check_call(cmd)
