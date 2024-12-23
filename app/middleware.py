@@ -16,7 +16,7 @@ def with_duration(handler):
 
         return json({
             "d": duration,
-            "resultq": result
+            "r": result
         })
 
     return wrapper

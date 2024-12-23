@@ -23,6 +23,11 @@ from google.cloud import storage
 
 from middleware import with_duration
 
+import re
+pattern = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+def camel_to_snake(a_str):
+    return pattern.sub('_', a_str).lower()
 
 ######################################################################
 #
@@ -47,9 +52,11 @@ DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
 AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
 with open(AGORA_CONFIG_FILE, 'r') as f:
     config = yaml.safe_load(f)
+public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
 deployment = config['deployments'][CONTRACT_DEPLOYMENT]
 del config['deployments']
+public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id']}
 
 ########################################################################
 
@@ -69,7 +76,7 @@ class DataProduct(ABC):
 
     @property
     def name(self):
-        return self.__class__.__name__.lower()
+        return camel_to_snake(self.__class__.__name__)
     
 
 class Balances(DataProduct):
@@ -101,6 +108,66 @@ class TransferCounts(DataProduct):
     def count(self, address):
         return self.counts[address]
 
+class ProposalTypes(DataProduct):
+    def __init__(self):
+        self.proposal_types = {}
+
+    def handle(self, event):
+        self.proposal_types[event['proposal_type_id']] = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
+
+
+class Delegation(DataProduct):
+    def __init__(self):
+        self.delegator = defaultdict(None) # owner, doing the delegation
+        
+        # Data about the delegatee (ie, the delegate's influence)
+        self.delegatee_list = defaultdict(list) #  list of delegators
+        self.delegatee_cnt = defaultdict(int) #  dele
+        
+        self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
+
+        self.voting_power = 0
+    
+    def handle(self, event):
+
+        delegator = event.get('delegator', None)
+
+        if delegator:
+
+            to_delegate = event['to_delegate']
+            self.delegator[delegator] = to_delegate
+            
+            self.delegatee_list[to_delegate].append(delegator)
+
+            from_delegate = event['from_delegate']
+
+            if from_delegate != '0x0000000000000000000000000000000000000000':
+                self.delegatee_list[from_delegate].remove(delegator)
+
+            self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
+        else:
+            new_votes = int(event['new_votes'])
+            previous_votes = int(event['previous_votes'])
+
+            self.voting_power += (new_votes - previous_votes)
+            self.delegatee_vp[event['delegate']] = new_votes
+
+
+"""
+class Proposal:
+    def __init__(self, proposal_id):
+        self.id = proposal_id
+
+class Proposals(DataProduct):
+
+    def __init__(self):
+        self.proposals = {}
+    
+    def handle(self, event):
+        
+        breakpoint()
+"""
+
 
 class GCSClient:
     timeliness = 'archive'
@@ -110,7 +177,7 @@ class GCSClient:
     
     def read(self, chain_id, address, signature, abi_frag, after):
         pass
-
+    
 class CSVClient:
     timeliness = 'archive'
 
@@ -123,7 +190,7 @@ class CSVClient:
 
         fname = self.path / f'{chain_id}/{address}/{signature}.csv'
 
-        int_fields = [o['name'] for o in abi_frag.inputs if 'int' in o['type']]
+        int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if 'int' in o['type']]
 
         cnt = 0
 
@@ -457,6 +524,7 @@ async def log_event_signal_handler(chain_id_contract_signature, **context):
     app.ctx.handle_dispatch(chain_id_contract_signature, context)
 
 
+
 @app.route('v1/balance/<addr>')
 @with_duration
 async def balances(request, addr):
@@ -467,6 +535,32 @@ async def balances(request, addr):
 async def top(request, k):
 	return {'balance' : str(app.ctx.balances.top(k))}
 
+@app.route('v1/proposal_types')
+@with_duration
+async def proposal_types(request):
+	return {'proposal_types' : app.ctx.proposal_types.proposal_types}
+
+@app.route('v1/proposal_type/<proposal_type_id>')
+@with_duration
+async def proposal_type(request, proposal_type_id: int):
+	return {'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id]}
+
+@app.route('v1/delegate/<addr>')
+@with_duration
+async def delegate(request, addr):
+
+    from_list = [(a, str(app.ctx.balances.balance_of(a))) for a in app.ctx.delegation.delegatee_list[addr]]
+
+    return {'delegate' : 
+                {'addr' : addr,
+                'from_cnt' : app.ctx.delegation.delegatee_cnt[addr],
+                'from_list' : from_list,
+                'vp' : str(app.ctx.delegation.delegatee_vp[addr])}}
+
+@app.route('v1/voting_power')
+@with_duration
+async def voting_power(request):
+	return {'voting_power' : str(app.ctx.delegation.voting_power)}
 
 @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
@@ -486,10 +580,29 @@ async def bootstrap_event_feeds(app, loop):
     # Get a full picture of all available contracts relevant for this app.
 
     chain_id = int(deployment['chain_id'])
-    token_addr = deployment['token']['address'].lower()
 
-    abi = ABI.from_internet('token', token_addr, chain_id=chain_id)
-    abis = ABISet('optimism', [abi])
+    token_addr = deployment['token']['address'].lower()
+    gov_addr = deployment['gov']['address'].lower()
+    ptc_addr = deployment['ptc']['address'].lower()
+
+    token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id)
+    gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id)
+    ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id)
+    abis = ABISet('optimism', [token_abi, gov_abi, ptc_abi])
+
+
+    ##########################
+    # Instantiate a "Data Product", that would need to be maintained given one or more events.
+
+    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
+    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', TransferCounts())
+
+    delegation = Delegation()
+    app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegation)
+    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegation)
+
+    app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', ProposalTypes())
+
 
     ##########################
     # Instatiate an "EventFeed", for every...
@@ -498,16 +611,21 @@ async def bootstrap_event_feeds(app, loop):
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
     ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-
-    ##########################
-    # Instatiate a "Data Product", that would need to be maintained given one or more events.
-
-    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
-    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', TransferCounts())
-
     app.ctx.add_event_feed(ev)
-
     app.add_task(ev.boot(app))
+
+    ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
+
+    ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
+
+    ev = EventFeed(chain_id, ptc_addr, 'ProposalTypeSet(uint8,uint16,uint16,string)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
+
 
 @app.after_server_start
 async def subscribe_event_fees(app, loop):
@@ -546,16 +664,65 @@ async def health_check(request):
     return {
         "files": files,
         "ip_address": ip_address,
-        "config" : config,
-        "deployment": deployment
+        "config" : public_config,
+        "deployment": public_deployment
     }
 
-from sanic_ext import Extend
-Extend(app, config={
-    "openapi_title": "DAO Node",
-    "openapi_description": "API Documentation for My Sanic Service",
-    "openapi_version": "1.0.0",
-})
+@app.get("/config")
+@with_duration
+async def config_endpoint(request):
+    return {'config' : public_config}
+
+@app.get("/deployment")
+@with_duration
+async def deployment_endpoint(request):
+    return {'deployment' : public_deployment}
+
+EXAMPLE_PAYLOAD = """{
+    "d": duration,
+    "r": result
+}"""
+
+from textwrap import dedent
+app.ext.openapi.describe(
+    "DAO Node",
+    version="0.1.0-alpha",
+    description=dedent(
+        f"""
+# Background
+
+DAO Node is a blazing fast tip-following read-only API for testable & scaleable Web3 governance apps.
+
+In general, all successful responses have 2 top level keys.
+
+`d` is the duration in microseconds (μs), to process the request.
+`r` is the payload expected by the client. 
+
+ie.
+
+```
+{EXAMPLE_PAYLOAD}
+```
+
+#  Deployment
+```
+{yaml.dump(public_deployment, sort_keys=True).strip()}
+```
+
+# Config
+```
+{yaml.dump(public_config, sort_keys=True).strip()}
+```
+"""
+    ),
+)
+
+# from sanic_ext import Extend
+# Extend(app, config={
+#    "openapi_title": "DAO Node",
+#     "openapi_description": "API Documentation for My Sanic Service",
+#     "openapi_version": "1.0.0",
+# })
     
 
 if __name__ == "__main__":
