@@ -1,31 +1,29 @@
-import yaml
-
-from pathlib import Path
-
-from sanic import Sanic
-from sanic.response import text, html
-import multiprocessing
-import csv, time, pdb, os
+import csv, time, pdb, os, re
 import datetime as dt
-from collections import defaultdict
 import asyncio
 import psycopg2 
 import psycopg2.extras
+from collections import defaultdict
+from pathlib import Path
 
+import yaml
 from web3 import AsyncWeb3
 from web3.providers.persistent import (
     AsyncIPCProvider,
     WebSocketProvider,
 )
-
-from sanic.worker.manager import WorkerManager
 from google.cloud import storage
 
-from middleware import with_duration
 
-import re
+from sanic_ext import openapi
+from sanic.worker.manager import WorkerManager
+from sanic import Sanic
+from sanic.response import text, html, json
+
+from middleware import start_timer, add_server_timing_header, measure
+
+
 pattern = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
-
 def camel_to_snake(a_str):
     return pattern.sub('_', a_str).lower()
 
@@ -111,12 +109,32 @@ class TransferCounts(DataProduct):
 class ProposalTypes(DataProduct):
     def __init__(self):
         self.proposal_types = {}
+        self.proposal_types_history = defaultdict(list)
 
     def handle(self, event):
-        self.proposal_types[event['proposal_type_id']] = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
+
+        proposal_type_info = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
+
+        proposal_type_id = event['proposal_type_id']
+
+        self.proposal_types[proposal_type_id] = proposal_type_info
+        self.proposal_types_history[proposal_type_id].append(event)
+    
+    def get_historic_proposal_type(self, proposal_type_id, block_number):
+
+        proposal_type_history = self.proposal_types_history[proposal_type_id]
+
+        pit_proposal_type = None
+
+        for proposal_type in proposal_type_history:
+            if proposal_type['block_number'] > block_number:
+                break
+            pit_proposal_type = proposal_type
+
+        return {k : pit_proposal_type[k] for k in ['quorum', 'approval_threshold', 'name']}
 
 
-class Delegation(DataProduct):
+class Delegations(DataProduct):
     def __init__(self):
         self.delegator = defaultdict(None) # owner, doing the delegation
         
@@ -153,20 +171,16 @@ class Delegation(DataProduct):
             self.delegatee_vp[event['delegate']] = new_votes
 
 
-"""
-class Proposal:
-    def __init__(self, proposal_id):
-        self.id = proposal_id
-
 class Proposals(DataProduct):
 
     def __init__(self):
         self.proposals = {}
     
     def handle(self, event):
-        
-        breakpoint()
-"""
+
+        proposal_id = event['proposal_id']
+
+        self.proposals[proposal_id] = event
 
 
 class GCSClient:
@@ -177,12 +191,23 @@ class GCSClient:
     
     def read(self, chain_id, address, signature, abi_frag, after):
         pass
-    
+
+INT_TYPES = [f"uint{i}" for i in range(8, 257, 8)]
+INT_TYPES.append("uint")
+
 class CSVClient:
     timeliness = 'archive'
 
     def __init__(self, path):
         self.path = path
+
+    # def read(self, chain_id, address, signatures: Union[str, List[str]], abis, after=0):
+
+    #    if isinstance(signatures, str):
+    #        signatures = [signatures]
+        
+    #    feeds = [self.read_specific(chain_id, address, signature, abis, after) for signature in signatures]   
+
     
     def read(self, chain_id, address, signature, abis, after=0):
 
@@ -190,7 +215,7 @@ class CSVClient:
 
         fname = self.path / f'{chain_id}/{address}/{signature}.csv'
 
-        int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if 'int' in o['type']]
+        int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
 
         cnt = 0
 
@@ -203,6 +228,7 @@ class CSVClient:
                 row['block_number'] = int(row['block_number'])
                 row['log_index'] = int(row['log_index'])
                 row['transaction_index'] = int(row['transaction_index'])
+                row['signature'] = signature
 
                 for int_field in int_fields:
                     row[int_field] = int(row[int_field])
@@ -517,7 +543,8 @@ class DataProductContext:
         self.event_feeds.append(event_feed)
     
 app = Sanic('DaoNode', ctx=DataProductContext())
-
+app.middleware('request')(start_timer)
+app.middleware('response')(add_server_timing_header)
 
 @app.signal("<chain_id_contract_signature>")
 async def log_event_signal_handler(chain_id_contract_signature, **context):
@@ -526,41 +553,76 @@ async def log_event_signal_handler(chain_id_contract_signature, **context):
 
 
 @app.route('v1/balance/<addr>')
-@with_duration
+@openapi.summary("Token balance for a given address")
+@openapi.description("""
+## Description
+The balance of the voting token used for governance for a specific EOA as of the last block heard.
+
+## Methodology
+Balances are updated on every transfer event.
+
+## Performance
+- 🟢 
+- O(1)
+- E(t) <= 100 μs
+
+## Enhancements
+
+None
+
+""")
+@measure
 async def balances(request, addr):
-	return {'balance' : str(app.ctx.balances.balance_of(addr))}
+	return json({'balance' : str(app.ctx.balances.balance_of(addr))})
 
 @app.route('v1/top/<k>')
-@with_duration
 async def top(request, k):
-	return {'balance' : str(app.ctx.balances.top(k))}
+	return json({'balance' : str(app.ctx.balances.top(k))})
 
 @app.route('v1/proposal_types')
-@with_duration
 async def proposal_types(request):
-	return {'proposal_types' : app.ctx.proposal_types.proposal_types}
+	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
 
 @app.route('v1/proposal_type/<proposal_type_id>')
-@with_duration
 async def proposal_type(request, proposal_type_id: int):
-	return {'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id]}
+	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id]})
 
 @app.route('v1/delegate/<addr>')
-@with_duration
 async def delegate(request, addr):
 
     from_list = [(a, str(app.ctx.balances.balance_of(a))) for a in app.ctx.delegation.delegatee_list[addr]]
 
-    return {'delegate' : 
+    return json({'delegate' : 
                 {'addr' : addr,
                 'from_cnt' : app.ctx.delegation.delegatee_cnt[addr],
                 'from_list' : from_list,
-                'vp' : str(app.ctx.delegation.delegatee_vp[addr])}}
+                'vp' : str(app.ctx.delegation.delegatee_vp[addr])}})
+
+class VotingPower:
+    voting_power: str
 
 @app.route('v1/voting_power')
-@with_duration
+@openapi.summary("Voting power for the entire DAO.")
+@openapi.description("""
+## Description
+The total voting power across all delegations for the DAO, as of the last block heard.
+
+## Methodology
+Voting power is calculated as the cumulative diff of new - prior in every DelegateVotesChanged `event`.
+
+## Performance
+- 🟢 
+- O(0)
+- E(t) <= 100 μs
+
+## Enhancements
+
+None
+
+""")
+@measure
 async def voting_power(request):
-	return {'voting_power' : str(app.ctx.delegation.voting_power)}
+	return json({'voting_power' : str(app.ctx.delegations.voting_power)})
 
 @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
@@ -597,12 +659,14 @@ async def bootstrap_event_feeds(app, loop):
     app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
     app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', TransferCounts())
 
-    delegation = Delegation()
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegation)
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegation)
+    delegations = Delegations()
+    app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
+    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
 
     app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', ProposalTypes())
 
+    proposals = Proposals()
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)', proposals)
 
     ##########################
     # Instatiate an "EventFeed", for every...
@@ -626,6 +690,9 @@ async def bootstrap_event_feeds(app, loop):
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
+    ev = EventFeed(chain_id, gov_addr, 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
 
 @app.after_server_start
 async def subscribe_event_fees(app, loop):
@@ -645,7 +712,6 @@ import socket
 from sanic import response
 
 @app.get("/health")
-@with_duration
 async def health_check(request):
     # Get list of files
     try:
@@ -661,31 +727,29 @@ async def health_check(request):
         # If IP resolution fails
         ip_address = "unknown"
 
-    return {
+    return json({
         "files": files,
         "ip_address": ip_address,
         "config" : public_config,
         "deployment": public_deployment
-    }
+    })
 
 @app.get("/config")
-@with_duration
 async def config_endpoint(request):
-    return {'config' : public_config}
+    return json({'config' : public_config})
 
 @app.get("/deployment")
-@with_duration
 async def deployment_endpoint(request):
-    return {'deployment' : public_deployment}
+    return json({'deployment' : public_deployment})
 
 EXAMPLE_PAYLOAD = """{
-    "d": duration,
-    "r": result
+    "d": duration, # the server time in microseconds (μs), to process the request.
+    "r": result    # the payload of the data, based on the request.
 }"""
 
 from textwrap import dedent
 app.ext.openapi.describe(
-    "DAO Node",
+    f"DAO Node for {config['friendly_short_name']}",
     version="0.1.0-alpha",
     description=dedent(
         f"""
@@ -693,12 +757,7 @@ app.ext.openapi.describe(
 
 DAO Node is a blazing fast tip-following read-only API for testable & scaleable Web3 governance apps.
 
-In general, all successful responses have 2 top level keys.
-
-`d` is the duration in microseconds (μs), to process the request.
-`r` is the payload expected by the client. 
-
-ie.
+In general, all successful responses have 2 top level keys -- duration and result.
 
 ```
 {EXAMPLE_PAYLOAD}
