@@ -1,4 +1,4 @@
-import csv, time, pdb, os, re
+import csv, time, pdb, os
 import datetime as dt
 import asyncio
 import psycopg2 
@@ -22,10 +22,7 @@ from sanic.response import text, html, json
 
 from middleware import start_timer, add_server_timing_header, measure
 
-
-pattern = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
-def camel_to_snake(a_str):
-    return pattern.sub('_', a_str).lower()
+from utils import camel_to_snake
 
 ######################################################################
 #
@@ -64,124 +61,7 @@ DEBUG = False
 
 from web3 import Web3
 
-from abc import ABC, abstractmethod
-
-class DataProduct(ABC):
-
-    @abstractmethod
-    def handle(self, event):
-        pass
-
-    @property
-    def name(self):
-        return camel_to_snake(self.__class__.__name__)
-    
-
-class Balances(DataProduct):
-
-    def __init__(self):
-        self.balances = defaultdict(int)
-
-    def handle(self, event):
-        self.balances[event['from']] -= event['value']
-        self.balances[event['to']] += event['value']
-    
-    def balance_of(self, address):
-        return self.balances[address]
-
-    def top(self, k):
-
-        values = list(self.balances.items())
-        values.sort(key=lambda x:x[-1])
-        return [v[0] for v in values[-1 * int(k):]]
-
-class TransferCounts(DataProduct):
-
-    def __init__(self):
-        self.counts = defaultdict(int)
-
-    def handle(self, event):
-        self.counts[event['to']] += 1
-    
-    def count(self, address):
-        return self.counts[address]
-
-class ProposalTypes(DataProduct):
-    def __init__(self):
-        self.proposal_types = {}
-        self.proposal_types_history = defaultdict(list)
-
-    def handle(self, event):
-
-        proposal_type_info = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
-
-        proposal_type_id = event['proposal_type_id']
-
-        self.proposal_types[proposal_type_id] = proposal_type_info
-        self.proposal_types_history[proposal_type_id].append(event)
-    
-    def get_historic_proposal_type(self, proposal_type_id, block_number):
-
-        proposal_type_history = self.proposal_types_history[proposal_type_id]
-
-        pit_proposal_type = None
-
-        for proposal_type in proposal_type_history:
-            if proposal_type['block_number'] > block_number:
-                break
-            pit_proposal_type = proposal_type
-
-        return {k : pit_proposal_type[k] for k in ['quorum', 'approval_threshold', 'name']}
-
-
-class Delegations(DataProduct):
-    def __init__(self):
-        self.delegator = defaultdict(None) # owner, doing the delegation
-        
-        # Data about the delegatee (ie, the delegate's influence)
-        self.delegatee_list = defaultdict(list) #  list of delegators
-        self.delegatee_cnt = defaultdict(int) #  dele
-        
-        self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
-
-        self.voting_power = 0
-    
-    def handle(self, event):
-
-        delegator = event.get('delegator', None)
-
-        if delegator:
-
-            to_delegate = event['to_delegate']
-            self.delegator[delegator] = to_delegate
-            
-            self.delegatee_list[to_delegate].append(delegator)
-
-            from_delegate = event['from_delegate']
-
-            if from_delegate != '0x0000000000000000000000000000000000000000':
-                self.delegatee_list[from_delegate].remove(delegator)
-
-            self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
-        else:
-            new_votes = int(event['new_votes'])
-            previous_votes = int(event['previous_votes'])
-
-            self.voting_power += (new_votes - previous_votes)
-            self.delegatee_vp[event['delegate']] = new_votes
-
-
-class Proposals(DataProduct):
-
-    def __init__(self):
-        self.proposals = {}
-    
-    def handle(self, event):
-
-        proposal_id = event['proposal_id']
-
-        self.proposals[proposal_id] = event
-
+from data_products import Balances, ProposalTypes, Delegations, Proposals
 
 class GCSClient:
     timeliness = 'archive'
@@ -228,7 +108,21 @@ class CSVClient:
                 row['block_number'] = int(row['block_number'])
                 row['log_index'] = int(row['log_index'])
                 row['transaction_index'] = int(row['transaction_index'])
+
+                # TODO - kill off either signature or sighash, we don't need 
+                #        to maintain both.
+
+                # Approahc A - Support sighash only.  
+                #              Code becomes harder to read and boot time
+                #              is slower.
+                # Approach B - Support signature only.
+                #              Need to maintain a reverse lookup for JSON-RPC
+                #              Boot would be faster, code would be prettier.
+                #              But we would have one structurally complext part 
+                #              of the code (to build and use the reverse lookup).
+
                 row['signature'] = signature
+                row['sighash'] = abi_frag.topic
 
                 for int_field in int_fields:
                     row[int_field] = int(row[int_field])
@@ -657,7 +551,6 @@ async def bootstrap_event_feeds(app, loop):
     # Instantiate a "Data Product", that would need to be maintained given one or more events.
 
     app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
-    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', TransferCounts())
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
@@ -742,26 +635,43 @@ async def config_endpoint(request):
 async def deployment_endpoint(request):
     return json({'deployment' : public_deployment})
 
-EXAMPLE_PAYLOAD = """{
-    "d": duration, # the server time in microseconds (μs), to process the request.
-    "r": result    # the payload of the data, based on the request.
-}"""
-
 from textwrap import dedent
 app.ext.openapi.describe(
     f"DAO Node for {config['friendly_short_name']}",
     version="0.1.0-alpha",
     description=dedent(
         f"""
-# Background
+# About
 
 DAO Node is a blazing fast tip-following read-only API for testable & scaleable Web3 governance apps.
 
-In general, all successful responses have 2 top level keys -- duration and result.
+## Objectives & Tactics
+
+### Fast & Measured 
+
+All responses should include a `server-timing` header (in the response)[https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing].
+
+These are denominated in miliseconds.
+
+Example:
 
 ```
-{EXAMPLE_PAYLOAD}
+server-timing: data;dur=0.070,total;dur=0.481 
 ```
+
+In the above example, it means the server spent 481 μs processing the full request, and just 70 μs of that on the business-logic of the request.
+
+### Tested & Testing
+
+All endpoints are tested two ways.
+
+1. Unit Tests on the DataProduct objects using static sample data.
+2. Unit Tests on the Endpoints using mocked DataProduct objects.
+
+Additionally, DAO Node iteself is intentional about it's architecture to support testing of consumer apps.
+
+DAO Node can boot off an archive, then accept an Anvil Fork for most networks, enabling scripts to create 
+on-chain events and reconcile results against the DAO Node API as well as the downstream consumer.
 
 #  Deployment
 ```
