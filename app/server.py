@@ -132,7 +132,7 @@ class CSVClient:
 
                 cnt += 1
                 
-                if DEBUG and (cnt == 100000):
+                if DEBUG and (cnt == 10):
                     break
 
 def test_csv_client():
