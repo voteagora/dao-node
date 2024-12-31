@@ -5,15 +5,15 @@ import psycopg2
 import psycopg2.extras
 from collections import defaultdict
 from pathlib import Path
+from bisect import bisect_left
 
 import yaml
-from web3 import AsyncWeb3
+from web3 import AsyncWeb3, Web3
 from web3.providers.persistent import (
     AsyncIPCProvider,
     WebSocketProvider,
 )
 from google.cloud import storage
-
 
 from sanic_ext import openapi
 from sanic.worker.manager import WorkerManager
@@ -23,6 +23,7 @@ from sanic.response import text, html, json
 from middleware import start_timer, add_server_timing_header, measure
 
 from utils import camel_to_snake
+from data_products import Balances, ProposalTypes, Delegations, Proposals, Votes
 
 ######################################################################
 #
@@ -58,10 +59,6 @@ public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id
 WorkerManager.THRESHOLD = 600 * 10 # 2 minutes
 
 DEBUG = False
-
-from web3 import Web3
-
-from data_products import Balances, ProposalTypes, Delegations, Proposals
 
 class GCSClient:
     timeliness = 'archive'
@@ -392,8 +389,6 @@ class EventFeed:
 
         start = dt.datetime.now()
 
-        print("Booting...")
-
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
         for event in self.archive_read():
@@ -444,9 +439,14 @@ app.middleware('response')(add_server_timing_header)
 async def log_event_signal_handler(chain_id_contract_signature, **context):
     app.ctx.handle_dispatch(chain_id_contract_signature, context)
 
-
+######################################################################
+#
+# Application Endpoints
+#
+######################################################################
 
 @app.route('v1/balance/<addr>')
+@openapi.tag("Token State")
 @openapi.summary("Token balance for a given address")
 @openapi.description("""
 ## Description
@@ -460,42 +460,153 @@ Balances are updated on every transfer event.
 - O(1)
 - E(t) <= 100 μs
 
-## Enhancements
+## Planned Enhancements
 
 None
 
 """)
 @measure
 async def balances(request, addr):
-	return json({'balance' : str(app.ctx.balances.balance_of(addr))})
+	return json({'balance' : str(app.ctx.balances.balance_of(addr)),
+                 'address' : addr})
 
-@app.route('v1/top/<k>')
-async def top(request, k):
-	return json({'balance' : str(app.ctx.balances.top(k))})
+@app.route('v1/proposals')
+@openapi.tag("Proposal State")
+@openapi.summary("All proposals with the latest state of their outcome.")
+@openapi.parameter(
+    "active", 
+    bool, 
+    location="query", 
+    required=False, 
+    default=False,
+    description="Flag to filter the list of proposals, down to only the ones which have an active vote in progress."
+)
+@measure
+async def proposals(request):
+    active = request.args.get("active", False) == "true"
+
+    if active:
+        res = app.ctx.proposals.active()
+    else:
+        res = app.ctx.proposals.unfiltered()
+
+    results = []
+    for prop in res:
+        proposal_id = prop['proposal_id']
+        outcome = app.ctx.votes.proposal_aggregation[proposal_id]
+        keys = outcome.keys()
+        for key in keys:
+            outcome[key] = str(outcome[key])
+        prop['outcome'] = outcome
+        
+        results.append(prop)
+    
+    return json({'proposals' : results})
+
+@app.route('v1/proposal/<proposal_id>')
+@openapi.tag("Proposal State")
+@openapi.summary("A single proposal's details, including voting record and aggregate outcome.")
+@openapi.description("""
+## Description
+The balance of the voting token used for governance for a specific EOA as of the last block heard.
+
+## Methodology
+We look up the proposal information, the latest outcome, and a copy of the voting record.  All three are O(1) lookups.
+
+## Performance
+- 🟢 
+- O(1) x 3
+- E(t) <= 200 μs
+
+## Enhancements
+
+None
+
+""")
+@measure
+async def proposal(request, proposal_id:str):
+    
+    proposal = app.ctx.proposals.proposals[proposal_id].to_dict()
+
+    outcome = app.ctx.votes.proposal_aggregation[proposal_id]
+    keys = outcome.keys()
+    for key in keys:
+        outcome[key] = str(outcome[key])        
+    proposal['outcome'] = outcome
+
+    voting_record = app.ctx.votes.proposal_vote_record[proposal_id]
+    proposal['voting_record'] = voting_record
+
+    return json({'proposal' : proposal})
 
 @app.route('v1/proposal_types')
+@openapi.tag("Proposal State")
+@openapi.summary("Latest information all proposal types")
+@measure
 async def proposal_types(request):
 	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
 
 @app.route('v1/proposal_type/<proposal_type_id>')
+@openapi.tag("Proposal State")
+@openapi.summary("Latest information about a specific proposal type")
+@measure
 async def proposal_type(request, proposal_type_id: int):
 	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id]})
 
 @app.route('v1/delegate/<addr>')
+@openapi.tag("Delegation State")
+@openapi.summary("Information about a specific delegate")
+@measure
 async def delegate(request, addr):
 
-    from_list = [(a, str(app.ctx.balances.balance_of(a))) for a in app.ctx.delegation.delegatee_list[addr]]
+    from_list = [(a, str(app.ctx.balances.balance_of(a))) for a in app.ctx.delegations.delegatee_list[addr]]
 
     return json({'delegate' : 
                 {'addr' : addr,
-                'from_cnt' : app.ctx.delegation.delegatee_cnt[addr],
+                'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
                 'from_list' : from_list,
-                'vp' : str(app.ctx.delegation.delegatee_vp[addr])}})
+                'vp' : str(app.ctx.delegations.delegatee_vp[addr])}})
 
-class VotingPower:
-    voting_power: str
+@app.route('v1/delegate_vp/<addr>/<block_number>')
+@openapi.tag("Delegation State")
+@openapi.summary("Voting power at a block for one delegate.")
+@openapi.description("""
+## Description
+Get a specific delegate's voting power as of a specific block height.  For tip, use the `delegate` endpoint.
+
+## Methodology
+We're storing the full history of change in vp by delegate.  We look up the delegate's history, and then do a bisect search.
+
+## Performance
+- 🟢 
+- Lookup delegate + Bisect Search = O(1) + O(log n)
+- E(t) <= 100 μs; the search is expected to have constant time, something on the order of 350 ns for 100K perfectly distributed records.
+
+## Enhancements
+
+Add transaction index and log-index awareness.
+
+""")
+@measure
+async def delegate_vp(request, addr : str, block_number : int):
+
+    vp_history = [(0, 0)] + app.ctx.delegations.delegatee_vp_history[addr]
+    index = bisect_left(vp_history, (block_number,)) - 1
+
+    index = max(index, 0)
+
+    try:
+        vp = vp_history[index][1]
+    except:
+        vp = 0
+
+    return json({'voting_power' : vp,
+                 'delegate' : addr,
+                 'block_number' : block_number,
+                 'history' : vp_history[1:]})
 
 @app.route('v1/voting_power')
+@openapi.tag("Delegation State")
 @openapi.summary("Voting power for the entire DAO.")
 @openapi.description("""
 ## Description
@@ -517,6 +628,15 @@ None
 @measure
 async def voting_power(request):
 	return json({'voting_power' : str(app.ctx.delegations.voting_power)})
+
+
+
+#################################################################################
+#
+# Event registration
+#
+################################################################################
+
 
 @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
@@ -560,6 +680,13 @@ async def bootstrap_event_feeds(app, loop):
 
     proposals = Proposals()
     app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)', proposals)
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCanceled(uint256)', proposals)
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalQueued(uint256,uint256)', proposals)
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalExecuted(uint256)', proposals)
+
+    votes = Votes()
+    app.ctx.register(f'{chain_id}.{gov_addr}.VoteCast(address,uint256,uint8,uint256,string)', votes)
+
 
     ##########################
     # Instatiate an "EventFeed", for every...
@@ -583,7 +710,15 @@ async def bootstrap_event_feeds(app, loop):
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
-    ev = EventFeed(chain_id, gov_addr, 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)', abis, dcqs)
+    for signature in ['ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)',
+                      'ProposalCanceled(uint256)',
+                      'ProposalQueued(uint256,uint256)',
+                      'ProposalExecuted(uint256)']:
+        ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
+        app.ctx.add_event_feed(ev)
+        app.add_task(ev.boot(app))
+
+    ev = EventFeed(chain_id, gov_addr, 'VoteCast(address,uint256,uint8,uint256,string)', abis, dcqs)
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
@@ -605,6 +740,8 @@ import socket
 from sanic import response
 
 @app.get("/health")
+@openapi.tag("Checks")
+@openapi.summary("Server health check")
 async def health_check(request):
     # Get list of files
     try:
@@ -628,10 +765,14 @@ async def health_check(request):
     })
 
 @app.get("/config")
+@openapi.tag("Checks")
+@openapi.summary("Server configuration")
 async def config_endpoint(request):
     return json({'config' : public_config})
 
 @app.get("/deployment")
+@openapi.tag("Checks")
+@openapi.summary("Server's Smart Contract set")
 async def deployment_endpoint(request):
     return json({'deployment' : public_deployment})
 
@@ -645,13 +786,11 @@ app.ext.openapi.describe(
 
 DAO Node is a blazing fast tip-following read-only API for testable & scaleable Web3 governance apps.
 
-## Objectives & Tactics
+## Fast by Measuring
 
-### Fast & Measured 
+All responses [include](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing) a `server-timing` header.
 
-All responses should include a `server-timing` header (in the response)[https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing].
-
-These are denominated in miliseconds.
+These are denominated in milliseconds.
 
 Example:
 
@@ -661,7 +800,7 @@ server-timing: data;dur=0.070,total;dur=0.481
 
 In the above example, it means the server spent 481 μs processing the full request, and just 70 μs of that on the business-logic of the request.
 
-### Tested & Testing
+## Tested & Testing
 
 All endpoints are tested two ways.
 
@@ -672,6 +811,18 @@ Additionally, DAO Node iteself is intentional about it's architecture to support
 
 DAO Node can boot off an archive, then accept an Anvil Fork for most networks, enabling scripts to create 
 on-chain events and reconcile results against the DAO Node API as well as the downstream consumer.
+
+## Intentional & Latest
+
+DAO Node's scope is explicit, in the sense that it does what it was designed to do well, and nothing more.
+
+It is intentional about maintaining on-chain data as of the latest block, without any cache logic or delay.  Only in limited cases can we maintain look-back logic, as these will be a challenge in the long-run to scale. 
+
+It is intentional about avoiding serving slower (Eg. end-of-day, point-in-time, or timeseries) data.
+
+It is not an API for agora-next or any other specific application, but it is designed with agora-next as an intentional first and likely only consumer.  
+
+It is not a replacement for JSON-RPC provider, in the sense that contract-calls don't necessarily make sense to route to DOA Node instead, although in the future that might be a logical evolution.
 
 #  Deployment
 ```

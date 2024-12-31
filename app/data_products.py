@@ -3,6 +3,7 @@ from collections import defaultdict
 from abc import ABC, abstractmethod
 
 from utils import camel_to_snake
+from copy import copy
 
 class DataProduct(ABC):
 
@@ -72,6 +73,8 @@ class Delegations(DataProduct):
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
 
         self.voting_power = 0
+
+        self.delegatee_vp_history = defaultdict(list)
     
     def handle(self, event):
 
@@ -101,6 +104,49 @@ class Delegations(DataProduct):
             self.voting_power += (new_votes - previous_votes)
             self.delegatee_vp[event['delegate']] = new_votes
 
+            block_number = int(event['block_number'])
+
+            self.delegatee_vp_history[event['delegate']].append((block_number, new_votes))
+
+
+LCREATED = len('ProposalCreated')
+LQUEUED = len('ProposalQueued')
+LEXECUTED = len('ProposalExecuted')
+LCANCELED = len('ProposalCanceled')
+
+class Proposal:
+    def __init__(self, creation_event):
+        self.create_event = creation_event
+        self.canceled = False
+        self.queued = False
+        self.executed = False
+    
+    def cancel(self, cancel_event):
+        self.canceled = True
+        self.cancel_event = cancel_event
+
+    def queue(self, queue_event):
+        self.queued = True
+        self.queue_event = queue_event
+
+    def execute(self, execute_event):
+        self.executed = True
+        self.execute_event = execute_event
+
+    def to_dict(self):
+
+        out = self.create_event
+
+        if self.canceled:
+            out['cancel_event'] = self.cancel_event
+
+        if self.queued:
+            out['queue_event'] = self.queue_event
+
+        if self.executed:
+            out['execute_event'] = self.execute_event
+
+        return out
 
 class Proposals(DataProduct):
 
@@ -109,6 +155,62 @@ class Proposals(DataProduct):
     
     def handle(self, event):
 
-        proposal_id = event['proposal_id']
+        signature = event['signature']
 
-        self.proposals[proposal_id] = event
+        # TODO - should we be working with proposal_ids as numerical or strings? 
+        #        For now, we store as strings.
+
+        proposal_id = str(event['proposal_id'])
+        event['proposal_id'] = proposal_id
+
+        del event['signature']
+        del event['sighash']
+
+        if 'ProposalCreated' == signature[:LCREATED]:
+            self.proposals[proposal_id] = Proposal(event)
+
+        elif 'ProposalQueued' == signature[:LQUEUED]:
+            self.proposals[proposal_id].queue(event)
+        
+        elif 'ProposalExecuted' == signature[:LEXECUTED]:
+            self.proposals[proposal_id].execute(event)
+
+        elif 'ProposalCanceled' == signature[:LCANCELED]:
+            self.proposals[proposal_id].cancel(event)
+    
+    def unfiltered(self):
+        for proposal_id, proposal in self.proposals.items():
+            yield proposal.to_dict()
+
+    def active(self):
+        for proposal_id, proposal in self.proposals.items():
+            if not proposal.canceled and not proposal.queued and not proposal.executed:
+                yield proposal.to_dict()
+
+def nested_default_dict():
+    return defaultdict(int)
+
+class Votes(DataProduct):
+    def __init__(self):
+        self.proposal_aggregation = defaultdict(nested_default_dict)
+        self.voter_history = defaultdict(list)
+        self.proposal_vote_record = defaultdict(list)
+    
+    def handle(self, event):
+
+        proposal_id = str(event['proposal_id'])
+        weight = event['weight']
+
+        self.proposal_aggregation[proposal_id][event['support']] += weight
+
+        event_cp = copy(event)
+
+        del event_cp['sighash']
+        del event_cp['signature']
+
+        self.voter_history[event['voter']].append(event_cp)
+
+        event_cp = copy(event_cp)
+        del event_cp['proposal_id']
+
+        self.proposal_vote_record[proposal_id].append(event_cp)

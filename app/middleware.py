@@ -24,7 +24,7 @@ def measure(handler):
         res = await handler(request, *args, **kwargs)
 
         end_time = time.time()
-        duration_ms = (end_time - start_time) * 1000.0 # microseconds.
+        duration_ms = (end_time - start_time) * 1000.0 # milliseconds.
 
         res.headers["Server-Timing"] = f'data;dur={duration_ms:.3f},'
 
