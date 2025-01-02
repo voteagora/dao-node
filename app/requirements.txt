@@ -20,3 +20,4 @@ PyYAML
 argh
 web3
 psycopg2-binary
+websocket-client

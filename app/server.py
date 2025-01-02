@@ -14,6 +14,7 @@ from web3.providers.persistent import (
     WebSocketProvider,
 )
 from google.cloud import storage
+import websocket
 
 from sanic_ext import openapi
 from sanic.worker.manager import WorkerManager
@@ -43,7 +44,11 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
-DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
+DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
+DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', 'http://127.0.0.1:8545')
+DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
+DAO_NODE_REALTIME_NODE_WS = os.getenv('DAO_NODE_REALTIME_NODE_WS', 'ws://127.0.0.1:8584')
+
 
 AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
 with open(AGORA_CONFIG_FILE, 'r') as f:
@@ -78,14 +83,15 @@ class CSVClient:
     def __init__(self, path):
         self.path = path
 
-    # def read(self, chain_id, address, signatures: Union[str, List[str]], abis, after=0):
-
-    #    if isinstance(signatures, str):
-    #        signatures = [signatures]
+    def is_valid(self):
         
-    #    feeds = [self.read_specific(chain_id, address, signature, abis, after) for signature in signatures]   
+        if os.path.exists(self.path):
+            print(f"The path '{self.path}' exists, this client is valid.")
+            return True
+        else:
+            print(f"The path '{self.path}' does not exist, this client is not valid.")
+            return False
 
-    
     def read(self, chain_id, address, signature, abis, after=0):
 
         abi_frag = abis.get_by_signature(signature)
@@ -109,7 +115,7 @@ class CSVClient:
                 # TODO - kill off either signature or sighash, we don't need 
                 #        to maintain both.
 
-                # Approahc A - Support sighash only.  
+                # Approach A - Support sighash only.  
                 #              Code becomes harder to read and boot time
                 #              is slower.
                 # Approach B - Support signature only.
@@ -220,6 +226,21 @@ class JsonRpcHistHttpClient:
     def __init__(self, url):
         self.url = url
 
+    def is_valid(self):
+
+        if self.url in ('', 'ignored', None):
+            ans = False
+        else:
+            w3 = Web3(Web3.HTTPProvider(self.url))
+            ans = w3.is_connected()
+        
+        if ans:
+            print(f"The server '{self.url}' is valid.")
+        else:
+            print(f"The server '{self.url}' is not valid.")
+        
+        return ans
+        
     def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi):
 
         all_logs = []
@@ -256,9 +277,7 @@ class JsonRpcHistHttpClient:
 
         w3 = Web3(Web3.HTTPProvider(self.url))
 
-        if w3.is_connected():
-            print("Connected to Ethereum")
-        else:
+        if not w3.is_connected():
             raise Exception(f"Could not connect to {self.url}")
 
         event = abis.get_by_signature(signature)
@@ -268,14 +287,12 @@ class JsonRpcHistHttpClient:
         # TODO make sure inclusivivity is handled properly.    
         start_block = after
         end_block = w3.eth.block_number
-        step = 5
+        step = DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN 
 
         cs_address = Web3.to_checksum_address(address)
 
-        # Fetch logs with pagination
         logs = self.get_paginated_logs(w3, cs_address, event.topic, start_block, end_block, step, abi)
 
-        # Parse and print logs
         for log in logs:
 
             out = {}
@@ -298,23 +315,41 @@ class JsonRpcRTWsClient:
     def __init__(self, url):
         self.url = url
 
+    def is_valid(self):
+
+        if self.url in ('', 'ignored', None):
+            ans = False
+        else:
+
+            try:
+                ws = websocket.create_connection(self.url)
+                ws.close()
+                ans = True
+            except Exception:
+                ans = False
+
+        if ans:
+            print(f"The server '{self.url}' is valid.")
+        else:
+            print(f"The server '{self.url}' is not valid.")
+        
+        return ans
+
     async def read(self, chain_id, address, signature, abis, after):
 
         event = abis.get_by_signature(signature)
         
         abi = event.literal
 
-        # Connect to Ethereum node (via Infura or your own node)
         async with AsyncWeb3(WebSocketProvider(self.url)) as w3:
             
-
             EVENT_NAME = abi['name']            
             contract_events = w3.eth.contract(abi=[abi]).events
             processor = getattr(contract_events, EVENT_NAME)().process_log
 
             event_filter = {
                 "address": address,
-                "topics": ["0x" + event.topic]  # Filter by event signature
+                "topics": ["0x" + event.topic]
             }
 
             subscription_id = await w3.eth.subscribe("logs", event_filter)
@@ -440,6 +475,8 @@ class EventFeed:
                 event['signature'] = self.signature
                 data_product_dispatcher.handle(event)
 
+            # See note below about Sanic Signals
+
             # sig = f"{self.chain_id}.{self.address}.{self.signature}"
             # await app.dispatch("data.model." + sig, context=event)
 
@@ -475,10 +512,17 @@ app = Sanic('DaoNode', ctx=DataProductContext())
 app.middleware('request')(start_timer)
 app.middleware('response')(add_server_timing_header)
 
-@app.signal("data.model.<chain_id_contract_signature>")
-async def log_event_signal_handler(chain_id_contract_signature, **context):
-    print(f"Handling: {chain_id_contract_signature}")
-    app.ctx.handle_dispatch(chain_id_contract_signature, context)
+# TODO: Figure out Sanic Signals
+# 
+# For some reason, I couldn't get this pattern to work such that the events
+# are processed using the "signal"-pattern enabled by sanic.
+# I'm not sure why.  It would be more elegant if we could use it, but, alas it
+# it's not working, but enabled without the framework.
+# 
+# @app.signal("data.model.<chain_id_contract_signature>")
+# async def log_event_signal_handler(chain_id_contract_signature, **context):
+#     print(f"Handling: {chain_id_contract_signature}")
+#     app.ctx.handle_dispatch(chain_id_contract_signature, context)
 
 ######################################################################
 #
@@ -683,11 +727,23 @@ async def voting_power(request):
 @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
 
+    clients = []
+
     # gcsc = GCSClient('gs://eth-event-feed')
-    csvc = CSVClient(DATA_PATH)
+    
+    csvc = CSVClient(DAO_NODE_DATA_PATH)
+    if csvc.is_valid():
+        clients.append(csvc)
+    
     # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
-    rpcc = JsonRpcHistHttpClient('http://127.0.0.1:8545')
-    jwsc = JsonRpcRTWsClient('ws://127.0.0.1:8545')
+
+    rpcc = JsonRpcHistHttpClient(DAO_NODE_ARCHIVE_NODE_HTTP)
+    if rpcc.is_valid():
+        clients.append(rpcc)
+
+    jwsc = JsonRpcRTWsClient(DAO_NODE_REALTIME_NODE_WS)
+    if jwsc.is_valid():
+        clients.append(jwsc)
 
 
     ##########################
