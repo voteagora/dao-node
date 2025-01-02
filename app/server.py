@@ -1,28 +1,30 @@
-import yaml
-
-from pathlib import Path
-
-from sanic import Sanic
-from sanic.response import text, html
-import multiprocessing
 import csv, time, pdb, os
 import datetime as dt
-from collections import defaultdict
 import asyncio
 import psycopg2 
 import psycopg2.extras
+from collections import defaultdict
+from pathlib import Path
+from bisect import bisect_left
 
-from web3 import AsyncWeb3
+import yaml
+from web3 import AsyncWeb3, Web3
 from web3.providers.persistent import (
     AsyncIPCProvider,
     WebSocketProvider,
 )
-
-from sanic.worker.manager import WorkerManager
 from google.cloud import storage
+import websocket
 
-from middleware import with_duration
+from sanic_ext import openapi
+from sanic.worker.manager import WorkerManager
+from sanic import Sanic
+from sanic.response import text, html, json
 
+from middleware import start_timer, add_server_timing_header, measure
+
+from utils import camel_to_snake
+from data_products import Balances, ProposalTypes, Delegations, Proposals, Votes
 
 ######################################################################
 #
@@ -42,65 +44,26 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
-DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
+DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
+DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', 'http://127.0.0.1:8545')
+DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
+DAO_NODE_REALTIME_NODE_WS = os.getenv('DAO_NODE_REALTIME_NODE_WS', 'ws://127.0.0.1:8584')
+
 
 AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
 with open(AGORA_CONFIG_FILE, 'r') as f:
     config = yaml.safe_load(f)
+public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
 deployment = config['deployments'][CONTRACT_DEPLOYMENT]
 del config['deployments']
+public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id']}
 
 ########################################################################
 
 WorkerManager.THRESHOLD = 600 * 10 # 2 minutes
 
 DEBUG = False
-
-from web3 import Web3
-
-from abc import ABC, abstractmethod
-
-class DataProduct(ABC):
-
-    @abstractmethod
-    def handle(self, event):
-        pass
-
-    @property
-    def name(self):
-        return self.__class__.__name__.lower()
-    
-
-class Balances(DataProduct):
-
-    def __init__(self):
-        self.balances = defaultdict(int)
-
-    def handle(self, event):
-        self.balances[event['from']] -= event['value']
-        self.balances[event['to']] += event['value']
-    
-    def balance_of(self, address):
-        return self.balances[address]
-
-    def top(self, k):
-
-        values = list(self.balances.items())
-        values.sort(key=lambda x:x[-1])
-        return [v[0] for v in values[-1 * int(k):]]
-
-class TransferCounts(DataProduct):
-
-    def __init__(self):
-        self.counts = defaultdict(int)
-
-    def handle(self, event):
-        self.counts[event['to']] += 1
-    
-    def count(self, address):
-        return self.counts[address]
-
 
 class GCSClient:
     timeliness = 'archive'
@@ -111,19 +74,31 @@ class GCSClient:
     def read(self, chain_id, address, signature, abi_frag, after):
         pass
 
+INT_TYPES = [f"uint{i}" for i in range(8, 257, 8)]
+INT_TYPES.append("uint")
+
 class CSVClient:
     timeliness = 'archive'
 
     def __init__(self, path):
         self.path = path
-    
+
+    def is_valid(self):
+        
+        if os.path.exists(self.path):
+            print(f"The path '{self.path}' exists, this client is valid.")
+            return True
+        else:
+            print(f"The path '{self.path}' does not exist, this client is not valid.")
+            return False
+
     def read(self, chain_id, address, signature, abis, after=0):
 
         abi_frag = abis.get_by_signature(signature)
 
         fname = self.path / f'{chain_id}/{address}/{signature}.csv'
 
-        int_fields = [o['name'] for o in abi_frag.inputs if 'int' in o['type']]
+        int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
 
         cnt = 0
 
@@ -137,6 +112,21 @@ class CSVClient:
                 row['log_index'] = int(row['log_index'])
                 row['transaction_index'] = int(row['transaction_index'])
 
+                # TODO - kill off either signature or sighash, we don't need 
+                #        to maintain both.
+
+                # Approach A - Support sighash only.  
+                #              Code becomes harder to read and boot time
+                #              is slower.
+                # Approach B - Support signature only.
+                #              Need to maintain a reverse lookup for JSON-RPC
+                #              Boot would be faster, code would be prettier.
+                #              But we would have one structurally complext part 
+                #              of the code (to build and use the reverse lookup).
+
+                row['signature'] = signature
+                row['sighash'] = abi_frag.topic
+
                 for int_field in int_fields:
                     row[int_field] = int(row[int_field])
 
@@ -145,7 +135,7 @@ class CSVClient:
 
                 cnt += 1
                 
-                if DEBUG and (cnt == 100000):
+                if DEBUG and (cnt == 10):
                     break
 
 def test_csv_client():
@@ -230,12 +220,27 @@ class PostGresClient:
                 if (cnt == 100) and DEBUG:
                     break
 
-class JsonRpcHistClient:
+class JsonRpcHistHttpClient:
     timeliness = 'archive'
 
     def __init__(self, url):
         self.url = url
 
+    def is_valid(self):
+
+        if self.url in ('', 'ignored', None):
+            ans = False
+        else:
+            w3 = Web3(Web3.HTTPProvider(self.url))
+            ans = w3.is_connected()
+        
+        if ans:
+            print(f"The server '{self.url}' is valid.")
+        else:
+            print(f"The server '{self.url}' is not valid.")
+        
+        return ans
+        
     def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi):
 
         all_logs = []
@@ -272,9 +277,7 @@ class JsonRpcHistClient:
 
         w3 = Web3(Web3.HTTPProvider(self.url))
 
-        if w3.is_connected():
-            print("Connected to Ethereum")
-        else:
+        if not w3.is_connected():
             raise Exception(f"Could not connect to {self.url}")
 
         event = abis.get_by_signature(signature)
@@ -284,12 +287,12 @@ class JsonRpcHistClient:
         # TODO make sure inclusivivity is handled properly.    
         start_block = after
         end_block = w3.eth.block_number
-        step = 2000
+        step = DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN 
 
-        # Fetch logs with pagination
-        logs = self.get_paginated_logs(w3, address, event.topic, start_block, end_block, step, abi)
+        cs_address = Web3.to_checksum_address(address)
 
-        # Parse and print logs
+        logs = self.get_paginated_logs(w3, cs_address, event.topic, start_block, end_block, step, abi)
+
         for log in logs:
 
             out = {}
@@ -302,14 +305,35 @@ class JsonRpcHistClient:
             
             out.update(**args)
             
+            out = {camel_to_snake(k) : v for k,v in out.items()}
+           
             yield out
             
-
-class JsonRpcWsClient:
+class JsonRpcRTWsClient:
     timeliness = 'realtime'
 
     def __init__(self, url):
         self.url = url
+
+    def is_valid(self):
+
+        if self.url in ('', 'ignored', None):
+            ans = False
+        else:
+
+            try:
+                ws = websocket.create_connection(self.url)
+                ws.close()
+                ans = True
+            except Exception:
+                ans = False
+
+        if ans:
+            print(f"The server '{self.url}' is valid.")
+        else:
+            print(f"The server '{self.url}' is not valid.")
+        
+        return ans
 
     async def read(self, chain_id, address, signature, abis, after):
 
@@ -317,20 +341,19 @@ class JsonRpcWsClient:
         
         abi = event.literal
 
-        # Connect to Ethereum node (via Infura or your own node)
         async with AsyncWeb3(WebSocketProvider(self.url)) as w3:
             
-
             EVENT_NAME = abi['name']            
             contract_events = w3.eth.contract(abi=[abi]).events
             processor = getattr(contract_events, EVENT_NAME)().process_log
 
             event_filter = {
                 "address": address,
-                "topics": ["0x" + event.topic]  # Filter by event signature
+                "topics": ["0x" + event.topic]
             }
 
             subscription_id = await w3.eth.subscribe("logs", event_filter)
+            print(f"Setup subscription ID: {subscription_id} for {event_filter}")
             async for response in w3.socket.process_subscriptions():
 
                 decoded_response = processor(response['result'])
@@ -341,6 +364,8 @@ class JsonRpcWsClient:
                 out['transaction_index'] = decoded_response['transactionIndex']
                 out.update(**decoded_response['args'])
 
+                out = {camel_to_snake(k) : v for k,v in out.items()}
+
                 yield out
 
 class ClientSequencer:
@@ -348,6 +373,7 @@ class ClientSequencer:
         self.clients = clients
         self.num = len(clients)
         self.pos = 0
+        self.lock = asyncio.Lock()
     
     def __iter__(self):
         return self
@@ -362,6 +388,23 @@ class ClientSequencer:
 
         raise StopIteration
 
+    def __aiter__(self):
+        self.pos = 0  # Reset for new async iteration
+        return self  # The object itself implements __anext__
+
+    async def __anext__(self):
+        async with self.lock:
+            if self.pos < self.num:
+                client = self.clients[self.pos]
+                self.pos += 1
+                return client
+            
+            self.pos = 0  # Reset for reuse
+            raise StopAsyncIteration
+
+    def get_async_iterator(self):
+        return self 
+    
 class EventFeed:
     def __init__(self, chain_id, address, signature, abis, client_sequencer):
         self.chain_id = chain_id
@@ -387,7 +430,7 @@ class EventFeed:
 
     async def realtime_async_read(self):
 
-        for client in self.cs:
+        async for client in self.cs.get_async_iterator():
 
             if client.timeliness == 'realtime':
 
@@ -404,8 +447,6 @@ class EventFeed:
         cnt = 0
 
         start = dt.datetime.now()
-
-        print("Booting...")
 
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
@@ -426,8 +467,18 @@ class EventFeed:
         return 
     
     async def run(self, app):
+
+        data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
+
         async for event in self.realtime_async_read():
-            await app.dispatch(f"{self.chain_id}.{self.address}.{self.signature}", context=event)
+            for data_product_dispatcher in data_product_dispatchers:
+                event['signature'] = self.signature
+                data_product_dispatcher.handle(event)
+
+            # See note below about Sanic Signals
+
+            # sig = f"{self.chain_id}.{self.address}.{self.signature}"
+            # await app.dispatch("data.model." + sig, context=event)
 
 
 class DataProductContext:
@@ -437,6 +488,14 @@ class DataProductContext:
         self.event_feeds = []
     
     def handle_dispatch(self, chain_id_contract_signature, context):
+
+        print(f"Handle Dispatch Called : {chain_id_contract_signature}")
+
+        data_product_dispatchers = self.dps[chain_id_contract_signature]
+
+        if len(data_product_dispatchers):
+            raise Exception(f"No data products registered for {chain_id_contract_signature}")
+
         for data_product in self.dps[chain_id_contract_signature]:
             data_product.handle(context)
 
@@ -450,46 +509,282 @@ class DataProductContext:
         self.event_feeds.append(event_feed)
     
 app = Sanic('DaoNode', ctx=DataProductContext())
+app.middleware('request')(start_timer)
+app.middleware('response')(add_server_timing_header)
 
+# TODO: Figure out Sanic Signals
+# 
+# For some reason, I couldn't get this pattern to work such that the events
+# are processed using the "signal"-pattern enabled by sanic.
+# I'm not sure why.  It would be more elegant if we could use it, but, alas it
+# it's not working, but enabled without the framework.
+# 
+# @app.signal("data.model.<chain_id_contract_signature>")
+# async def log_event_signal_handler(chain_id_contract_signature, **context):
+#     print(f"Handling: {chain_id_contract_signature}")
+#     app.ctx.handle_dispatch(chain_id_contract_signature, context)
 
-@app.signal("<chain_id_contract_signature>")
-async def log_event_signal_handler(chain_id_contract_signature, **context):
-    app.ctx.handle_dispatch(chain_id_contract_signature, context)
-
+######################################################################
+#
+# Application Endpoints
+#
+######################################################################
 
 @app.route('v1/balance/<addr>')
-@with_duration
-async def balances(request, addr):
-	return {'balance' : str(app.ctx.balances.balance_of(addr))}
+@openapi.tag("Token State")
+@openapi.summary("Token balance for a given address")
+@openapi.description("""
+## Description
+The balance of the voting token used for governance for a specific EOA as of the last block heard.
 
-@app.route('v1/top/<k>')
-@with_duration
-async def top(request, k):
-	return {'balance' : str(app.ctx.balances.top(k))}
+## Methodology
+Balances are updated on every transfer event.
+
+## Performance
+- 🟢 
+- O(1)
+- E(t) <= 100 μs
+
+## Planned Enhancements
+
+None
+
+""")
+@measure
+async def balances(request, addr):
+	return json({'balance' : str(app.ctx.balances.balance_of(addr)),
+                 'address' : addr})
+
+@app.route('v1/proposals')
+@openapi.tag("Proposal State")
+@openapi.summary("All proposals with the latest state of their outcome.")
+@openapi.parameter(
+    "active", 
+    bool, 
+    location="query", 
+    required=False, 
+    default=False,
+    description="Flag to filter the list of proposals, down to only the ones which have an active vote in progress."
+)
+@measure
+async def proposals(request):
+    active = request.args.get("active", False) == "true"
+
+    if active:
+        res = app.ctx.proposals.active()
+    else:
+        res = app.ctx.proposals.unfiltered()
+
+    results = []
+    for prop in res:
+        proposal_id = prop['proposal_id']
+        outcome = app.ctx.votes.proposal_aggregation[proposal_id]
+        keys = outcome.keys()
+        for key in keys:
+            outcome[key] = str(outcome[key])
+        prop['outcome'] = outcome
+        
+        results.append(prop)
+    
+    return json({'proposals' : results})
+
+@app.route('v1/proposal/<proposal_id>')
+@openapi.tag("Proposal State")
+@openapi.summary("A single proposal's details, including voting record and aggregate outcome.")
+@openapi.description("""
+## Description
+A specific proposal's details, how every voter has voted to date, and the aggregate of votes across the options impacting the outcome.
+
+## Methodology
+There are three O(1) lookups, and the all are combined into a single JSON reponse.
+
+## Performance
+- 🟢 
+- O(1) x 3
+- E(t) <= 200 μs
+
+## Enhancements
+
+None
+
+""")
+@measure
+async def proposal(request, proposal_id:str):
+    
+    proposal = app.ctx.proposals.proposals[proposal_id].to_dict()
+
+    outcome = app.ctx.votes.proposal_aggregation[proposal_id]
+    keys = outcome.keys()
+    for key in keys:
+        outcome[key] = str(outcome[key])        
+    proposal['outcome'] = outcome
+
+    voting_record = app.ctx.votes.proposal_vote_record[proposal_id]
+    proposal['voting_record'] = voting_record
+
+    return json({'proposal' : proposal})
+
+@app.route('v1/proposal_types')
+@openapi.tag("Proposal State")
+@openapi.summary("Latest information all proposal types")
+@measure
+async def proposal_types(request):
+	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
+
+@app.route('v1/proposal_type/<proposal_type_id>')
+@openapi.tag("Proposal State")
+@openapi.summary("Latest information about a specific proposal type")
+@measure
+async def proposal_type(request, proposal_type_id: int):
+	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
+                 'proposal_type_id' : proposal_type_id})
+
+@app.route('v1/delegate/<addr>')
+@openapi.tag("Delegation State")
+@openapi.summary("Information about a specific delegate")
+@measure
+async def delegate(request, addr):
+
+    from_list = [(a, str(app.ctx.balances.balance_of(a))) for a in app.ctx.delegations.delegatee_list[addr]]
+
+    return json({'delegate' : 
+                {'addr' : addr,
+                'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
+                'from_list' : from_list,
+                'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
+
+@app.route('v1/delegate_vp/<addr>/<block_number>')
+@openapi.tag("Delegation State")
+@openapi.summary("Voting power at a block for one delegate.")
+@openapi.description("""
+## Description
+Get a specific delegate's voting power as of a specific block height.  For tip, use the `delegate` endpoint.
+
+## Methodology
+We're storing the full history of change in vp by delegate.  We look up the delegate's history, and then do a bisect search.
+
+## Performance
+- 🟢 
+- Lookup delegate + Bisect Search = O(1) + O(log n)
+- E(t) <= 100 μs; the search is expected to have constant time, something on the order of 350 ns for 100K perfectly distributed records.
+
+## Enhancements
+
+Add transaction index and log-index awareness.
+
+""")
+@measure
+async def delegate_vp(request, addr : str, block_number : int):
+
+    vp_history = [(0, 0)] + app.ctx.delegations.delegatee_vp_history[addr]
+    index = bisect_left(vp_history, (block_number,)) - 1
+
+    index = max(index, 0)
+
+    try:
+        vp = vp_history[index][1]
+    except:
+        vp = 0
+
+    return json({'voting_power' : vp,
+                 'delegate' : addr,
+                 'block_number' : block_number,
+                 'history' : vp_history[1:]})
+
+@app.route('v1/voting_power')
+@openapi.tag("Delegation State")
+@openapi.summary("Voting power for the entire DAO.")
+@openapi.description("""
+## Description
+The total voting power across all delegations for the DAO, as of the last block heard.
+
+## Methodology
+Voting power is calculated as the cumulative sum of the difference between new and prior in every DelegateVotesChanged `event`.
+
+## Performance
+- 🟢 
+- O(0)
+- E(t) <= 100 μs
+
+## Enhancements
+
+None
+
+""")
+@measure
+async def voting_power(request):
+	return json({'voting_power' : str(app.ctx.delegations.voting_power)})
+
+
+
+#################################################################################
+#
+# Event registration
+#
+################################################################################
 
 
 @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
 
+    clients = []
+
     # gcsc = GCSClient('gs://eth-event-feed')
-    csvc = CSVClient(DATA_PATH)
+    
+    csvc = CSVClient(DAO_NODE_DATA_PATH)
+    if csvc.is_valid():
+        clients.append(csvc)
+    
     # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
-    # rpcc = JsonRpcHistClient('http://localhost:8545')
-    # jwsc = JsonRpcWsClient('ws://localhost:8545')
+
+    rpcc = JsonRpcHistHttpClient(DAO_NODE_ARCHIVE_NODE_HTTP)
+    if rpcc.is_valid():
+        clients.append(rpcc)
+
+    jwsc = JsonRpcRTWsClient(DAO_NODE_REALTIME_NODE_WS)
+    if jwsc.is_valid():
+        clients.append(jwsc)
 
 
     ##########################
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
-    dcqs = ClientSequencer([csvc]) 
+    dcqs = ClientSequencer([csvc, rpcc, jwsc]) 
 
     ##########################
     # Get a full picture of all available contracts relevant for this app.
 
     chain_id = int(deployment['chain_id'])
-    token_addr = deployment['token']['address'].lower()
 
-    abi = ABI.from_internet('token', token_addr, chain_id=chain_id)
-    abis = ABISet('optimism', [abi])
+    token_addr = deployment['token']['address'].lower()
+    gov_addr = deployment['gov']['address'].lower()
+    ptc_addr = deployment['ptc']['address'].lower()
+
+    token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id)
+    gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id)
+    ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id)
+    abis = ABISet('optimism', [token_abi, gov_abi, ptc_abi])
+
+
+    ##########################
+    # Instantiate a "Data Product", that would need to be maintained given one or more events.
+
+    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
+
+    delegations = Delegations()
+    app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
+    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
+
+    app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', ProposalTypes())
+
+    proposals = Proposals()
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)', proposals)
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCanceled(uint256)', proposals)
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalQueued(uint256,uint256)', proposals)
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalExecuted(uint256)', proposals)
+
+    votes = Votes()
+    app.ctx.register(f'{chain_id}.{gov_addr}.VoteCast(address,uint256,uint8,uint256,string)', votes)
+
 
     ##########################
     # Instatiate an "EventFeed", for every...
@@ -498,15 +793,31 @@ async def bootstrap_event_feeds(app, loop):
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
     ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-
-    ##########################
-    # Instatiate a "Data Product", that would need to be maintained given one or more events.
-
-    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
-    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', TransferCounts())
-
     app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
 
+    ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
+
+    ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
+
+    ev = EventFeed(chain_id, ptc_addr, 'ProposalTypeSet(uint8,uint16,uint16,string)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
+
+    for signature in ['ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)',
+                      'ProposalCanceled(uint256)',
+                      'ProposalQueued(uint256,uint256)',
+                      'ProposalExecuted(uint256)']:
+        ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
+        app.ctx.add_event_feed(ev)
+        app.add_task(ev.boot(app))
+
+    ev = EventFeed(chain_id, gov_addr, 'VoteCast(address,uint256,uint8,uint256,string)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
 @app.after_server_start
@@ -527,7 +838,8 @@ import socket
 from sanic import response
 
 @app.get("/health")
-@with_duration
+@openapi.tag("Checks")
+@openapi.summary("Server health check")
 async def health_check(request):
     # Get list of files
     try:
@@ -543,19 +855,92 @@ async def health_check(request):
         # If IP resolution fails
         ip_address = "unknown"
 
-    return {
+    return json({
         "files": files,
         "ip_address": ip_address,
-        "config" : config,
-        "deployment": deployment
-    }
+        "config" : public_config,
+        "deployment": public_deployment
+    })
 
-from sanic_ext import Extend
-Extend(app, config={
-    "openapi_title": "DAO Node",
-    "openapi_description": "API Documentation for My Sanic Service",
-    "openapi_version": "1.0.0",
-})
+@app.get("/config")
+@openapi.tag("Checks")
+@openapi.summary("Server configuration")
+async def config_endpoint(request):
+    return json({'config' : public_config})
+
+@app.get("/deployment")
+@openapi.tag("Checks")
+@openapi.summary("Server's Smart Contract set")
+async def deployment_endpoint(request):
+    return json({'deployment' : public_deployment})
+
+from textwrap import dedent
+app.ext.openapi.describe(
+    f"DAO Node for {config['friendly_short_name']}",
+    version="0.1.0-alpha",
+    description=dedent(
+        f"""
+# About
+
+DAO Node is a blazing fast tip-following read-only API for testable & scaleable Web3 governance apps.
+
+## Fast by Measuring
+
+All responses [include](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing) a `server-timing` header.
+
+These are denominated in milliseconds.
+
+Example:
+
+```
+server-timing: data;dur=0.070,total;dur=0.481 
+```
+
+In the above example, it means the server spent 481 μs processing the full request, and just 70 μs of that on the business-logic of the request.
+
+## Tested & Testing
+
+All endpoints are tested two ways.
+
+1. Unit Tests on the DataProduct objects using static sample data.
+2. Unit Tests on the Endpoints using mocked DataProduct objects.
+
+Additionally, DAO Node iteself is intentional about it's architecture to support testing of consumer apps.
+
+DAO Node can boot off an archive, then accept an Anvil Fork for most networks, enabling scripts to create 
+on-chain events and reconcile results against the DAO Node API as well as the downstream consumer.
+
+## Intentional & Latest
+
+DAO Node's scope is explicit, in the sense that it does what it was designed to do well, and nothing more.
+
+It is intentional about maintaining on-chain data as of the latest block, without any cache logic or delay.  Only in limited cases can we maintain look-back logic, as these will be a challenge in the long-run to scale. 
+
+It is intentional about avoiding serving slower (Eg. end-of-day, point-in-time, or timeseries) data.
+
+It is not an API for agora-next or any other specific application, but it is designed with agora-next as an intentional first and likely only consumer.  
+
+It is not a replacement for JSON-RPC provider, in the sense that contract-calls don't necessarily make sense to route to DOA Node instead, although in the future that might be a logical evolution.
+
+#  Deployment
+```
+{yaml.dump(public_deployment, sort_keys=True).strip()}
+```
+
+# Config
+```
+{yaml.dump(public_config, sort_keys=True).strip()}
+```
+"""
+    ),
+)
+
+# from sanic_ext import Extend
+# Extend(app, config={
+#    "openapi_title": "DAO Node",
+#     "openapi_description": "API Documentation for My Sanic Service",
+#     "openapi_version": "1.0.0",
+# })
     
 
 if __name__ == "__main__":

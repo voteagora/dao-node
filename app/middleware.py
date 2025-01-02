@@ -1,22 +1,33 @@
 import time
 from functools import wraps
+from sanic.request import Request
+from sanic import response, HTTPResponse
 
-from sanic.response import json
+async def start_timer(request: Request):
+    # Record the start time for this request
+    request.ctx.start_time = time.monotonic()
 
-def with_duration(handler):
+async def add_server_timing_header(request: Request, res: response.HTTPResponse):
+    # Calculate duration in milliseconds
+    duration_ms = (time.monotonic() - request.ctx.start_time) * 1000.0
+    
+    # Add Server-Timing header
+    # e.g. 'Server-Timing: app;dur=123.45'
+    res.headers["Server-Timing"] = res.headers.get("Server-Timing", "") + f'total;dur={duration_ms:.3f}'
+
+def measure(handler):
     
     @wraps(handler)
     async def wrapper(request, *args, **kwargs):
-        start_time = time.monotonic()
+        start_time = time.time()
 
-        result = await handler(request, *args, **kwargs)
+        res = await handler(request, *args, **kwargs)
 
-        end_time = time.monotonic()
-        duration = int((end_time - start_time) * 1_000_000) # microseconds.
+        end_time = time.time()
+        duration_ms = (end_time - start_time) * 1000.0 # milliseconds.
 
-        return json({
-            "d": duration,
-            "resultq": result
-        })
+        res.headers["Server-Timing"] = f'data;dur={duration_ms:.3f},'
+
+        return res
 
     return wrapper

@@ -43,7 +43,7 @@ def sync_from_gcs(dir: str, multi_processing=False, strict=False):
 
     for address in addresses:
 
-        source_path = f"gs://{dao_node_gcloud_bucket}/v1/events/{chain_id}/{address}"
+        source_path = f"gs://{dao_node_gcloud_bucket}/v1/snapshot/v1/events/{chain_id}/{address}"
 
         print(f"Syncing archive event data from : {source_path}")
 
