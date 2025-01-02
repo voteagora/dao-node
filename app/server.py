@@ -641,13 +641,13 @@ async def proposal_type(request, proposal_type_id: int):
 
 @app.route('v1/delegates')
 @openapi.tag("Delegation State")
-@openapi.summary("A list of delegates sorted by VP.")
+@openapi.summary("A sorted list of delegates.")
 @openapi.description("""
 ## Description
 Get full list of delegates sorted by number of delegators.
 
 ## Methodology
-We're storing the full dataset, looking up each delegat's count and vp, to compile objects at time of request, then sorting them at time of request.
+We're storing the full dataset, looking up each delegate's count and vp, to compile objects at time of request, then sorting them at time of request.
 
 ## Performance
 - 🟢 
