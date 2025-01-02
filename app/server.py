@@ -639,6 +639,43 @@ async def proposal_type(request, proposal_type_id: int):
 	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
                  'proposal_type_id' : proposal_type_id})
 
+@app.route('v1/delegates')
+@openapi.tag("Delegation State")
+@openapi.summary("A sorted list of delegates.")
+@openapi.description("""
+## Description
+Get full list of delegates sorted by number of delegators.
+
+## Methodology
+We're storing the full dataset, looking up each delegate's count and vp, to compile objects at time of request, then sorting them at time of request.
+
+## Performance
+- 🟢 
+- O(3n)
+- E(t) <= 2 ms
+
+## Enhancements
+
+- Maintain the sorted view of the lists, after measuring for larger DAOs.
+- Add pagination.
+
+""")
+@measure
+
+async def delegates(request):
+
+    out = []
+
+    for delegatee_addr, vp in app.ctx.delegations.delegatee_vp.items():
+        out.append({'addr' : delegatee_addr,
+                    'from_cnt' : app.ctx.delegations.delegatee_cnt[delegatee_addr],
+                    'voting_power' : str(app.ctx.delegations.delegatee_vp[delegatee_addr])})
+
+    out.sort(key=lambda x: x['from_cnt'], reverse = True)
+
+    return json({'delegates' : out})
+
+
 @app.route('v1/delegate/<addr>')
 @openapi.tag("Delegation State")
 @openapi.summary("Information about a specific delegate")
