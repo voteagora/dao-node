@@ -45,9 +45,9 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
-DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', 'http://127.0.0.1:8545')
+DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', None)
 DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
-DAO_NODE_REALTIME_NODE_WS = os.getenv('DAO_NODE_REALTIME_NODE_WS', 'ws://127.0.0.1:8584')
+DAO_NODE_REALTIME_NODE_WS = os.getenv('DAO_NODE_REALTIME_NODE_WS', None)
 
 
 AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
@@ -748,7 +748,7 @@ async def bootstrap_event_feeds(app, loop):
 
     ##########################
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
-    dcqs = ClientSequencer([csvc, rpcc, jwsc]) 
+    dcqs = ClientSequencer(clients) 
 
     ##########################
     # Get a full picture of all available contracts relevant for this app.
