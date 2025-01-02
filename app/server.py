@@ -843,7 +843,7 @@ from sanic import response
 async def health_check(request):
     # Get list of files
     try:
-        files = os.listdir(DATA_PATH)
+        files = os.listdir(DAO_NODE_DATA_PATH)
     except Exception as e:
         # If directory listing fails for some reason, handle it gracefully
         return response.json({"status": "error", "message": str(e)}, status=500)
