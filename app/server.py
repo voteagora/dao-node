@@ -214,7 +214,7 @@ class PostGresClient:
                 if (cnt == 100) and DEBUG:
                     break
 
-class JsonRpcHistClient:
+class JsonRpcHistHttpClient:
     timeliness = 'archive'
 
     def __init__(self, url):
@@ -268,10 +268,12 @@ class JsonRpcHistClient:
         # TODO make sure inclusivivity is handled properly.    
         start_block = after
         end_block = w3.eth.block_number
-        step = 2000
+        step = 5
+
+        cs_address = Web3.to_checksum_address(address)
 
         # Fetch logs with pagination
-        logs = self.get_paginated_logs(w3, address, event.topic, start_block, end_block, step, abi)
+        logs = self.get_paginated_logs(w3, cs_address, event.topic, start_block, end_block, step, abi)
 
         # Parse and print logs
         for log in logs:
@@ -286,10 +288,11 @@ class JsonRpcHistClient:
             
             out.update(**args)
             
+            out = {camel_to_snake(k) : v for k,v in out.items()}
+           
             yield out
             
-
-class JsonRpcWsClient:
+class JsonRpcRTWsClient:
     timeliness = 'realtime'
 
     def __init__(self, url):
@@ -315,6 +318,7 @@ class JsonRpcWsClient:
             }
 
             subscription_id = await w3.eth.subscribe("logs", event_filter)
+            print(f"Setup subscription ID: {subscription_id} for {event_filter}")
             async for response in w3.socket.process_subscriptions():
 
                 decoded_response = processor(response['result'])
@@ -325,6 +329,8 @@ class JsonRpcWsClient:
                 out['transaction_index'] = decoded_response['transactionIndex']
                 out.update(**decoded_response['args'])
 
+                out = {camel_to_snake(k) : v for k,v in out.items()}
+
                 yield out
 
 class ClientSequencer:
@@ -332,6 +338,7 @@ class ClientSequencer:
         self.clients = clients
         self.num = len(clients)
         self.pos = 0
+        self.lock = asyncio.Lock()
     
     def __iter__(self):
         return self
@@ -346,6 +353,23 @@ class ClientSequencer:
 
         raise StopIteration
 
+    def __aiter__(self):
+        self.pos = 0  # Reset for new async iteration
+        return self  # The object itself implements __anext__
+
+    async def __anext__(self):
+        async with self.lock:
+            if self.pos < self.num:
+                client = self.clients[self.pos]
+                self.pos += 1
+                return client
+            
+            self.pos = 0  # Reset for reuse
+            raise StopAsyncIteration
+
+    def get_async_iterator(self):
+        return self 
+    
 class EventFeed:
     def __init__(self, chain_id, address, signature, abis, client_sequencer):
         self.chain_id = chain_id
@@ -371,7 +395,7 @@ class EventFeed:
 
     async def realtime_async_read(self):
 
-        for client in self.cs:
+        async for client in self.cs.get_async_iterator():
 
             if client.timeliness == 'realtime':
 
@@ -408,8 +432,16 @@ class EventFeed:
         return 
     
     async def run(self, app):
+
+        data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
+
         async for event in self.realtime_async_read():
-            await app.dispatch(f"{self.chain_id}.{self.address}.{self.signature}", context=event)
+            for data_product_dispatcher in data_product_dispatchers:
+                event['signature'] = self.signature
+                data_product_dispatcher.handle(event)
+
+            # sig = f"{self.chain_id}.{self.address}.{self.signature}"
+            # await app.dispatch("data.model." + sig, context=event)
 
 
 class DataProductContext:
@@ -419,6 +451,14 @@ class DataProductContext:
         self.event_feeds = []
     
     def handle_dispatch(self, chain_id_contract_signature, context):
+
+        print(f"Handle Dispatch Called : {chain_id_contract_signature}")
+
+        data_product_dispatchers = self.dps[chain_id_contract_signature]
+
+        if len(data_product_dispatchers):
+            raise Exception(f"No data products registered for {chain_id_contract_signature}")
+
         for data_product in self.dps[chain_id_contract_signature]:
             data_product.handle(context)
 
@@ -435,8 +475,9 @@ app = Sanic('DaoNode', ctx=DataProductContext())
 app.middleware('request')(start_timer)
 app.middleware('response')(add_server_timing_header)
 
-@app.signal("<chain_id_contract_signature>")
+@app.signal("data.model.<chain_id_contract_signature>")
 async def log_event_signal_handler(chain_id_contract_signature, **context):
+    print(f"Handling: {chain_id_contract_signature}")
     app.ctx.handle_dispatch(chain_id_contract_signature, context)
 
 ######################################################################
@@ -508,10 +549,10 @@ async def proposals(request):
 @openapi.summary("A single proposal's details, including voting record and aggregate outcome.")
 @openapi.description("""
 ## Description
-The balance of the voting token used for governance for a specific EOA as of the last block heard.
+A specific proposal's details, how every voter has voted to date, and the aggregate of votes across the options impacting the outcome.
 
 ## Methodology
-We look up the proposal information, the latest outcome, and a copy of the voting record.  All three are O(1) lookups.
+There are three O(1) lookups, and the all are combined into a single JSON reponse.
 
 ## Performance
 - 🟢 
@@ -551,7 +592,8 @@ async def proposal_types(request):
 @openapi.summary("Latest information about a specific proposal type")
 @measure
 async def proposal_type(request, proposal_type_id: int):
-	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id]})
+	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
+                 'proposal_type_id' : proposal_type_id})
 
 @app.route('v1/delegate/<addr>')
 @openapi.tag("Delegation State")
@@ -565,7 +607,7 @@ async def delegate(request, addr):
                 {'addr' : addr,
                 'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
                 'from_list' : from_list,
-                'vp' : str(app.ctx.delegations.delegatee_vp[addr])}})
+                'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
 
 @app.route('v1/delegate_vp/<addr>/<block_number>')
 @openapi.tag("Delegation State")
@@ -613,7 +655,7 @@ async def delegate_vp(request, addr : str, block_number : int):
 The total voting power across all delegations for the DAO, as of the last block heard.
 
 ## Methodology
-Voting power is calculated as the cumulative diff of new - prior in every DelegateVotesChanged `event`.
+Voting power is calculated as the cumulative sum of the difference between new and prior in every DelegateVotesChanged `event`.
 
 ## Performance
 - 🟢 
@@ -644,13 +686,13 @@ async def bootstrap_event_feeds(app, loop):
     # gcsc = GCSClient('gs://eth-event-feed')
     csvc = CSVClient(DATA_PATH)
     # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
-    # rpcc = JsonRpcHistClient('http://localhost:8545')
-    # jwsc = JsonRpcWsClient('ws://localhost:8545')
+    rpcc = JsonRpcHistHttpClient('http://127.0.0.1:8545')
+    jwsc = JsonRpcRTWsClient('ws://127.0.0.1:8545')
 
 
     ##########################
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
-    dcqs = ClientSequencer([csvc]) 
+    dcqs = ClientSequencer([csvc, rpcc, jwsc]) 
 
     ##########################
     # Get a full picture of all available contracts relevant for this app.
