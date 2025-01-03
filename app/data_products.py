@@ -93,13 +93,22 @@ class Delegations(DataProduct):
             from_delegate = event['from_delegate']
 
             if from_delegate != '0x0000000000000000000000000000000000000000':
-                self.delegatee_list[from_delegate].remove(delegator)
+                try:
+                    self.delegatee_list[from_delegate].remove(delegator)
+                except ValueError as e:
+                    print(f"Warning, tried to remove delegator '{delegator}' from delegate '{from_delegate}', but it did not exist to begin with.")
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
-        else: # DelegateVotesChanged(address,uint256,uint256)
-            new_votes = int(event['new_votes'])
-            previous_votes = int(event['previous_votes'])
+        elif signature == 'DelegateVotesChanged(address,uint256,uint256)':
+
+            # TODO figure out why optimism's abi encode new_balance/previous_balance,
+            # but more modern DAOs seem to rely on new_votes/previous_votes.
+            new_votes = int(event.get('new_votes', event.get('new_balance', None)))
+            previous_votes = int(event.get('previous_votes', event.get('previous_balance', None)))
+
+            assert new_votes is not None
+            assert previous_votes is not None
 
             self.voting_power += (new_votes - previous_votes)
             self.delegatee_vp[event['delegate']] = new_votes
@@ -166,17 +175,21 @@ class Proposals(DataProduct):
         del event['signature']
         del event['sighash']
 
-        if 'ProposalCreated' == signature[:LCREATED]:
-            self.proposals[proposal_id] = Proposal(event)
+        try:
+            if 'ProposalCreated' == signature[:LCREATED]:
+                self.proposals[proposal_id] = Proposal(event)
 
-        elif 'ProposalQueued' == signature[:LQUEUED]:
-            self.proposals[proposal_id].queue(event)
-        
-        elif 'ProposalExecuted' == signature[:LEXECUTED]:
-            self.proposals[proposal_id].execute(event)
+            elif 'ProposalQueued' == signature[:LQUEUED]:
+                self.proposals[proposal_id].queue(event)
+            
+            elif 'ProposalExecuted' == signature[:LEXECUTED]:
+                self.proposals[proposal_id].execute(event)
 
-        elif 'ProposalCanceled' == signature[:LCANCELED]:
-            self.proposals[proposal_id].cancel(event)
+            elif 'ProposalCanceled' == signature[:LCANCELED]:
+                self.proposals[proposal_id].cancel(event)
+        except KeyError as e:
+            print(f"Problem with the following proposal_id {e} and the {signature} event.")
+
     
     def unfiltered(self):
         for proposal_id, proposal in self.proposals.items():
