@@ -451,6 +451,8 @@ class EventFeed:
 
         start = dt.datetime.now()
 
+        print(f"Loading {self.chain_id}.{self.address}.{self.signature}")
+
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
         for event in self.archive_read():
@@ -799,10 +801,24 @@ async def bootstrap_event_feeds(app, loop):
     gov_addr = deployment['gov']['address'].lower()
     ptc_addr = deployment['ptc']['address'].lower()
 
-    token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id)
-    gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id)
-    ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id)
-    abis = ABISet('optimism', [token_abi, gov_abi, ptc_abi])
+    print(f"Using {token_addr=}")
+    print(f"Using {gov_addr=}")
+    print(f"Using {ptc_addr=}")
+
+    token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
+    gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
+    ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
+
+    proposal_type_set_signature = None
+
+    for fragment in ptc_abi.fragments:
+        if fragment.type == 'event':
+            if fragment.signature.startswith("ProposalTypeSet"):
+                proposal_type_set_signature = fragment.signature
+
+    assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 'ProposalTypeSet(uint256,uint16,uint16,string)')
+    
+    abis = ABISet('daonode', [token_abi, gov_abi, ptc_abi])
 
 
     ##########################
@@ -844,7 +860,7 @@ async def bootstrap_event_feeds(app, loop):
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
-    ev = EventFeed(chain_id, ptc_addr, 'ProposalTypeSet(uint8,uint16,uint16,string)', abis, dcqs)
+    ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
