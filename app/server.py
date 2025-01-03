@@ -96,6 +96,9 @@ class CSVClient:
 
         abi_frag = abis.get_by_signature(signature)
 
+        if abi_frag is None:
+            raise KeyError(f"Signature `{signature}` Not Found")
+
         fname = self.path / f'{chain_id}/{address}/{signature}.csv'
 
         int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
