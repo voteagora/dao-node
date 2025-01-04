@@ -451,7 +451,7 @@ class EventFeed:
 
         start = dt.datetime.now()
 
-        print(f"Loading {self.chain_id}.{self.address}.{self.signature}")
+        print(f"Loading {self.chain_id}.{self.address}.{self.signature}", flush=True)
 
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
@@ -461,11 +461,11 @@ class EventFeed:
                 data_product_dispatcher.handle(event)
 
             if (cnt % 1_000_000) == 0:
-                print(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}")
+                print(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}", flush=True)
         
         end = dt.datetime.now()
 
-        print(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.")
+        print(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.", flush=True)
         
         await asyncio.sleep(.01)
 
@@ -801,9 +801,9 @@ async def bootstrap_event_feeds(app, loop):
     gov_addr = deployment['gov']['address'].lower()
     ptc_addr = deployment['ptc']['address'].lower()
 
-    print(f"Using {token_addr=}")
-    print(f"Using {gov_addr=}")
-    print(f"Using {ptc_addr=}")
+    print(f"Using {token_addr=}", flush=True)
+    print(f"Using {gov_addr=}", flush=True)
+    print(f"Using {ptc_addr=}", flush=True)
 
     token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
     gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
