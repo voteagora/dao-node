@@ -1,20 +1,20 @@
 FROM python:3.11-slim
 
-
-# Install git and clean up apt cache to keep the image small
+# Install system dependencies needed for building the C extension
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
-    rm -rf /var/lib/apt/lists/*
-    
+    apt-get install -y --no-install-recommends \
+        git \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Steps to get compiled crcmod
+# Upgrade pip (optional but often recommended)
+RUN pip install --no-cache-dir --upgrade pip
 
-# RUN apt-get install -y gcc
-# Install the compiled version of crcmod
-# RUN pip3 install --no-cache-dir crcmod
-# Clean up to reduce image size
-# RUN apt-get remove -y gcc 
-# python3-dev && apt-get autoremove -y && apt-get clean
+# Install crcmod, which will compile the C extension if a compiler is available
+RUN pip install --no-cache-dir crcmod
+
+# (Optionally) remove build-essential to keep image small, if you no longer need it:
+# RUN apt-get remove -y build-essential && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 
 RUN pip install gsutil
