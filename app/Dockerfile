@@ -9,11 +9,11 @@ RUN apt-get update && \
 
 # Steps to get compiled crcmod
 
-RUN apt-get install -y gcc
+# RUN apt-get install -y gcc
 # Install the compiled version of crcmod
-RUN pip3 install --no-cache-dir crcmod
+# RUN pip3 install --no-cache-dir crcmod
 # Clean up to reduce image size
-RUN apt-get remove -y gcc 
+# RUN apt-get remove -y gcc 
 # python3-dev && apt-get autoremove -y && apt-get clean
 
 
