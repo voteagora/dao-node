@@ -61,7 +61,7 @@ public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id
 
 ########################################################################
 
-WorkerManager.THRESHOLD = 600 * 10 # 2 minutes
+WorkerManager.THRESHOLD = 600 * 20 # 20 minutes
 
 DEBUG = False
 
