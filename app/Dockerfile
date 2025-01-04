@@ -6,6 +6,16 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
     
+
+# Steps to get compiled crcmod
+
+# RUN apt-get install -y python3-pip gcc python3-dev
+# Install the compiled version of crcmod
+RUN pip3 install --no-cache-dir crcmod
+# Clean up to reduce image size
+# RUN apt-get remove -y gcc python3-dev && apt-get autoremove -y && apt-get clean
+
+
 RUN pip install gsutil
 
 WORKDIR /app
