@@ -824,22 +824,22 @@ async def bootstrap_event_feeds(app, loop):
     ##########################
     # Instantiate a "Data Product", that would need to be maintained given one or more events.
 
-    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
+    # app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
 
-    delegations = Delegations()
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
+    # delegations = Delegations()
+    # app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
+    # app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
 
-    app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', ProposalTypes())
+    # app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', ProposalTypes())
 
-    proposals = Proposals()
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)', proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCanceled(uint256)', proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalQueued(uint256,uint256)', proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalExecuted(uint256)', proposals)
+    # proposals = Proposals()
+    # app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)', proposals)
+    # app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCanceled(uint256)', proposals)
+    # app.ctx.register(f'{chain_id}.{gov_addr}.ProposalQueued(uint256,uint256)', proposals)
+    # app.ctx.register(f'{chain_id}.{gov_addr}.ProposalExecuted(uint256)', proposals)
 
-    votes = Votes()
-    app.ctx.register(f'{chain_id}.{gov_addr}.VoteCast(address,uint256,uint8,uint256,string)', votes)
+    # votes = Votes()
+    # app.ctx.register(f'{chain_id}.{gov_addr}.VoteCast(address,uint256,uint8,uint256,string)', votes)
 
 
     ##########################
@@ -848,6 +848,7 @@ async def bootstrap_event_feeds(app, loop):
     #   - a fully-qualified ABI for all contracts in use globally across the app.
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
+    """
     ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
@@ -875,6 +876,7 @@ async def bootstrap_event_feeds(app, loop):
     ev = EventFeed(chain_id, gov_addr, 'VoteCast(address,uint256,uint8,uint256,string)', abis, dcqs)
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
+    """
 
 @app.after_server_start
 async def subscribe_event_fees(app, loop):
