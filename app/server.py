@@ -824,11 +824,11 @@ async def bootstrap_event_feeds(app, loop):
     ##########################
     # Instantiate a "Data Product", that would need to be maintained given one or more events.
 
-    # app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
+    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
 
-    # delegations = Delegations()
-    # app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
-    # app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
+    delegations = Delegations()
+    app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
+    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
 
     app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', ProposalTypes())
 
@@ -848,7 +848,7 @@ async def bootstrap_event_feeds(app, loop):
     #   - a fully-qualified ABI for all contracts in use globally across the app.
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
-    """
+
     ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
@@ -860,7 +860,6 @@ async def bootstrap_event_feeds(app, loop):
     ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
-    """
 
     ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
     app.ctx.add_event_feed(ev)
