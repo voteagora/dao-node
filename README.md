@@ -13,13 +13,9 @@ This service relies on:
 - Optionally, archive data sources can be used to accelerate boot-times for large DAOs
 
 
-## Introduction <a name="introduction"></a>
-
-The service relies on booting using archives of events pulled from a waterfall of sources, each with speed-vs-cost trade-offs.
-
 ## Getting Started <a name="getstarted"></a>
 
-To this project assumes a dedicate Python >= 3.11 environment and/or Docker, along with basic knowledge of both to setup.  It should run easily on Windows, Mac or Linux.
+DAO Node requires a dedicated Python >= 3.11 environment and/or Docker, along with basic knowledge of both to setup.  It should run easily on Windows, Mac or Linux.
 
 ### Setup your ABIs
 
@@ -35,11 +31,11 @@ jq '.abi' mydao-contracts/out/AgoraGovernor.sol/AgoraGovernor.json > 0xcDF27F107
 
 ...then host those three files somewhere.  Set `ABI_URL` to the path.
 
-Alternatively, a patch to search for the ABIs on disk would be accepted. 
+Alternatively, a PR to search for the ABIs before reaching out to the internet would be accepted. 
 
 ### Setup a YAML Config File
 
-Here is a sample of the minimum compliment for a YAML config.  Save this as mydao-config.yaml somewhere accessible.  Set `AGORA_CONFIG_FILE` to this file.
+A sample of the minimum compliment for a YAML config is below.  Save this as `mydao-config.yaml` somewhere accessible to DAO Node.  Set `AGORA_CONFIG_FILE` to this file.
 
 ```
 friendly_short_name: MyDAO
