@@ -24,7 +24,7 @@ from sanic.response import text, html, json
 from middleware import start_timer, add_server_timing_header, measure
 
 from utils import camel_to_snake
-from data_products import Balances, ProposalTypes, Delegations, Proposals, Votes
+from data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
 
 ######################################################################
 #
@@ -138,7 +138,7 @@ class CSVClient:
 
                 cnt += 1
                 
-                if DEBUG and (cnt == 10):
+                if DEBUG and (cnt == 10000):
                     break
 
 def test_csv_client():
@@ -573,7 +573,8 @@ async def balances(request, addr):
 )
 @measure
 async def proposals(request):
-    active = request.args.get("active", False) == "true"
+
+    active = request.args.get("active", "false").lower() == "true"
 
     if active:
         res = app.ctx.proposals.active()
@@ -582,12 +583,12 @@ async def proposals(request):
 
     results = []
     for prop in res:
-        proposal_id = prop['proposal_id']
-        outcome = app.ctx.votes.proposal_aggregation[proposal_id]
+        proposal = prop.to_dict()
+        outcome = app.ctx.votes.proposal_aggregation[ proposal['proposal_id']]
         keys = outcome.keys()
         for key in keys:
             outcome[key] = str(outcome[key])
-        prop['outcome'] = outcome
+        proposal['outcome'] = outcome
         
         results.append(prop)
     
@@ -644,6 +645,9 @@ async def proposal_type(request, proposal_type_id: int):
 	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
                  'proposal_type_id' : proposal_type_id})
 
+DEFAULT_PAGE_SIZE = 200
+DEFAULT_OFFSET = 0
+
 @app.route('v1/delegates')
 @openapi.tag("Delegation State")
 @openapi.summary("A sorted list of delegates.")
@@ -655,28 +659,144 @@ Get full list of delegates sorted by number of delegators.
 We're storing the full dataset, looking up each delegate's count and vp, to compile objects at time of request, then sorting them at time of request.
 
 ## Performance
-- 🟢 
-- O(3n)
-- E(t) <= 2 ms
+
+The performance of this endpoint is a function of the sort, enriching options, and some base costs.  
+
+The sort is done on the full list of all known delegates, at endpoint invocation time.
+
+Enriching happens after the sort and crop to the page-size, so only the response is enriched.
+
+### 🟡 Base Costs
+
+Regardless of options, there are two base steps in all responses:
+
+- 🔴 O(n) for purging delegates with 0 Voting Power (VP) or Delegator Count (DC).  🚧 This should move to the indexing in the long-run.
+- 🟢 O(page_size) loop added to serialize the response.
+
+### 🟡 Sorting only (by VP or Delegator-Count)
+O(n * log(n)) is the average for python's built in `sort` method.
+
+This could be improved by moving the sort upstream to the indexing stage, perhaps on completion of the boot. Framework enhancements are needed to achieve this.
+
+### Enriching 
+#### 🟢 With Voting Power and/or Delegator-Count 
+O(page_size)
+
+In any case (either `and` or `or`), the cost is a constant O(page_size), because the response is always enriched by the sort key.
+
+#### 🟡 With Participation Rate
+Opr = O(page_size * min(# of proposals, 10) * min(# of votes, 10))
+
+the upper bound is O(page_size * 10 * 10)
+
+#### Total for a fully enriched response
+
+Total = O(n) + O(page_size) + O(n * log(n)) + O(page_size) + Opr = O(n) + O(n * log(n)) + O(102 * page_size)
 
 ## Enhancements
 
-- Maintain the sorted view of the lists, after measuring for larger DAOs.
-- Add pagination.
+- Maintain the sorted view of the list in indexing
+- Calculate Participation rate on proposal complete
+
+## Test Coverage
+
+❌ - Bad, none exists.
 
 """)
+@openapi.parameter(
+    "page_size", 
+    int, 
+    location="query", 
+    required=False, 
+    default=DEFAULT_PAGE_SIZE,
+    description="Number of records to return in one response."
+)
+@openapi.parameter(
+    "offset", 
+    int, 
+    location="query", 
+    required=False, 
+    default=DEFAULT_OFFSET,
+    description="Number of records to skip (ie zero-indexed) from the start."
+)
+@openapi.parameter(
+    "sort_by", 
+    str, 
+    location="query", 
+    required=False, 
+    default='VP',
+    description="Sort by either voting-power ('VP') or delegator-count ('DC')."
+)
+@openapi.parameter(
+    "reverse", 
+    bool, 
+    location="query", 
+    required=False, 
+    default=True,
+    description="To sort descending (largest value first), set to True."
+)
+@openapi.parameter(
+    "include", 
+    str, 
+    location="query", 
+    required=False, 
+    default='DC,PR',
+    description="Comma seperated list of other dimensions to include, beyond the sort-by criteria. Use 'VP', 'DC' and 'PR' for voting power, delegator count and participation rate respectively."
+)
 @measure
-
 async def delegates(request):
 
-    out = []
+    sort_by = request.args.get("sort_by", 'VP')
+    sort_by_vp = sort_by == 'VP'
+    offset = int(request.args.get("offset", DEFAULT_OFFSET))
+    page_size = int(request.args.get("page_size", DEFAULT_PAGE_SIZE))
+    reverse = request.args.get("reverse", "true").lower() == "true"
+    include = request.args.get("include", 'DC,PR').split(",")
 
-    for delegatee_addr, vp in app.ctx.delegations.delegatee_vp.items():
-        out.append({'addr' : delegatee_addr,
-                    'from_cnt' : app.ctx.delegations.delegatee_cnt[delegatee_addr],
-                    'voting_power' : str(app.ctx.delegations.delegatee_vp[delegatee_addr])})
+    if sort_by_vp:
+        out = list(app.ctx.delegations.delegatee_vp.items())
+    else:
+        out = list(app.ctx.delegations.delegatee_cnt.items())
 
-    out.sort(key=lambda x: x['from_cnt'], reverse = True)
+    # TODO This should not be necessary.  The data model should prune zeros.
+    print(f"Number of records: {len(out)}")
+    out = [obj for obj in out if obj[1] > 0]
+    print(f"Number of records (excluding zeros): {len(out)}")
+
+    out.sort(key=lambda x: x[1], reverse = reverse)    
+
+    if offset:
+        out = out[offset:]
+
+    if page_size:
+        if len(out) > page_size:
+            out = out[:page_size]
+
+    add_delegator_count = 'DC' in include
+    add_participation_rate = 'PR' in include
+    add_voting_power = 'VP' in include
+
+    if add_participation_rate:
+        pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
+
+    if sort_by_vp:
+        if add_delegator_count and add_participation_rate:
+            out = [{'addr' : obj[0], 'voting_power' : str(obj[1]), 'from_cnt' : app.ctx.delegations.delegatee_cnt[obj[0]], 'participation' : pm.calculate(obj[0])} for obj in out]
+        elif add_delegator_count:
+            out = [{'addr' : obj[0], 'voting_power' : str(obj[1]), 'from_cnt' : app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
+        elif add_participation_rate:
+            out = [{'addr' : obj[0], 'voting_power' : str(obj[1]), 'participation' : pm.calculate(obj[0])} for obj in out]
+        else:
+            out = [{'addr' : obj[0], 'voting_power' : str(obj[1])} for obj in out]
+    else: # sort_by_from_cnt
+        if add_voting_power and add_participation_rate:
+            out = [{'addr' : obj[0], 'from_cnt' : obj[1], 'voting_power' : str(app.ctx.delegations.delegatee_vp[obj[0]]), 'participation' : pm.calculate(obj[0])} for obj in out]
+        elif add_voting_power:
+            out = [{'addr' : obj[0], 'from_cnt' : obj[1], 'voting_power' : str(app.ctx.delegations.delegatee_vp[obj[0]])} for obj in out]
+        elif add_participation_rate:
+            out = [{'addr' : obj[0], 'from_cnt' : obj[1], 'participation' : pm.calculate(obj[0])} for obj in out]
+        else:
+            out = [{'addr' : obj[0], 'from_cnt' : obj[1]} for obj in out]
 
     return json({'delegates' : out})
 
@@ -1002,6 +1122,6 @@ It is not a replacement for JSON-RPC provider, in the sense that contract-calls 
     
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, dev=True, debug=True)
+    app.run(host="0.0.0.0", port=8001, dev=True, debug=True)
     #app.run(host="0.0.0.0", port=7654, dev=True, workers=1, access_log=True, debug=True)
 
