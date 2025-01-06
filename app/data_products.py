@@ -75,9 +75,8 @@ class Delegations(DataProduct):
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
-    
-    def handle(self, event):
 
+    def handle(self, event):
 
         signature = event['signature']
 
@@ -102,6 +101,8 @@ class Delegations(DataProduct):
 
         elif signature == 'DelegateVotesChanged(address,uint256,uint256)':
 
+            delegatee = event['delegate']
+
             # TODO figure out why optimism's abi encode new_balance/previous_balance,
             # but more modern DAOs seem to rely on new_votes/previous_votes.
             new_votes = int(event.get('new_votes', event.get('new_balance', None)))
@@ -111,11 +112,11 @@ class Delegations(DataProduct):
             assert previous_votes is not None
 
             self.voting_power += (new_votes - previous_votes)
-            self.delegatee_vp[event['delegate']] = new_votes
+            self.delegatee_vp[delegatee] = new_votes
 
             block_number = int(event['block_number'])
 
-            self.delegatee_vp_history[event['delegate']].append((block_number, new_votes))
+            self.delegatee_vp_history[delegatee].append((block_number, new_votes))
 
 
 LCREATED = len('ProposalCreated')
@@ -189,16 +190,22 @@ class Proposals(DataProduct):
                 self.proposals[proposal_id].cancel(event)
         except KeyError as e:
             print(f"Problem with the following proposal_id {e} and the {signature} event.")
-
     
-    def unfiltered(self):
-        for proposal_id, proposal in self.proposals.items():
-            yield proposal.to_dict()
+    def unfiltered(self, head=-1):
+        for proposal in reversed(self.proposals.values()):
+            yield proposal
 
-    def active(self):
-        for proposal_id, proposal in self.proposals.items():
+    def active(self, head=-1):
+        for proposal in reversed(self.proposals.values()):
             if not proposal.canceled and not proposal.queued and not proposal.executed:
-                yield proposal.to_dict()
+                yield proposal
+
+    def completed(self, head=-1):
+        for proposal in reversed(self.proposals.values()):
+            if not proposal.canceled and proposal.queued:
+                if head > 0 or head <= -1:
+                    yield proposal
+                    head -= 1
 
 def nested_default_dict():
     return defaultdict(int)
@@ -227,3 +234,37 @@ class Votes(DataProduct):
         del event_cp['proposal_id']
 
         self.proposal_vote_record[proposal_id].append(event_cp)
+
+
+
+class ParticipationModel:
+    """
+    This participation model looks at the 10 most recent completed non-cancelled votes
+    
+    And then checks to see if a specific delegate voted in those relevant proposals.
+
+    A logical enhancement from here, would be Creating a DataProduct that calculated 
+    this for all delegates at the time of the completion for any proposal.  This would 
+    move the calc from the endpoint to the data product step.
+    """
+
+    def __init__(self, proposals_dp : Proposals, votes_dp : Votes):
+        self.proposals = proposals_dp
+        self.votes = votes_dp
+
+        self.relevant_proposals = [int(p.create_event['proposal_id']) for p in self.proposals.completed(head=10)]
+    
+    def calculate(self, addr):
+
+        num = 0
+        den = 0
+
+        historic_proposal_ids = [vote['proposal_id'] for vote in self.votes.voter_history[addr]]
+        recent_proposal_ids = set(historic_proposal_ids[:10])
+
+        for proposal_id in self.relevant_proposals:
+            if proposal_id in recent_proposal_ids:
+                den += 1
+            num += 1
+        
+        return den / num
