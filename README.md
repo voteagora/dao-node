@@ -6,42 +6,20 @@ A service for DAO-centric applications to serve blazing fast chain data backed b
 
 A service that optimizes for serving data (post-boot performance), flexibility (time-to-market of data-model changes), testability, and hosting costs for multi-region applications.
 
-<<<<<<< Updated upstream
 This service relies on:
 - A config file setting contracts, per the Agora YAML spec
 - Publically hosted ABIs for each contracts
-=======
-This service will take the following config:
-- A list of contracts relevant to a DAO w/ information about their configuration.
->>>>>>> Stashed changes
 - A JSON-RPC Endpoint
 - Optionally, archive data sources can be used to accelerate boot-times for large DAOs
 
-<<<<<<< Updated upstream
-=======
-## Table of contents
-- [Introduction]()
-- [Getting Started](#getstarted)
-- [Init Git](#git)
-- [How to run the project](#run)
-- [Useful Commands](#commands)
->>>>>>> Stashed changes
 
 ## Getting Started <a name="getstarted"></a>
 
 DAO Node requires a dedicated Python >= 3.11 environment and/or Docker, along with basic knowledge of both to setup.  It should run easily on Windows, Mac or Linux.
 
-<<<<<<< Updated upstream
-### Setup your ABIs
-
 DAO Node needs the ABIs for every contract used by the service, hosted at a public URL, with one file per contract.  
 
 For example, if your DAO is built using foundry, you would save 3 ABIs...
-=======
-## Getting Started <a name="getstarted"></a>
-
-You will need python or Docker installed.  Python is recommended, Docker is really only used in deployment.
->>>>>>> Stashed changes
 
 ```
 jq '.abi' mydao-contracts/out/MyToken.sol/MyToken.json > 0x4200000000000000000000000000000000000042.json
