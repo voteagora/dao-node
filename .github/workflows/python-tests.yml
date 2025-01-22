@@ -48,7 +48,7 @@ jobs:
             if (testOutcome === "success") {
               commentBody = "All tests passed! ✅";
             } else {
-              commentBody = {Some tests have failed. ❌ Please check the logs for details. ${ steps.pytest.outputs.stdout }`;
+              commentBody = `Some tests have failed. ❌ Please check the logs for details. ${ steps.pytest.outputs.stdout }`;
             }
             
             // Create a comment on the PR
