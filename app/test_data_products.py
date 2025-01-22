@@ -25,6 +25,8 @@ def test_balances():
     assert balances.balance_of('0xfdbf50bfc69a2d6d400ae6e4d18624a534a6980f') == 82871585988544595
     assert balances.balance_of('0x0b0df332d1126851f5fb9394e4d8aaae714833cf') == 150000000000000000
 
+    raise Exception("!")
+
 def test_delegations():
 
     delegations = Delegations()
