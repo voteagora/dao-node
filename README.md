@@ -12,7 +12,6 @@ This service relies on:
 - A JSON-RPC Endpoint
 - Optionally, archive data sources can be used to accelerate boot-times for large DAOs
 
-
 ## Getting Started <a name="getstarted"></a>
 
 DAO Node requires a dedicated Python >= 3.11 environment and/or Docker, along with basic knowledge of both to setup.  It should run easily on Windows, Mac or Linux.
