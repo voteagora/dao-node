@@ -138,7 +138,7 @@ class CSVClient:
 
                 cnt += 1
                 
-                if DEBUG and (cnt == 10000):
+                if DEBUG and (cnt == 1000000):
                     break
 
 def test_csv_client():
@@ -944,7 +944,7 @@ async def bootstrap_event_feeds(app, loop):
     ##########################
     # Instantiate a "Data Product", that would need to be maintained given one or more events.
 
-    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
+    # app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
@@ -969,9 +969,9 @@ async def bootstrap_event_feeds(app, loop):
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
 
-    ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
+    # ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
+    # app.ctx.add_event_feed(ev)
+    # app.add_task(ev.boot(app))
 
     ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
     app.ctx.add_event_feed(ev)

@@ -16,7 +16,7 @@ from google.cloud import storage
 from web3 import Web3
 
 # Initialize a connection to the Ethereum node (Infura in this case)
-infura_url = "http://127.0.0.1:8545"
+infura_url = "ws://127.0.0.1:8545"
 web3 = Web3(Web3.HTTPProvider(infura_url))
 
 # Check if connection is successful
