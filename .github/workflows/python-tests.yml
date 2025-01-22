@@ -43,7 +43,7 @@ jobs:
             // Determine if tests passed or failed
             const conclusion = (context.job.status === "success")
               ? "All tests passed! ✅"
-              : "Some tests have failed. ❌ Please check the logs for details."
+              : `Some tests have failed. ❌ Please check the logs for details : ${context.job.status}.`
 
             // Create a comment on the PR
             github.rest.issues.createComment({
