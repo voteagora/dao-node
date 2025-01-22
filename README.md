@@ -2,6 +2,8 @@
 
 A service for DAO-centric applications to serve blazing fast data backed by an in-ram data model maintained at tip.  
 
+
+
 # Vision
 
 A service that optimizes for serving data (post-boot performance), flexibility (time-to-market of data-model changes), testability, and hosting costs for multi-region clients.
