@@ -19,6 +19,4 @@ from utils import camel_to_snake
 def test_camel_to_snake(input_str, expected):
     result = camel_to_snake(input_str)
 
-    raise Exception("!")
-
     assert result == expected, f"Expected {expected}, but got {result}"
