@@ -45,9 +45,36 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
+
 DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', None)
+if DAO_NODE_ARCHIVE_NODE_HTTP:
+
+    # This pattern enables a deployer to put either the base URL in plane text or the full URL in
+    # plain text, leaving ALCHEMY_API_KEY in an optional secret.
+
+    # ...but also use an anvil fork, without any trouble of setting keys.
+
+    if 'alchemy.com' in DAO_NODE_ARCHIVE_NODE_HTTP:
+        ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('ALCHEMY_API_KEY', '') 
+    
+    if 'quiknode.pro' in DAO_NODE_ARCHIVE_NODE_HTTP:
+        ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('QUICKNODE_API_KEY', '')
+
 DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
+
 DAO_NODE_REALTIME_NODE_WS = os.getenv('DAO_NODE_REALTIME_NODE_WS', None)
+if DAO_NODE_REALTIME_NODE_WS:
+
+    # This pattern enables a deployer to put either the base URL in plane text or the full URL in
+    # plain text, leaving ALCHEMY_API_KEY in an optional secret.
+
+    # ...but also use an anvil fork, without any trouble of setting keys.
+
+    if 'alchemy.com' in DAO_NODE_REALTIME_NODE_WS:
+        REALTIME_NODE_WS_URL = DAO_NODE_REALTIME_NODE_WS + os.getenv('ALCHEMY_API_KEY', '') 
+    
+    if 'quiknode.pro' in DAO_NODE_REALTIME_NODE_WS:
+        REALTIME_NODE_WS_URL = DAO_NODE_REALTIME_NODE_WS + os.getenv('QUICKNODE_API_KEY', '')
 
 
 AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
@@ -247,9 +274,16 @@ class JsonRpcHistHttpClient:
     def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi):
 
         all_logs = []
+
+        # TODO: the abifsm library should clean this up.
+        if event_signature_hash[:2] != "0x":
+            event_signature_hash = "0x" + event_signature_hash
         
         for from_block in range(start_block, end_block, step):
+
             to_block = min(from_block + step - 1, end_block)  # Ensure we don't exceed the end_block
+
+            print(f"Looping block {from_block=}, {to_block=}")
 
             # Set filter parameters for each range
             event_filter = {
@@ -258,6 +292,7 @@ class JsonRpcHistHttpClient:
                 "address": contract_address,
                 "topics": [event_signature_hash]
             }
+            print(event_filter)
 
             # Fetch the logs for the current block range
             logs = w3.eth.get_logs(event_filter)
@@ -899,13 +934,13 @@ async def bootstrap_event_feeds(app, loop):
     
     # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
 
-    rpcc = JsonRpcHistHttpClient(DAO_NODE_ARCHIVE_NODE_HTTP)
+    rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
     if rpcc.is_valid():
-        clients.append(rpcc)
+       clients.append(rpcc)
 
-    jwsc = JsonRpcRTWsClient(DAO_NODE_REALTIME_NODE_WS)
+    jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
     if jwsc.is_valid():
-        clients.append(jwsc)
+       clients.append(jwsc)
 
 
     ##########################
@@ -944,16 +979,20 @@ async def bootstrap_event_feeds(app, loop):
     ##########################
     # Instantiate a "Data Product", that would need to be maintained given one or more events.
 
-    # app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', Balances())
+    balances = Balances()
+    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', balances)
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
     app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
 
-    app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', ProposalTypes())
+    proposal_types = ProposalTypes()
+    app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', proposal_types)
 
     proposals = Proposals()
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)', proposals)
     app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)', proposals)
+    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', proposals)
     app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCanceled(uint256)', proposals)
     app.ctx.register(f'{chain_id}.{gov_addr}.ProposalQueued(uint256,uint256)', proposals)
     app.ctx.register(f'{chain_id}.{gov_addr}.ProposalExecuted(uint256)', proposals)
@@ -969,9 +1008,9 @@ async def bootstrap_event_feeds(app, loop):
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
 
-    # ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-    # app.ctx.add_event_feed(ev)
-    # app.add_task(ev.boot(app))
+    ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
 
     ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
     app.ctx.add_event_feed(ev)
@@ -985,13 +1024,15 @@ async def bootstrap_event_feeds(app, loop):
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
-    for signature in ['ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)',
+    for signature in ['ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)',
+                      'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)',
+                      'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)',
                       'ProposalCanceled(uint256)',
                       'ProposalQueued(uint256,uint256)',
                       'ProposalExecuted(uint256)']:
-        ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
-        app.ctx.add_event_feed(ev)
-        app.add_task(ev.boot(app))
+       ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
+       app.ctx.add_event_feed(ev)
+       app.add_task(ev.boot(app))
 
     ev = EventFeed(chain_id, gov_addr, 'VoteCast(address,uint256,uint8,uint256,string)', abis, dcqs)
     app.ctx.add_event_feed(ev)

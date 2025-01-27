@@ -76,9 +76,6 @@ class Delegations(DataProduct):
 
         self.delegatee_vp_history = defaultdict(list)
 
-        self.bad = 1
-        self.bad_blocks = []
-
     def handle(self, event):
 
         signature = event['signature']
@@ -90,32 +87,15 @@ class Delegations(DataProduct):
             to_delegate = event['to_delegate']
             from_delegate = event['from_delegate']
 
-            printit = delegator == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
-
-            # if printit:
-            #    print(event) #={event} existing={existing}".format(existing=",".join([x[:6] for x in self.delegatee_list[from_delegate]][:7]), event=event))
-
-                # print("block_number={block_number} delegator={delegator} from_delegate={from_delegate} to_delegate={to_delegate} exiting={existing}".format(existing=",".join([x[:6] for x in self.delegatee_list[event['from_delegate']]][:7]), event=event))
-            
-            # if to_delegate == from_delegate:
-            #     return
-
             self.delegator[delegator] = to_delegate
-            
+
             self.delegatee_list[to_delegate].append(delegator)
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
                     self.delegatee_list[from_delegate].remove(delegator)
                 except ValueError as e:
-                    print(f"{delegator}")
-                    # if len(self.bad_blocks):
-                    #     print(f"Warning, tried to remove delegator '{delegator}' from delegate '{from_delegate}', but it did not exist to begin with. {self.bad} : ({min(self.bad_blocks)}, {max(self.bad_blocks)})")
-                    # self.bad += 1
-                    # self.bad_blocks.append(block_number)
-
-                        # if printit:
-                            # print("block_number={block_number} delegator={delegator} from_delegate={from_delegate} to_delegate={to_delegate} exiting={existing}".format(existing=",".join([x for x in self.delegatee_list[from_delegate]][:7]), **event))
+                    print(f"Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
