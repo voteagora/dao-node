@@ -24,6 +24,7 @@ jobs:
           pip install pytest
 
       - name: Run pytest
+        id: pytest
         run: |
           pytest --maxfail=1 --disable-warnings -v
 
@@ -41,14 +42,19 @@ jobs:
         with:
           script: |
             // Determine if tests passed or failed
-            const conclusion = (context.job.status === "success")
-              ? "All tests passed! ✅"
-              : "Some tests have failed. ❌ Please check the logs for details."
+            const testOutcome = "${{ steps.pytest.outcome }}";
 
+            let commentBody;
+            if (testOutcome === "success") {
+              commentBody = "All tests passed! ✅";
+            } else {
+              commentBody = "Some tests have failed. ❌ Please check the logs for details.";
+            }
+            
             // Create a comment on the PR
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: conclusion
+              body: commentBody
             })

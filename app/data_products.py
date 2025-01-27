@@ -79,23 +79,23 @@ class Delegations(DataProduct):
     def handle(self, event):
 
         signature = event['signature']
+        block_number = event['block_number']
 
         if signature == 'DelegateChanged(address,address,address)':
 
             delegator = event['delegator']
-
             to_delegate = event['to_delegate']
-            self.delegator[delegator] = to_delegate
-            
-            self.delegatee_list[to_delegate].append(delegator)
-
             from_delegate = event['from_delegate']
 
-            if from_delegate != '0x0000000000000000000000000000000000000000':
+            self.delegator[delegator] = to_delegate
+
+            self.delegatee_list[to_delegate].append(delegator)
+
+            if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
                     self.delegatee_list[from_delegate].remove(delegator)
                 except ValueError as e:
-                    print(f"Warning, tried to remove delegator '{delegator}' from delegate '{from_delegate}', but it did not exist to begin with.")
+                    print(f"Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 

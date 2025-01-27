@@ -1,10 +1,10 @@
 # DAO Node
 
-A service for DAO-centric applications to serve blazing fast data backed by an in-ram data model maintained at tip.  
+A service for DAO-centric applications to serve blazing fast chain data backed by an in-ram data model maintained at tip.  
 
 # Vision
 
-A service that optimizes for serving data (post-boot performance), flexibility (time-to-market of data-model changes), testability, and hosting costs for multi-region clients.
+A service that optimizes for serving data (post-boot performance), flexibility (time-to-market of data-model changes), testability, and hosting costs for multi-region applications.
 
 This service relies on:
 - A config file setting contracts, per the Agora YAML spec
@@ -16,8 +16,6 @@ This service relies on:
 ## Getting Started <a name="getstarted"></a>
 
 DAO Node requires a dedicated Python >= 3.11 environment and/or Docker, along with basic knowledge of both to setup.  It should run easily on Windows, Mac or Linux.
-
-### Setup your ABIs
 
 DAO Node needs the ABIs for every contract used by the service, hosted at a public URL, with one file per contract.  
 
@@ -60,6 +58,17 @@ deployments:
 ```
 
 ### How to run the project <a name="run"></a>
+
+#### Via Python
+
+##### Sync Archive Data
+
+```
+AGORA_CONFIG_FILE="/path/to/your/config.yaml" 
+DAO_NODE_GCLOUD_BUCKET="daonode-us-public" 
+CONTRACT_DEPLOYMENT="main" 
+python app/cli.py sync-from-gcs data
+```
 
 #### Via Docker
 
