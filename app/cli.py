@@ -56,7 +56,7 @@ def sync_from_gcs(dir: str, multi_processing=False, strict=False):
 
         dest.mkdir(parents=True, exist_ok=True)
         
-        cmd.extend(["cp", "-r", source_path, str(dest.absolute())])
+        cmd.extend(["cp", "-D", "-r", source_path, str(dest.absolute())])
 
         try:
             subprocess.check_call(cmd)
