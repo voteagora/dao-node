@@ -41,7 +41,7 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 # We need a YAML config matching the Agora Governor Deployment Spec.
 #
 ######################################################################
-
+    
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
@@ -54,11 +54,14 @@ if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     # ...but also use an anvil fork, without any trouble of setting keys.
 
+    ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP
+
     if 'alchemy.com' in DAO_NODE_ARCHIVE_NODE_HTTP:
-        ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('ALCHEMY_API_KEY', '') 
+        ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('ALCHEMY_API_KEY', '') 
     
     if 'quiknode.pro' in DAO_NODE_ARCHIVE_NODE_HTTP:
-        ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('QUICKNODE_API_KEY', '')
+        ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('QUICKNODE_API_KEY', '')
+    
 
 DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
 
@@ -70,11 +73,13 @@ if DAO_NODE_REALTIME_NODE_WS:
 
     # ...but also use an anvil fork, without any trouble of setting keys.
 
+    REALTIME_NODE_WS_URL = DAO_NODE_REALTIME_NODE_WS
+
     if 'alchemy.com' in DAO_NODE_REALTIME_NODE_WS:
-        REALTIME_NODE_WS_URL = DAO_NODE_REALTIME_NODE_WS + os.getenv('ALCHEMY_API_KEY', '') 
+        REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('ALCHEMY_API_KEY', '') 
     
     if 'quiknode.pro' in DAO_NODE_REALTIME_NODE_WS:
-        REALTIME_NODE_WS_URL = DAO_NODE_REALTIME_NODE_WS + os.getenv('QUICKNODE_API_KEY', '')
+        REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
 
 
 AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
@@ -84,7 +89,7 @@ public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
 deployment = config['deployments'][CONTRACT_DEPLOYMENT]
 del config['deployments']
-public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id']}
+public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id'] if k in deployment}
 
 ########################################################################
 
@@ -158,7 +163,12 @@ class CSVClient:
                 row['sighash'] = abi_frag.topic
 
                 for int_field in int_fields:
-                    row[int_field] = int(row[int_field])
+                    try:
+                        row[int_field] = int(row[int_field])
+                    except ValueError:
+                        print(f"Problem with casting {int_field} to int, from file {fname}.")
+                    except KeyError:
+                        print(f"Problem with getting {int_field} from file {fname}.")
 
                 yield row
 
@@ -283,7 +293,8 @@ class JsonRpcHistHttpClient:
 
             to_block = min(from_block + step - 1, end_block)  # Ensure we don't exceed the end_block
 
-            print(f"Looping block {from_block=}, {to_block=}")
+            if DEBUG:
+                print(f"Looping block {from_block=}, {to_block=}")
 
             # Set filter parameters for each range
             event_filter = {
@@ -292,7 +303,6 @@ class JsonRpcHistHttpClient:
                 "address": contract_address,
                 "topics": [event_signature_hash]
             }
-            print(event_filter)
 
             # Fetch the logs for the current block range
             logs = w3.eth.get_logs(event_filter)
@@ -303,7 +313,8 @@ class JsonRpcHistHttpClient:
 
             all_logs.extend(map(processor, logs)) 
 
-            print(f"Fetched logs from block {from_block} to {to_block}. Total logs: {len(all_logs)}")
+            if DEBUG:
+                print(f"Fetched logs from block {from_block} to {to_block}. Total logs: {len(all_logs)}")
 
             if (len(all_logs) > 4000) and DEBUG:
                 break
@@ -342,8 +353,23 @@ class JsonRpcHistHttpClient:
             args = log['args']
             
             out.update(**args)
+
+            out['signature'] = signature
+            out['sighash'] = event.topic
+
+            def bytes_to_str(x):
+                if isinstance(x, bytes):
+                    return x.hex()
+                return x
+
+            def array_of_bytes_to_str(x):
+                if isinstance(x, list):
+                    return [bytes_to_str(i) for i in x]
+                elif isinstance(x, bytes):
+                    return bytes_to_str(x)
+                return x
             
-            out = {camel_to_snake(k) : v for k,v in out.items()}
+            out = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in out.items()}
            
             yield out
             
@@ -402,7 +428,24 @@ class JsonRpcRTWsClient:
                 out['transaction_index'] = decoded_response['transactionIndex']
                 out.update(**decoded_response['args'])
 
-                out = {camel_to_snake(k) : v for k,v in out.items()}
+                out['signature'] = signature
+                out['sighash'] = event.topic
+
+                def bytes_to_str(x):
+                    if isinstance(x, bytes):
+                        return x.hex()
+                    return x
+
+                def array_of_bytes_to_str(x):
+                    if isinstance(x, list):
+                        return [bytes_to_str(i) for i in x]
+                    elif isinstance(x, bytes):
+                        return bytes_to_str(x)
+                    return x
+
+                out = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in out.items()}
+
+                print(f"Received event {out['signature']} at block {out['block_number']}")
 
                 yield out
 
@@ -599,35 +642,41 @@ async def balances(request, addr):
 @openapi.tag("Proposal State")
 @openapi.summary("All proposals with the latest state of their outcome.")
 @openapi.parameter(
-    "active", 
-    bool, 
+    "set", 
+    str, 
     location="query", 
     required=False, 
-    default=False,
-    description="Flag to filter the list of proposals, down to only the ones which have an active vote in progress."
+    default="relevant",
+    description="Flag to filter the list of proposals, down to only the ones which are relevant."
 )
 @measure
 async def proposals(request):
 
-    active = request.args.get("active", "false").lower() == "true"
+    proposal_set = request.args.get("set", "relevant").lower()
 
-    if active:
-        res = app.ctx.proposals.active()
+    if proposal_set == 'relevant':
+        res = app.ctx.proposals.relevant()
     else:
         res = app.ctx.proposals.unfiltered()
 
-    results = []
+    proposal_id_field_name = app.ctx.proposals.proposal_id_field_name
+
+    proposals = []
     for prop in res:
         proposal = prop.to_dict()
-        outcome = app.ctx.votes.proposal_aggregation[ proposal['proposal_id']]
+        outcome = app.ctx.votes.proposal_aggregation[proposal[proposal_id_field_name]]
         keys = outcome.keys()
         for key in keys:
             outcome[key] = str(outcome[key])
-        proposal['outcome'] = outcome
+        proposal['proposal_results'] = outcome
+
+        print(proposal['id'])
+        print(proposal)
+        print(json(proposal))
         
-        results.append(prop)
-    
-    return json({'proposals' : results})
+        proposals.append(proposal)
+
+    return json({'proposals' : proposals})
 
 @app.route('v1/proposal/<proposal_id>')
 @openapi.tag("Proposal State")
@@ -952,52 +1001,78 @@ async def bootstrap_event_feeds(app, loop):
 
     chain_id = int(deployment['chain_id'])
 
+    abi_list = []
+
     token_addr = deployment['token']['address'].lower()
-    gov_addr = deployment['gov']['address'].lower()
-    ptc_addr = deployment['ptc']['address'].lower()
-
     print(f"Using {token_addr=}", flush=True)
-    print(f"Using {gov_addr=}", flush=True)
-    print(f"Using {ptc_addr=}", flush=True)
-
     token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
+    abi_list.append(token_abi)
+
+    gov_addr = deployment['gov']['address'].lower()
+    print(f"Using {gov_addr=}", flush=True)
     gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
-    ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
+    abi_list.append(gov_abi)
 
-    proposal_type_set_signature = None
+    if 'ptc' in deployment:
+        ptc_addr = deployment['ptc']['address'].lower()
+        print(f"Using {ptc_addr=}", flush=True)
+        ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
 
-    for fragment in ptc_abi.fragments:
-        if fragment.type == 'event':
-            if fragment.signature.startswith("ProposalTypeSet"):
-                proposal_type_set_signature = fragment.signature
+        proposal_type_set_signature = None
 
-    assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 'ProposalTypeSet(uint256,uint16,uint16,string)')
+        for fragment in ptc_abi.fragments:
+            if fragment.type == 'event':
+                if fragment.signature.startswith("ProposalTypeSet"):
+                    proposal_type_set_signature = fragment.signature
+
+        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 'ProposalTypeSet(uint256,uint16,uint16,string)')
+        abi_list.append(ptc_abi)
     
-    abis = ABISet('daonode', [token_abi, gov_abi, ptc_abi])
+    abis = ABISet('daonode', abi_list)
 
 
     ##########################
     # Instantiate a "Data Product", that would need to be maintained given one or more events.
 
-    balances = Balances()
+    balances = Balances(token_spec=public_config['token_spec'])
     app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', balances)
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
     app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
 
-    proposal_types = ProposalTypes()
-    app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', proposal_types)
+    if 'ptc' in deployment:
+        proposal_types = ProposalTypes()
+        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', proposal_types)
 
-    proposals = Proposals()
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)', proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)', proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalCanceled(uint256)', proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalQueued(uint256,uint256)', proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.ProposalExecuted(uint256)', proposals)
 
-    votes = Votes()
+    proposals = Proposals(governor_spec=public_config['governor_spec'])
+
+    PROPOSAL_CREATED_1 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
+    PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
+    PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'
+    PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
+
+    PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
+    PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
+    PROPOSAL_EXECUTED = 'ProposalExecuted(uint256)'
+
+    if public_config['governor_spec']['name'] == 'compound':
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_1, proposals)
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
+    else:
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_2, proposals)
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_3, proposals)
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_4, proposals)
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
+
+    app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CANCELED, proposals)
+    app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_QUEUED, proposals)
+    app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EXECUTED, proposals)
+
+    PROPOSAL_LIFECYCLE_EVENTS = PROPOSAL_CREATED_EVENTS + [PROPOSAL_CANCELED, PROPOSAL_QUEUED, PROPOSAL_EXECUTED]
+
+    votes = Votes(governor_spec=public_config['governor_spec'])
     app.ctx.register(f'{chain_id}.{gov_addr}.VoteCast(address,uint256,uint8,uint256,string)', votes)
 
 
@@ -1020,16 +1095,12 @@ async def bootstrap_event_feeds(app, loop):
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
-    ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
+    if 'ptc' in deployment:
+        ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
+        app.ctx.add_event_feed(ev)
+        app.add_task(ev.boot(app))
 
-    for signature in ['ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)',
-                      'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)',
-                      'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)',
-                      'ProposalCanceled(uint256)',
-                      'ProposalQueued(uint256,uint256)',
-                      'ProposalExecuted(uint256)']:
+    for signature in PROPOSAL_LIFECYCLE_EVENTS:
        ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
        app.ctx.add_event_feed(ev)
        app.add_task(ev.boot(app))
