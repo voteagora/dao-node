@@ -18,12 +18,21 @@ class DataProduct(ABC):
 
 class Balances(DataProduct):
 
-    def __init__(self):
+    def __init__(self, token_spec):
         self.balances = defaultdict(int)
 
+        # U is for uniswap, for lack of a better framing.
+        if token_spec['version'] == 'U':
+            self.value_field_name = 'amount'
+        else:
+            self.value_field_name = 'value'
+
     def handle(self, event):
-        self.balances[event['from']] -= event['value']
-        self.balances[event['to']] += event['value']
+
+        field = self.value_field_name
+
+        self.balances[event['from']] -= event[field]
+        self.balances[event['to']] += event[field]
     
     def balance_of(self, address):
         return self.balances[address]
@@ -83,9 +92,10 @@ class Delegations(DataProduct):
 
         if signature == 'DelegateChanged(address,address,address)':
 
-            delegator = event['delegator']
-            to_delegate = event['to_delegate']
-            from_delegate = event['from_delegate']
+            delegator = event['delegator'].lower()
+
+            to_delegate = event['to_delegate'].lower()
+            from_delegate = event['from_delegate'].lower()
 
             self.delegator[delegator] = to_delegate
 
@@ -94,6 +104,7 @@ class Delegations(DataProduct):
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
                     self.delegatee_list[from_delegate].remove(delegator)
+                    self.delegatee_cnt[from_delegate] = len(self.delegatee_list[from_delegate])
                 except ValueError as e:
                     print(f"Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
@@ -101,7 +112,7 @@ class Delegations(DataProduct):
 
         elif signature == 'DelegateVotesChanged(address,uint256,uint256)':
 
-            delegatee = event['delegate']
+            delegatee = event['delegate'].lower()
 
             # TODO figure out why optimism's abi encode new_balance/previous_balance,
             # but more modern DAOs seem to rely on new_votes/previous_votes.
@@ -160,24 +171,64 @@ class Proposal:
 
 class Proposals(DataProduct):
 
-    def __init__(self):
+    def __init__(self, governor_spec):
         self.proposals = {}
+
+        if governor_spec['name'] == 'compound':
+            self.proposal_id_field_name = 'id'
+        else:
+            self.proposal_id_field_name = 'proposal_id'
     
     def handle(self, event):
 
-        signature = event['signature']
+        try:
+            signature = event['signature']
+        except:
+            print(f"Problem with the following event {event}.")
 
         # TODO - should we be working with proposal_ids as numerical or strings? 
         #        For now, we store as strings.
 
-        proposal_id = str(event['proposal_id'])
-        event['proposal_id'] = proposal_id
+        PROPOSAL_ID_FIELD = self.proposal_id_field_name
+
+        proposal_id = str(event[PROPOSAL_ID_FIELD])
+        event[PROPOSAL_ID_FIELD] = proposal_id
 
         del event['signature']
         del event['sighash']
 
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
+                event['description'] = str(event['description']) # Some proposals are just bytes.
+
+                obj = event['values']
+                if isinstance(obj, str):
+                    obj = obj[1:-1]
+                    obj = obj.split(',')
+                    obj = [int(x) for x in obj]
+                event['values'] = obj
+
+                obj = event['targets']
+                if isinstance(obj, str):
+                    obj = obj.replace('"', '')
+                    obj = obj[1:-1]
+                    obj = obj.split(',')
+                event['targets'] = obj
+
+                obj = event['calldatas']
+                if isinstance(obj, str):
+                    obj = obj.replace('"', '')
+                    obj = obj[1:-1]
+                    obj = obj.split(',')
+                event['calldatas'] = obj
+
+                obj = event['signatures']
+                if isinstance(obj, str):
+                    obj = obj[2:-2]
+                    obj = obj.split('","')
+                event['signatures'] = obj
+
+
                 self.proposals[proposal_id] = Proposal(event)
 
             elif 'ProposalQueued' == signature[:LQUEUED]:
@@ -200,6 +251,11 @@ class Proposals(DataProduct):
             if not proposal.canceled and not proposal.queued and not proposal.executed:
                 yield proposal
 
+    def relevant(self, head=-1):
+        for proposal in reversed(self.proposals.values()):
+            if not proposal.canceled:
+                yield proposal
+
     def completed(self, head=-1):
         for proposal in reversed(self.proposals.values()):
             if not proposal.canceled and proposal.queued:
@@ -211,17 +267,29 @@ def nested_default_dict():
     return defaultdict(int)
 
 class Votes(DataProduct):
-    def __init__(self):
+    def __init__(self, governor_spec):
         self.proposal_aggregation = defaultdict(nested_default_dict)
         self.voter_history = defaultdict(list)
         self.proposal_vote_record = defaultdict(list)
+
+        if governor_spec['name'] == 'compound':
+            self.proposal_id_field_name = 'id'
+        else:
+            self.proposal_id_field_name = 'proposal_id'
     
     def handle(self, event):
 
-        proposal_id = str(event['proposal_id'])
-        weight = event['weight']
+        PROPOSAL_ID_FIELD = self.proposal_id_field_name
 
-        self.proposal_aggregation[proposal_id][event['support']] += weight
+        try:
+            proposal_id = str(event['proposal_id'])
+        except KeyError as e:
+            print(f"Problem with the following event {event}.")
+
+        weight = int(event.get('weight', 0))
+        votes = int(event.get('votes', 0))
+
+        self.proposal_aggregation[proposal_id][event['support']] += weight + votes
 
         event_cp = copy(event)
 
@@ -234,6 +302,7 @@ class Votes(DataProduct):
         del event_cp['proposal_id']
 
         self.proposal_vote_record[proposal_id].append(event_cp)
+
 
 
 
@@ -252,14 +321,16 @@ class ParticipationModel:
         self.proposals = proposals_dp
         self.votes = votes_dp
 
-        self.relevant_proposals = [int(p.create_event['proposal_id']) for p in self.proposals.completed(head=10)]
+        self.proposal_id_field_name = self.proposals.proposal_id_field_name
+
+        self.relevant_proposals = [int(p.create_event[self.proposal_id_field_name]) for p in self.proposals.completed(head=10)]
     
     def calculate(self, addr):
 
         num = 0
         den = 0
 
-        historic_proposal_ids = [vote['proposal_id'] for vote in self.votes.voter_history[addr]]
+        historic_proposal_ids = [vote[self.proposal_id_field_name] for vote in self.votes.voter_history[addr]]
         recent_proposal_ids = set(historic_proposal_ids[:10])
 
         for proposal_id in self.relevant_proposals:
