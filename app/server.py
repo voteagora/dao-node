@@ -64,11 +64,11 @@ if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     if 'alchemy.com' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('ALCHEMY_API_KEY', '') 
-        print("Using alchemy for Archive.")
+        print(f"Using alchemy for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}"")
 
     if 'quiknode.pro' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('QUICKNODE_API_KEY', '')
-        print("Using quiknode.pro for Archive.")
+        print(f"Using quiknode.pro for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
     
 
 DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
@@ -85,11 +85,11 @@ if DAO_NODE_REALTIME_NODE_WS:
 
     if 'alchemy.com' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('ALCHEMY_API_KEY', '')
-        print("Using alchemy for Web Socket.")
+        print(f"Using alchemy for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}"")
     
     if 'quiknode.pro' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
-        print("Using quiknode.pro for Web Socket.")
+        print(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}"")
 
 AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
 with open(AGORA_CONFIG_FILE, 'r') as f:
@@ -102,7 +102,7 @@ public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id
 
 ########################################################################
 
-WorkerManager.THRESHOLD = 600 * 20 # 20 minutes
+WorkerManager.THRESHOLD = 600 * 45 # 45 minutes
 
 DEBUG = False
 
@@ -678,11 +678,6 @@ async def proposals(request):
         for key in keys:
             outcome[key] = str(outcome[key])
         proposal['proposal_results'] = outcome
-
-        print(proposal['id'])
-        print(proposal)
-        print(json(proposal))
-        
         proposals.append(proposal)
 
     return json({'proposals' : proposals})
