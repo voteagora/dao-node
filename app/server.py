@@ -1028,7 +1028,7 @@ async def bootstrap_event_feeds(app, loop):
                 if fragment.signature.startswith("ProposalTypeSet"):
                     proposal_type_set_signature = fragment.signature
 
-        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 'ProposalTypeSet(uint256,uint16,uint16,string)'), f"found {proposal_type_set_signature}"
+        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 'ProposalTypeSet(uint256,uint16,uint16,string)', 'ProposalTypeSet(uint8,uint16,uint16,string,string)'), f"found {proposal_type_set_signature}"
         abi_list.append(ptc_abi)
     
     abis = ABISet('daonode', abi_list)
@@ -1047,6 +1047,8 @@ async def bootstrap_event_feeds(app, loop):
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
         app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', proposal_types)
+        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint256,uint16,uint16,string)', proposal_types)
+        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string)', proposal_types)
 
 
     proposals = Proposals(governor_spec=public_config['governor_spec'])
