@@ -1028,7 +1028,7 @@ async def bootstrap_event_feeds(app, loop):
                 if fragment.signature.startswith("ProposalTypeSet"):
                     proposal_type_set_signature = fragment.signature
 
-        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 'ProposalTypeSet(uint256,uint16,uint16,string)')
+        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 'ProposalTypeSet(uint256,uint16,uint16,string)'), f"found {proposal_type_set_signature}"
         abi_list.append(ptc_abi)
     
     abis = ABISet('daonode', abi_list)
