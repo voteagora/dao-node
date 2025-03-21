@@ -46,6 +46,12 @@ CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
 
+def secret_text(t, n):
+    if len(t > ((2 * n) + 3)):
+        return t[:n] + "..." + t[-1 * n:]
+    else:
+        return t[:n] + "*" * len(t)
+
 DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', None)
 if DAO_NODE_ARCHIVE_NODE_HTTP:
 
@@ -986,13 +992,13 @@ async def bootstrap_event_feeds(app, loop):
     
     # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
 
-    rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-    if rpcc.is_valid():
-       clients.append(rpcc)
+    # rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
+    # if rpcc.is_valid():
+    #    clients.append(rpcc)
 
-    jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
-    if jwsc.is_valid():
-       clients.append(jwsc)
+    # jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
+    # if jwsc.is_valid():
+    #    clients.append(jwsc)
 
 
     ##########################
