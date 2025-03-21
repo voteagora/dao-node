@@ -58,9 +58,11 @@ if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     if 'alchemy.com' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('ALCHEMY_API_KEY', '') 
-    
+        print("Using alchemy for Archive.")
+
     if 'quiknode.pro' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('QUICKNODE_API_KEY', '')
+        print("Using quiknode.pro for Archive.")
     
 
 DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
@@ -76,11 +78,12 @@ if DAO_NODE_REALTIME_NODE_WS:
     REALTIME_NODE_WS_URL = DAO_NODE_REALTIME_NODE_WS
 
     if 'alchemy.com' in DAO_NODE_REALTIME_NODE_WS:
-        REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('ALCHEMY_API_KEY', '') 
+        REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('ALCHEMY_API_KEY', '')
+        print("Using alchemy for Web Socket.")
     
     if 'quiknode.pro' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
-
+        print("Using quiknode.pro for Web Socket.")
 
 AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
 with open(AGORA_CONFIG_FILE, 'r') as f:
