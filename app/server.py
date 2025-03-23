@@ -1018,7 +1018,13 @@ async def bootstrap_event_feeds(app, loop):
 
     gov_addr = deployment['gov']['address'].lower()
     print(f"Using {gov_addr=}", flush=True)
-    gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
+
+    GOV_ABI_OVERRIDE_URL = os.getenv('GOV_ABI_OVERRIDE_URL', None)
+    if GOV_ABI_OVERRIDE_URL:
+        print("Overriding Gov ABI")
+        gov_abi = ABI.from_url('gov', GOV_ABI_OVERRIDE_URL)
+    else:
+        gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
     abi_list.append(gov_abi)
 
     if 'ptc' in deployment:
