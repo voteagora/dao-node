@@ -335,7 +335,7 @@ class ParticipationModel:
         num = 0
         den = 0
 
-        historic_proposal_ids = [vote[self.proposal_id_field_name] for vote in self.votes.voter_history[addr]]
+        historic_proposal_ids = [vote['proposal_id'] for vote in self.votes.voter_history[addr]]
         recent_proposal_ids = set(historic_proposal_ids[:10])
 
         for proposal_id in self.relevant_proposals:
