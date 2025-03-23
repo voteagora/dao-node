@@ -82,3 +82,11 @@ docker build -t daonode .
 ```bash
 docker run daonode -e AGORA_CONFIG_FILE="/path/to/your/mydao-config.yaml" ABI_URL="http://your-abi-host.com/abis/" CONTRACT_DEPLOYMENT="main" DAO_NODE_ARCHIVE_NODE_HTTP="http://your-geth-node" DAO_NODE_REALTIME_NODE_WS="ws://your-geth-node"
 ```
+
+# Error Codes
+
+DAO Node uses a warn-and-beg-forgiveness style of flagging errors in a material portion of the code base.  The logic is that there could be say 1 missing event that compromises the data for say 1 user, but that shouldn't stop the server from booting.  If there is application logic that has an issue, rather than the data source, this can mean a barfing of tracebacks that overwhelm stdout and any human looking at the logs.  
+
+So we use error codes rather than printing full stack trackes for known high risk failure modes.
+
+The Error code number is of the form "E{line_number_as_of_date_added}{YYMMDD}{optional-suffix}".  This means error codes can be easily created by devs without thinking too hard or checking some index, but it's likely impossible for a collission as well.
