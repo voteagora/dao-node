@@ -63,21 +63,13 @@ def test_Delegations_from_dict():
 #  Test basic business logic of the data products, in the context of a specific Client and production like data.
 #
 
-@pytest.fixture
-def compound_governor_abis():
-
-    abi_path = os.path.join('tests', 'abis', 'uni-gov.json')
-    abi = ABI.from_file('gov', abi_path)
-    abis = ABISet('test-abis', [abi])
-
-    return abis
-
 def test_Proposals_for_compound_governor_from_csv(compound_governor_abis):
     
     proposals = Proposals(governor_spec={'name': 'compound'})
         
     csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
-    for row in csvc.read(1, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', compound_governor_abis):
+    chain_id = 1
+    for row in csvc.read(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', compound_governor_abis):
             proposals.handle(row)
     
     # Get the first proposal from the data product
