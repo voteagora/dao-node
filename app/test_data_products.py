@@ -3,7 +3,7 @@ from data_products import Balances, Delegations
 
 def test_balances():
 
-    balances = Balances()
+    balances = Balances(token_spec={'name' : 'erc20', 'version' : '?'})
 
     data = [
              {'block_number': 2456013, 'transaction_index': 1, 'log_index': 0,  'from': '0x0000000000000000000000000000000000000000', 'to': '0xcfbcda93bee60e1f4865783e141b1dd913d219df', 'value': 1000000000000000,   'signature': 'Transfer(address,address,uint256)', 'sighash': 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'},
