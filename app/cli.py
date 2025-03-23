@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import os
 import subprocess
 from argh import arg, dispatch_commands
@@ -12,6 +16,8 @@ def sync_from_gcs(dir: str, multi_processing=False, strict=False):
     agora_config_file = os.environ.get('AGORA_CONFIG_FILE')
     dao_node_gcloud_bucket = os.environ.get('DAO_NODE_GCLOUD_BUCKET')
     contract_deployment = os.environ.get('CONTRACT_DEPLOYMENT')
+
+    print(f"agora_config_file={agora_config_file}")
 
     if not dao_node_gcloud_bucket:
         raise ValueError("The environment variable DAO_NODE_GCLOUD_BUCKET must be set.")
