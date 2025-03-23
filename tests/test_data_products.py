@@ -64,20 +64,20 @@ def test_Delegations_from_dict():
 #
 
 @pytest.fixture
-def compound_proposals_setup():
-    proposals = Proposals(governor_spec={'name': 'compound'})
-    
+def compound_governor_abis():
+
     abi_path = os.path.join('tests', 'abis', 'uni-gov.json')
     abi = ABI.from_file('gov', abi_path)
     abis = ABISet('test-abis', [abi])
-    
-    csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
-    return proposals, csvc, abis
 
-def test_Proposals_for_compound_governor_from_csv(compound_proposals_setup):
-    proposals, csvc, abis = compound_proposals_setup
+    return abis
+
+def test_Proposals_for_compound_governor_from_csv(compound_governor_abis):
     
-    for row in csvc.read(1, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', abis):
+    proposals = Proposals(governor_spec={'name': 'compound'})
+        
+    csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
+    for row in csvc.read(1, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', compound_governor_abis):
             proposals.handle(row)
     
     # Get the first proposal from the data product
@@ -88,7 +88,12 @@ def test_Proposals_for_compound_governor_from_csv(compound_proposals_setup):
     assert isinstance(first_proposal.create_event['id'], str)  # IDs are stored as strings
     assert 'description' in first_proposal.create_event
     assert 'targets' in first_proposal.create_event
+
+    assert 'targets' in first_proposal.create_event
+    assert first_proposal.create_event['targets'][0] == '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984'
+    
     assert 'values' in first_proposal.create_event
+    assert first_proposal.create_event['values'][0] == 0
     
     assert 'calldatas' in first_proposal.create_event
     assert first_proposal.create_event['calldatas'][0] == 'a9059cbb0000000000000000000000005069a64bc6616dec1584ee0500b7813a9b680f7e00000000000000000000000000000000000000000010cf035cc2441ead340000'
