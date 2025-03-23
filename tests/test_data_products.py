@@ -98,3 +98,6 @@ def test_Proposals_for_compound_governor_from_csv():
     assert first_proposal.create_event['end_block'] == 22079895
 
     assert len(list(proposals.unfiltered())) == 83
+
+    assert proposals.proposals['83'].create_event['id'] == '83'
+    assert proposals.proposals['1'].create_event['id'] == '1'
