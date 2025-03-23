@@ -108,6 +108,13 @@ try:
     public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id'] if k in deployment}
 except:
     print("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
+    config = {
+        'friendly_short_name': 'Unknown',
+        'deployments': {}
+    }
+    public_config = {}
+    public_deployment = {}
+    deployment = {'chain_id' : 1, 'token' : {'address' : '0x0000000000000000000000000000000000000000'}}
 
 ########################################################################
 
@@ -863,7 +870,7 @@ async def deployment_endpoint(request):
 from textwrap import dedent
 app.ext.openapi.describe(
     f"DAO Node for {config['friendly_short_name']}",
-    version="0.1.0-alpha",
+    version=__version__,
     description=dedent(
         f"""
 # About
