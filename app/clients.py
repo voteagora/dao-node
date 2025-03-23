@@ -1,6 +1,7 @@
 from pathlib import Path
 from .utils import camel_to_snake
 import csv
+import os
 
 DEBUG = False
 

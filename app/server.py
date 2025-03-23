@@ -27,7 +27,7 @@ from sanic.response import text, html, json
 from sanic.blueprints import Blueprint
 
 from .middleware import start_timer, add_server_timing_header, measure
-form .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
+from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
 from . import __version__
 
@@ -322,20 +322,7 @@ async def balances(request, addr):
 	return json({'balance' : str(app.ctx.balances.balance_of(addr)),
                  'address' : addr})
 
-@app.route('/v1/proposals')
-@openapi.tag("Proposal State")
-@openapi.summary("All proposals with the latest state of their outcome.")
-@openapi.parameter(
-    "set", 
-    str, 
-    location="query", 
-    required=False, 
-    default="relevant",
-    description="Flag to filter the list of proposals, down to only the ones which are relevant."
-)
-@measure
-async def proposals(request):
-
+async def proposals_handler(app, request):
     proposal_set = request.args.get("set", "relevant").lower()
 
     if proposal_set == 'relevant':
@@ -356,6 +343,22 @@ async def proposals(request):
         proposals.append(proposal)
 
     return json({'proposals' : proposals})
+
+@app.route('/v1/proposals')
+@openapi.tag("Proposal State")
+@openapi.summary("All proposals with the latest state of their outcome.")
+@openapi.parameter(
+    "set", 
+    str, 
+    location="query", 
+    required=False, 
+    default="relevant",
+    description="Flag to filter the list of proposals, down to only the ones which are relevant."
+)
+@measure
+async def proposals(request):
+    return await proposals_handler(app, request)
+
 
 @app.route('/v1/proposal/<proposal_id>')
 @openapi.tag("Proposal State")
