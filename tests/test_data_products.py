@@ -63,15 +63,20 @@ def test_Delegations_from_dict():
 #  Test basic business logic of the data products, in the context of a specific Client and production like data.
 #
 
-def test_Proposals_for_compound_governor_from_csv():
-
-    proposals = Proposals(governor_spec={'name': 'compound'}) 
-
+@pytest.fixture
+def compound_proposals_setup():
+    proposals = Proposals(governor_spec={'name': 'compound'})
+    
     abi_path = os.path.join('tests', 'abis', 'uni-gov.json')
     abi = ABI.from_file('gov', abi_path)
     abis = ABISet('test-abis', [abi])
-
+    
     csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
+    return proposals, csvc, abis
+
+def test_Proposals_for_compound_governor_from_csv(compound_proposals_setup):
+    proposals, csvc, abis = compound_proposals_setup
+    
     for row in csvc.read(1, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', abis):
             proposals.handle(row)
     
@@ -90,7 +95,7 @@ def test_Proposals_for_compound_governor_from_csv():
     
     assert 'signatures' in first_proposal.create_event
     assert first_proposal.create_event['signatures'][0] == ''
-
+    
     assert 'start_block' in first_proposal.create_event
     assert first_proposal.create_event['start_block'] == 22039575
 
