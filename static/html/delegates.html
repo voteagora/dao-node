@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delegates - DAO Node</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/css/styles.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">DAO Node</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/ui/proposals">Proposals</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/ui/delegates">Delegates</a>
+                    </li>
+                </ul>
+                <div class="ms-auto">
+                    <span class="navbar-text" id="loadTime">
+                        <small class="text-secondary">Loading...</small>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h2>Delegates</h2>
+        <table class="table" id="delegatesTable">
+            <thead>
+                <tr>
+                    <th>Address</th>
+                    <th>Voting Power</th>
+                    <th>Delegations</th>
+                    <th>Participation</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function formatAddress(addr) {
+            return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+        }
+
+        function formatVotingPower(power) {
+            // Convert from wei to ETH (18 decimals)
+            const eth = BigInt(power) / BigInt(10 ** 18);
+            return eth.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        }
+
+        function formatParticipation(participation) {
+            return `${(participation * 100).toFixed(1)}%`;
+        }
+
+        function updateLoadTime(response) {
+            const timing = response.headers.get('server-timing');
+            console.log('Server timing header:', timing);
+            if (timing) {
+                const matches = timing.match(/total;dur=([0-9.]+)/);
+                console.log('Matches:', matches);
+                if (matches && matches[1]) {
+                    const duration = parseFloat(matches[1]);
+                    console.log('Duration:', duration);
+                    document.getElementById('loadTime').innerHTML = 
+                        `<small class="text-secondary">Load time: ${duration.toFixed(3)}ms</small>`;
+                }
+            }
+        }
+
+        async function fetchDelegates() {
+            try {
+                const startTime = performance.now();
+                const response = await fetch('/v1/delegates');
+                const endTime = performance.now();
+                const clientDuration = endTime - startTime;
+                
+                // Update with client-side timing if server timing not available
+                const loadTimeElement = document.getElementById('loadTime');
+                loadTimeElement.innerHTML = 
+                    `<small class="text-secondary">Load time: ${clientDuration.toFixed(3)}ms</small>`;
+                
+                // Try to get server timing if available
+                updateLoadTime(response);
+                const data = await response.json();
+                
+                const tbody = document.querySelector('#delegatesTable tbody');
+                tbody.innerHTML = ''; // Clear existing rows
+                
+                data.delegates.forEach(delegate => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${delegate.addr}</td>
+                        <td>${formatVotingPower(delegate.voting_power)}</td>
+                        <td>${delegate.from_cnt}</td>
+                        <td>${formatParticipation(delegate.participation)}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error fetching delegates:', error);
+                document.querySelector('#delegatesTable tbody').innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center text-danger">
+                            Error loading delegates: ${error.message}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        // Initial load
+        fetchDelegates();
+    </script>
+</body>
+</html>

@@ -24,6 +24,7 @@ from sanic_ext import openapi
 from sanic.worker.manager import WorkerManager
 from sanic import Sanic
 from sanic.response import text, html, json
+from sanic.blueprints import Blueprint
 
 from middleware import start_timer, add_server_timing_header, measure
 
@@ -527,6 +528,30 @@ app = Sanic('DaoNode', ctx=DataProductContext())
 app.middleware('request')(start_timer)
 app.middleware('response')(add_server_timing_header)
 
+# Create static blueprint
+static_bp = Blueprint('static')
+app.static('/static', './static')
+
+@app.get('/')
+async def index(request):
+    with open('./static/html/index.html') as f:
+        return html(f.read())
+
+@app.get('/ui/proposals')
+async def proposals_ui(request):
+    with open('./static/html/proposals.html') as f:
+        return html(f.read())
+
+@app.get('/ui/delegates')
+async def delegates_ui(request):
+    with open('./static/html/delegates.html') as f:
+        return html(f.read())
+
+@app.get('/ui/proposal')
+async def proposal_ui(request):
+    with open('./static/html/proposal.html') as f:
+        return html(f.read())
+
 # TODO: Figure out Sanic Signals
 # 
 # For some reason, I couldn't get this pattern to work such that the events
@@ -545,7 +570,7 @@ app.middleware('response')(add_server_timing_header)
 #
 ######################################################################
 
-@app.route('v1/balance/<addr>')
+@app.route('/v1/balance/<addr>')
 @openapi.tag("Token State")
 @openapi.summary("Token balance for a given address")
 @openapi.description("""
@@ -570,7 +595,7 @@ async def balances(request, addr):
 	return json({'balance' : str(app.ctx.balances.balance_of(addr)),
                  'address' : addr})
 
-@app.route('v1/proposals')
+@app.route('/v1/proposals')
 @openapi.tag("Proposal State")
 @openapi.summary("All proposals with the latest state of their outcome.")
 @openapi.parameter(
@@ -605,7 +630,7 @@ async def proposals(request):
 
     return json({'proposals' : proposals})
 
-@app.route('v1/proposal/<proposal_id>')
+@app.route('/v1/proposal/<proposal_id>')
 @openapi.tag("Proposal State")
 @openapi.summary("A single proposal's details, including voting record and aggregate outcome.")
 @openapi.description("""
@@ -641,14 +666,14 @@ async def proposal(request, proposal_id:str):
 
     return json({'proposal' : proposal})
 
-@app.route('v1/proposal_types')
+@app.route('/v1/proposal_types')
 @openapi.tag("Proposal State")
 @openapi.summary("Latest information all proposal types")
 @measure
 async def proposal_types(request):
 	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
 
-@app.route('v1/proposal_type/<proposal_type_id>')
+@app.route('/v1/proposal_type/<proposal_type_id>')
 @openapi.tag("Proposal State")
 @openapi.summary("Latest information about a specific proposal type")
 @measure
@@ -659,7 +684,7 @@ async def proposal_type(request, proposal_type_id: int):
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
 
-@app.route('v1/delegates')
+@app.route('/v1/delegates')
 @openapi.tag("Delegation State")
 @openapi.summary("A sorted list of delegates.")
 @openapi.description("""
@@ -812,7 +837,7 @@ async def delegates(request):
     return json({'delegates' : out})
 
 
-@app.route('v1/delegate/<addr>')
+@app.route('/v1/delegate/<addr>')
 @openapi.tag("Delegation State")
 @openapi.summary("Information about a specific delegate")
 @measure
@@ -826,7 +851,7 @@ async def delegate(request, addr):
                 'from_list' : from_list,
                 'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
 
-@app.route('v1/delegate_vp/<addr>/<block_number>')
+@app.route('/v1/delegate_vp/<addr>/<block_number>')
 @openapi.tag("Delegation State")
 @openapi.summary("Voting power at a block for one delegate.")
 @openapi.description("""
@@ -864,7 +889,7 @@ async def delegate_vp(request, addr : str, block_number : int):
                  'block_number' : block_number,
                  'history' : vp_history[1:]})
 
-@app.route('v1/voting_power')
+@app.route('/v1/voting_power')
 @openapi.tag("Delegation State")
 @openapi.summary("Voting power for the entire DAO.")
 @openapi.description("""
