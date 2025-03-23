@@ -96,14 +96,18 @@ if DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
         print(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
 
-AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
-with open(AGORA_CONFIG_FILE, 'r') as f:
-    config = yaml.safe_load(f)
-public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
-deployment = config['deployments'][CONTRACT_DEPLOYMENT]
-del config['deployments']
-public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id'] if k in deployment}
+try:
+    AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
+    with open(AGORA_CONFIG_FILE, 'r') as f:
+        config = yaml.safe_load(f)
+    public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
+
+    deployment = config['deployments'][CONTRACT_DEPLOYMENT]
+    del config['deployments']
+    public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id'] if k in deployment}
+except:
+    print("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
 
 ########################################################################
 
