@@ -1,3 +1,8 @@
+from pathlib import Path
+from .utils import camel_to_snake
+import csv
+
+DEBUG = False
 
 class GCSClient:
     timeliness = 'archive'
@@ -15,7 +20,11 @@ class CSVClient:
     timeliness = 'archive'
 
     def __init__(self, path):
-        self.path = path
+
+        if not isinstance(path, Path):
+            self.path = Path(path)
+        else:
+            self.path = path
 
     def is_valid(self):
         
