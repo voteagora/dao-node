@@ -22,3 +22,4 @@ web3
 psycopg2-binary
 websocket-client
 sanic-ext
+python-dotenv
