@@ -179,9 +179,9 @@ class CSVClient:
                     try:
                         row[int_field] = int(row[int_field])
                     except ValueError:
-                        print(f"Problem with casting {int_field} to int, from file {fname}.")
+                        print(f"E182250323 - Problem with casting {int_field} to int, from file {fname}.")
                     except KeyError:
-                        print(f"Problem with getting {int_field} from file {fname}.")
+                        print(f"E184250323 - Problem with getting {int_field} from file {fname}.")
 
                 yield row
 

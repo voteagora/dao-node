@@ -106,7 +106,7 @@ class Delegations(DataProduct):
                     self.delegatee_list[from_delegate].remove(delegator)
                     self.delegatee_cnt[from_delegate] = len(self.delegatee_list[from_delegate])
                 except ValueError as e:
-                    print(f"Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
+                    print(f"E109250323 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
@@ -184,7 +184,7 @@ class Proposals(DataProduct):
         try:
             signature = event['signature']
         except:
-            print(f"Problem with the following event {event}.")
+            print(f"E187250323 Problem getting signature from event: {event}.")
 
         # TODO - should we be working with proposal_ids as numerical or strings? 
         #        For now, we store as strings.
@@ -243,8 +243,9 @@ class Proposals(DataProduct):
 
             elif 'ProposalCanceled' == signature[:LCANCELED]:
                 self.proposals[proposal_id].cancel(event)
+
         except KeyError as e:
-            print(f"Problem with the following proposal_id {e} and the {signature} event.")
+            print(f"E248250323 - Problem with the following proposal_id {proposal_id} and the {signature} event: {e}")
     
     def unfiltered(self, head=-1):
         for proposal in reversed(self.proposals.values()):
@@ -288,7 +289,7 @@ class Votes(DataProduct):
         try:
             proposal_id = str(event['proposal_id'])
         except KeyError as e:
-            print(f"Problem with the following event {event}.")
+            print(f"E292250323 - Problem with the following event {event}.")
 
         weight = int(event.get('weight', 0))
         votes = int(event.get('votes', 0))
