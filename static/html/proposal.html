@@ -107,7 +107,7 @@
                 if (matches && matches[1]) {
                     const duration = parseFloat(matches[1]);
                     document.getElementById('loadTime').innerHTML = 
-                        `<small class="text-secondary">Load time: ${duration.toFixed(3)}ms</small>`;
+                        `<small class="text-secondary">Server response time: ${duration.toFixed(3)}ms</small>`;
                 }
             }
         }
@@ -234,7 +234,7 @@
                 // Update load time
                 const loadTimeElement = document.getElementById('loadTime');
                 loadTimeElement.innerHTML = 
-                    `<small class="text-secondary">Load time: ${(endTime - startTime).toFixed(3)}ms</small>`;
+                    `<small class="text-secondary">Server response time: ${(endTime - startTime).toFixed(3)}ms</small>`;
                 updateLoadTime(response);
 
                 const data = await response.json();
