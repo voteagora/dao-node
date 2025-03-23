@@ -191,87 +191,6 @@ class CSVClient:
                 if DEBUG and (cnt == 1000000):
                     break
 
-def test_csv_client():
-    csvc = CSVClient('TODO')
-
-    abi = ABI.from_internet('token', '0x4200000000000000000000000000000000000042')
-    abis = ABISet('mydao', [abi])
-    frag = abis.get_by_signature('Transfer(address,address,uint256)')
-
-    for event in csvc.read(10, '0x4200000000000000000000000000000000000042', 'Transfer(address,address,uint256)', frag.literal):
-        print(event['block_number'], event['value'])
-
-
-class PostGresClient:
-    timeliness = 'archive'
-
-    def __init__(self, config):
-        self.config = config
-    
-    def read(self, chain_id, address, signature, abis, after=0):
-
-        event = abis.get_by_signature(signature)
-
-        pg_table = abis.pgtable(event)
-
-        # A tactical hack to get the right table name for optimism.
-        # Needs to be removed once data is ported.
-        if pg_table == 'optimism_token_transfer':
-            pg_table = 'optimism_transfer_events'
-            extra_crit = f"address = '{address}'" # PURE UPSTREAM TECH-DEBT
-        else:
-            extra_crit = '' # PURE UPSTREAM TECH-DEBT
-
-        fields = [o['name'] for o in event.inputs]
-
-        fields = '","'.join(fields)
-        if len(fields):
-            fields = f', "{fields}"'
-
-        int_fields = [o['name'] for o in event.inputs if 'int' in o['type']]
-
-        with psycopg2.connect(self.config) as conn:
-
-            # TODO: The only valid tables, must be sorted by block, txn, log.
-            # TODO: The only valid tables, must be filtered to the contract.
-            QRY = f"SELECT block_number, transaction_index, log_index{fields} FROM center.{pg_table}"
-
-            if after:
-                QRY = QRY + f" WHERE block_number > {after}"
-
-            # HANDLING TECH-DEBT MANAGEMENT, THIS SHOULD NOT EXIST
-            if extra_crit:
-                if 'WHERE' in QRY:
-                    QRY = QRY + " AND " + extra_crit
-                else:
-                    QRY = QRY + f" WHERE {extra_crit}"
-            
-            if DEBUG:
-                QRY = QRY + " LIMIT 100"
-            
-            QRY = QRY + ";"
-
-            print(QRY)
-         
-            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            cur.execute(QRY)
-
-            cnt = 0
-
-            for row in cur.fetchall():
-
-                for int_field in int_fields:
-                    try:
-                        row[int_field] = int(row[int_field])
-                    except:
-                        print(f"Couldn't cast field '{int_field}' to type int, got {row[int_field]}.")
-
-                yield row
-
-                cnt += 1
-                
-                if (cnt == 100) and DEBUG:
-                    break
 
 class JsonRpcHistHttpClient:
     timeliness = 'archive'
@@ -1067,7 +986,7 @@ async def bootstrap_event_feeds(app, loop):
     PROPOSAL_CREATED_1 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
     PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
     PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'
-    PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
+    PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
 
     PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
     PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
@@ -1077,10 +996,11 @@ async def bootstrap_event_feeds(app, loop):
         app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_1, proposals)
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
     else:
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_1, proposals)
         app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_2, proposals)
         app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_3, proposals)
         app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_4, proposals)
-        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
 
     app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CANCELED, proposals)
     app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_QUEUED, proposals)

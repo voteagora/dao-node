@@ -201,32 +201,36 @@ class Proposals(DataProduct):
             if 'ProposalCreated' == signature[:LCREATED]:
                 event['description'] = str(event['description']) # Some proposals are just bytes.
 
-                obj = event['values']
-                if isinstance(obj, str):
-                    obj = obj[1:-1]
-                    obj = obj.split(',')
-                    obj = [int(x) for x in obj]
-                event['values'] = obj
+                obj = event.get('values', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = obj[1:-1]
+                        obj = obj.split(',')
+                        obj = [int(x) for x in obj]
+                    event['values'] = obj
 
-                obj = event['targets']
-                if isinstance(obj, str):
-                    obj = obj.replace('"', '')
-                    obj = obj[1:-1]
-                    obj = obj.split(',')
-                event['targets'] = obj
+                obj = event.get('targets', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = obj.replace('"', '')
+                        obj = obj[1:-1]
+                        obj = obj.split(',')
+                    event['targets'] = obj
 
-                obj = event['calldatas']
-                if isinstance(obj, str):
-                    obj = obj.replace('"', '')
-                    obj = obj[1:-1]
-                    obj = obj.split(',')
-                event['calldatas'] = obj
+                obj = event.get('calldatas', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = obj.replace('"', '')
+                        obj = obj[1:-1]
+                        obj = obj.split(',')
+                    event['calldatas'] = obj
 
-                obj = event['signatures']
-                if isinstance(obj, str):
-                    obj = obj[2:-2]
-                    obj = obj.split('","')
-                event['signatures'] = obj
+                obj = event.get('signatures', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = obj[2:-2]
+                        obj = obj.split('","')
+                    event['signatures'] = obj
 
 
                 self.proposals[proposal_id] = Proposal(event)
