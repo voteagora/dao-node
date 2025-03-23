@@ -1,7 +1,15 @@
 import pytest
 from app.data_products import Balances, Delegations, Proposals
+from app.clients import CSVClient
 import csv
 import os
+from abifsm import ABI, ABISet
+
+####################################
+#
+#  Test business logic of the Data Products, against specific edge cases and scenarios in the data.
+#
+#
 
 def test_balances():
 
@@ -49,27 +57,22 @@ def test_delegations():
     assert delegations.delegatee_cnt['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'] == 1
     assert delegations.delegatee_list['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'][0] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
 
+
+####################################
+#
+#  Test basic business logic of the data products, in the context of a specific Client and production like data.
+#
+
 def test_Proposals_for_compound_governor_from_csv():
-    # Initialize the Proposals data product
+
     proposals = Proposals(governor_spec={'name': 'compound'}) 
 
-    # Path to the CSV file
-    csv_path = os.path.join('tests', 'data', '1', '1000-all-uniswap-to-PID83-ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string).csv')
-    
-    # Read and process each row from the CSV
-    with open(csv_path, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            # Convert numeric fields
-            row['block_number'] = int(row['block_number'])
-            row['log_index'] = int(row['log_index'])
-            row['id'] = int(row['id'])
-            
-            # Add signature and sighash (required by the handler)
-            row['signature'] = 'ProposalCreated'
-            row['sighash'] = '7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0'  # ProposalCreated event sighash
-            
-            # Process the record
+    abi_path = os.path.join('tests', 'abis', 'uni-gov.json')
+    abi = ABI.from_file('gov', abi_path)
+    abis = ABISet('test-abis', [abi])
+
+    csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
+    for row in csvc.read(1, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', abis):
             proposals.handle(row)
     
     # Get the first proposal from the data product
@@ -89,9 +92,9 @@ def test_Proposals_for_compound_governor_from_csv():
     assert first_proposal.create_event['signatures'][0] == ''
 
     assert 'start_block' in first_proposal.create_event
-    assert first_proposal.create_event['start_block'] == '22039575'
+    assert first_proposal.create_event['start_block'] == 22039575
 
     assert 'end_block' in first_proposal.create_event
-    assert first_proposal.create_event['end_block'] == '22079895'
-    
-    
+    assert first_proposal.create_event['end_block'] == 22079895
+
+    assert len(list(proposals.unfiltered())) == 83
