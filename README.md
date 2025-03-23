@@ -67,7 +67,7 @@ deployments:
 AGORA_CONFIG_FILE="/path/to/your/config.yaml" 
 DAO_NODE_GCLOUD_BUCKET="daonode-us-public" 
 CONTRACT_DEPLOYMENT="main" 
-python app/cli.py sync-from-gcs data
+python -m app.cli sync-from-gcs data
 ```
 
 #### Via Docker

@@ -1,8 +1,7 @@
-
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
-from utils import camel_to_snake
+from .utils import camel_to_snake
 from copy import copy
 
 class DataProduct(ABC):

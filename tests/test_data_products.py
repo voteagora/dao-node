@@ -1,5 +1,5 @@
 import pytest
-from data_products import Balances, Delegations
+from app.data_products import Balances, Delegations
 
 def test_balances():
 

@@ -26,10 +26,10 @@ from sanic import Sanic
 from sanic.response import text, html, json
 from sanic.blueprints import Blueprint
 
-from middleware import start_timer, add_server_timing_header, measure
-
-from utils import camel_to_snake
-from data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
+from .middleware import start_timer, add_server_timing_header, measure
+from .utils import camel_to_snake
+from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
+from . import __version__
 
 ######################################################################
 #
@@ -1110,7 +1110,8 @@ async def health_check(request):
         "files": files,
         "ip_address": ip_address,
         "config" : public_config,
-        "deployment": public_deployment
+        "deployment": public_deployment,
+        "version": __version__
     })
 
 @app.get("/config")
