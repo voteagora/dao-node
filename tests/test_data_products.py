@@ -1,5 +1,7 @@
 import pytest
-from app.data_products import Balances, Delegations
+from app.data_products import Balances, Delegations, Proposals
+import csv
+import os
 
 def test_balances():
 
@@ -46,3 +48,39 @@ def test_delegations():
     assert delegations.delegator['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'
     assert delegations.delegatee_cnt['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'] == 1
     assert delegations.delegatee_list['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'][0] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
+
+def test_Proposals_for_compound_governor_from_csv():
+    # Initialize the Proposals data product
+    proposals = Proposals(governor_spec={'name': 'compound'}) 
+
+    # Path to the CSV file
+    csv_path = os.path.join('tests', 'data', '1', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string).csv')
+    
+    # Read and process each row from the CSV
+    with open(csv_path, 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            # Convert numeric fields
+            row['block_number'] = int(row['block_number'])
+            row['log_index'] = int(row['log_index'])
+            row['id'] = int(row['id'])
+            
+            # Add signature and sighash (required by the handler)
+            row['signature'] = 'ProposalCreated'
+            row['sighash'] = '7d84a6263ae0d98d3329bd7b46bb4e8d6f98cd35a7adb45c274c8b7fd5ebd5e0'  # ProposalCreated event sighash
+            
+            # Process the record
+            proposals.handle(row)
+    
+    # Get the first proposal from the data product
+    first_proposal = next(proposals.unfiltered())
+    
+    # Basic assertions to verify the data was loaded
+    assert first_proposal is not None
+    assert isinstance(first_proposal.create_event['id'], str)  # IDs are stored as strings
+    assert 'description' in first_proposal.create_event
+    assert 'targets' in first_proposal.create_event
+    assert 'values' in first_proposal.create_event
+    assert 'calldatas' in first_proposal.create_event
+    assert first_proposal.create_event['calldatas'][0] == 'a9059cbb0000000000000000000000005069a64bc6616dec1584ee0500b7813a9b680f7e00000000000000000000000000000000000000000010cf035cc2441ead340000'
+    assert 'signatures' in first_proposal.create_event
