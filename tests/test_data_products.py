@@ -54,7 +54,7 @@ def test_Proposals_for_compound_governor_from_csv():
     proposals = Proposals(governor_spec={'name': 'compound'}) 
 
     # Path to the CSV file
-    csv_path = os.path.join('tests', 'data', '1', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string).csv')
+    csv_path = os.path.join('tests', 'data', '1', '1000-all-uniswap-to-PID83-ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string).csv')
     
     # Read and process each row from the CSV
     with open(csv_path, 'r') as f:
@@ -81,6 +81,17 @@ def test_Proposals_for_compound_governor_from_csv():
     assert 'description' in first_proposal.create_event
     assert 'targets' in first_proposal.create_event
     assert 'values' in first_proposal.create_event
+    
     assert 'calldatas' in first_proposal.create_event
     assert first_proposal.create_event['calldatas'][0] == 'a9059cbb0000000000000000000000005069a64bc6616dec1584ee0500b7813a9b680f7e00000000000000000000000000000000000000000010cf035cc2441ead340000'
+    
     assert 'signatures' in first_proposal.create_event
+    assert first_proposal.create_event['signatures'][0] == ''
+
+    assert 'start_block' in first_proposal.create_event
+    assert first_proposal.create_event['start_block'] == '22039575'
+
+    assert 'end_block' in first_proposal.create_event
+    assert first_proposal.create_event['end_block'] == '22079895'
+    
+    
