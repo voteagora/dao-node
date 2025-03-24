@@ -16,7 +16,6 @@ RUN pip install --no-cache-dir crcmod
 # (Optionally) remove build-essential to keep image small, if you no longer need it:
 # RUN apt-get remove -y build-essential && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-
 RUN pip install gsutil
 
 WORKDIR /app
@@ -25,9 +24,16 @@ WORKDIR /app
 COPY requirements.txt .
 
 # install dependencies
-RUN pip install -r requirements.txt  --no-cache-dir
+RUN pip install -r requirements.txt --no-cache-dir
 
-# copy the content of the local dao_node directory to the working directory
-COPY . .
+# copy the content of the local directory to the working directory
+COPY app .
+
+# Set PYTHONPATH to include the project root
+ENV PYTHONPATH=/app
+
+# Expose the port the app runs on
 EXPOSE 8000
-CMD ["sanic", "server.app", "--host=0.0.0.0", "--port=8000"]
+
+# Command to run the application
+CMD ["python", "-m", "app.server", "--host=0.0.0.0", "--port=8000"]

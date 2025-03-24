@@ -67,7 +67,7 @@ deployments:
 AGORA_CONFIG_FILE="/path/to/your/config.yaml" 
 DAO_NODE_GCLOUD_BUCKET="daonode-us-public" 
 CONTRACT_DEPLOYMENT="main" 
-python app/cli.py sync-from-gcs data
+python -m app.cli sync-from-gcs data
 ```
 
 #### Via Docker
@@ -90,3 +90,30 @@ DAO Node uses a warn-and-beg-forgiveness style of flagging errors in a material 
 So we use error codes rather than printing full stack trackes for known high risk failure modes.
 
 The Error code number is of the form "E{line_number_as_of_date_added}{YYMMDD}{optional-suffix}".  This means error codes can be easily created by devs without thinking too hard or checking some index, but it's likely impossible for a collission as well.
+
+# API Endpoint Support
+
+🚀 - Prod Grade + Performance Tests & Integration Tests Exists
+
+✅ - Prod Grade (Functional & Unit Tests Exists)
+
+🚧 - WIP, Buyer Beware
+
+🕓 - Not Supported, but Planned Soon
+
+❌ - Not Supported, No ETA
+
+| Endpoint | AG 0.1 | Bravo | OZ 4.x | AG 1.x & OZ 5.x | AG 2.x |
+|----------|-------|----------------|---------|---------|---------|
+| `/balances/{address}` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/proposals` | 🚧 | - | - | - | - |
+| `/proposals/{id}` | 🚧 | - | - | - | - |
+| `/proposal-types`  | - | - | - | - | - |
+| `/proposal-types/{id}` | - | - | - | - | - |
+| `/delegates` | 🚧 | - | - | - | - |
+| `/delegates/{address}` | 🚧 | - | - | - | - |
+| `/delegates/{address}/voting-power/{block}` | 🚧 | - | - | - | - |
+| `/voting-power` | - | - | - | - | - |
+| `/health` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/config` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `/deployment` | ✅ | ✅ | ✅ | ✅ | ✅ |

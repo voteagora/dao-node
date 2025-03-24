@@ -1,5 +1,5 @@
 import pytest
-from utils import camel_to_snake
+from app.utils import camel_to_snake
 
 @pytest.mark.parametrize(
     "input_str, expected",

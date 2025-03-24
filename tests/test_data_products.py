@@ -1,7 +1,17 @@
 import pytest
-from data_products import Balances, Delegations
+from app.data_products import Balances, Delegations, Proposals
+from app.clients import CSVClient
+import csv
+import os
+from abifsm import ABI, ABISet
 
-def test_balances():
+####################################
+#
+#  Test business logic of the Data Products, against specific edge cases and scenarios in the data.
+#
+#
+
+def test_Balances_from_dict():
 
     balances = Balances(token_spec={'name' : 'erc20', 'version' : '?'})
 
@@ -25,7 +35,7 @@ def test_balances():
     assert balances.balance_of('0xfdbf50bfc69a2d6d400ae6e4d18624a534a6980f') == 82871585988544595
     assert balances.balance_of('0x0b0df332d1126851f5fb9394e4d8aaae714833cf') == 150000000000000000
 
-def test_delegations():
+def test_Delegations_from_dict():
 
     delegations = Delegations()
 
@@ -46,3 +56,50 @@ def test_delegations():
     assert delegations.delegator['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'
     assert delegations.delegatee_cnt['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'] == 1
     assert delegations.delegatee_list['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'][0] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
+
+
+####################################
+#
+#  Test basic business logic of the data products, in the context of a specific Client and production like data.
+#
+
+def test_Proposals_for_compound_governor_from_csv(compound_governor_abis):
+    
+    proposals = Proposals(governor_spec={'name': 'compound'})
+        
+    csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
+    chain_id = 1
+    for row in csvc.read(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', compound_governor_abis):
+            proposals.handle(row)
+    
+    # Get the first proposal from the data product
+    first_proposal = next(proposals.unfiltered())
+    
+    # Basic assertions to verify the data was loaded
+    assert first_proposal is not None
+    assert isinstance(first_proposal.create_event['id'], str)  # IDs are stored as strings
+    assert 'description' in first_proposal.create_event
+    assert 'targets' in first_proposal.create_event
+
+    assert 'targets' in first_proposal.create_event
+    assert first_proposal.create_event['targets'][0] == '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984'
+    
+    assert 'values' in first_proposal.create_event
+    assert first_proposal.create_event['values'][0] == 0
+    
+    assert 'calldatas' in first_proposal.create_event
+    assert first_proposal.create_event['calldatas'][0] == 'a9059cbb0000000000000000000000005069a64bc6616dec1584ee0500b7813a9b680f7e00000000000000000000000000000000000000000010cf035cc2441ead340000'
+    
+    assert 'signatures' in first_proposal.create_event
+    assert first_proposal.create_event['signatures'][0] == ''
+    
+    assert 'start_block' in first_proposal.create_event
+    assert first_proposal.create_event['start_block'] == 22039575
+
+    assert 'end_block' in first_proposal.create_event
+    assert first_proposal.create_event['end_block'] == 22079895
+
+    assert len(list(proposals.unfiltered())) == 83
+
+    assert proposals.proposals['83'].create_event['id'] == '83'
+    assert proposals.proposals['1'].create_event['id'] == '1'
