@@ -52,10 +52,10 @@ CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
 
 def secret_text(t, n):
-    if len(t > ((2 * n) + 3)):
+    if len(t) > ((2 * n) + 3):
         return t[:n] + "..." + t[-1 * n:]
     else:
-        return t[:n] + "*" * len(t)
+        return t[:n] + "***..."
 
 DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', None)
 if DAO_NODE_ARCHIVE_NODE_HTTP:
