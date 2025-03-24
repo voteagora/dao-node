@@ -191,7 +191,9 @@ class Proposals(DataProduct):
         PROPOSAL_ID_FIELD = self.proposal_id_field_name
 
         proposal_id = str(event[PROPOSAL_ID_FIELD])
-        event[PROPOSAL_ID_FIELD] = proposal_id
+
+        del event[PROPOSAL_ID_FIELD]
+        event['id'] = proposal_id
 
         del event['signature']
         del event['sighash']
@@ -325,9 +327,7 @@ class ParticipationModel:
         self.proposals = proposals_dp
         self.votes = votes_dp
 
-        self.proposal_id_field_name = self.proposals.proposal_id_field_name
-
-        self.relevant_proposals = [int(p.create_event[self.proposal_id_field_name]) for p in self.proposals.completed(head=10)]
+        self.relevant_proposals = [int(p.create_event['id']) for p in self.proposals.completed(head=10)]
     
     def calculate(self, addr):
 

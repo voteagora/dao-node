@@ -341,12 +341,10 @@ async def proposals_handler(app, request):
     else:
         res = app.ctx.proposals.unfiltered()
 
-    proposal_id_field_name = app.ctx.proposals.proposal_id_field_name
-
     proposals = []
     for prop in res:
         proposal = prop.to_dict()
-        outcome = app.ctx.votes.proposal_aggregation[proposal[proposal_id_field_name]]
+        outcome = app.ctx.votes.proposal_aggregation[proposal['id']]
         keys = outcome.keys()
         for key in keys:
             outcome[key] = str(outcome[key])

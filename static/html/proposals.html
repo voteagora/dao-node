@@ -38,7 +38,6 @@
             <table class="table table-striped" id="proposalsTable">
                 <thead>
                     <tr>
-                        <th>ID</th>
                         <th>Title</th>
                         <th>Proposer</th>
                         <th>Status</th>
@@ -167,9 +166,12 @@
                 
                 data.proposals.forEach(proposal => {
                     const title = extractTitle(proposal.description);
+                    const idRow = document.createElement('tr');
+                    idRow.innerHTML = `<td colspan="5">${proposal.id}</td>`;
+                    tbody.appendChild(idRow);
+
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td>#${proposal.id}</td>
                         <td>${title}</td>
                         <td>${formatAddress(proposal.proposer)}</td>
                         <td><span class="badge ${getStatusBadgeClass(getProposalStatus(proposal))}">${getProposalStatus(proposal)}</span></td>
@@ -186,7 +188,7 @@
                     stack: error.stack
                 });
                 const tbody = document.querySelector('#proposalsTable tbody');
-                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">
                     Error loading proposals: ${error.message}
                 </td></tr>`;
             }

@@ -70,7 +70,7 @@ def test_Proposals_for_compound_governor_from_csv(compound_governor_abis):
     csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
     chain_id = 1
     for row in csvc.read(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', compound_governor_abis):
-            proposals.handle(row)
+        proposals.handle(row)
     
     # Get the first proposal from the data product
     first_proposal = next(proposals.unfiltered())
