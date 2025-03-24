@@ -335,6 +335,8 @@ async def balances(request, addr):
 
 async def proposals_handler(app, request):
     proposal_set = request.args.get("set", "relevant").lower()
+    sort_key = request.args.get("sort", "").lower()
+
 
     if proposal_set == 'relevant':
         res = app.ctx.proposals.relevant()
@@ -350,6 +352,9 @@ async def proposals_handler(app, request):
             outcome[key] = str(outcome[key])
         proposal['proposal_results'] = outcome
         proposals.append(proposal)
+    
+    if sort_key:
+        proposals.sort(key=lambda x: x[sort_key], reverse=True)
 
     return json({'proposals' : proposals})
 
@@ -363,6 +368,14 @@ async def proposals_handler(app, request):
     required=False, 
     default="relevant",
     description="Flag to filter the list of proposals, down to only the ones which are relevant."
+)
+@openapi.parameter(
+    "sort", 
+    str, 
+    location="query", 
+    required=False, 
+    default="", 
+    description="Key to sort the list of proposals by.  Recommended values: id, block_number, proposer, start_block, end_block"
 )
 @measure
 async def proposals(request):
