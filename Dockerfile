@@ -27,7 +27,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt --no-cache-dir
 
 # copy the content of the local directory to the working directory
-COPY app .
+COPY app app
 
 # Set PYTHONPATH to include the project root
 ENV PYTHONPATH=/app
