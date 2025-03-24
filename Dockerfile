@@ -36,4 +36,4 @@ ENV PYTHONPATH=/app
 EXPOSE 8000
 
 # Command to run the application
-CMD ["python", "-m", "app.server", "--host=0.0.0.0", "--port=8000"]
+CMD ["sanic", "app.server", "--host=0.0.0.0", "--port=8000"]
