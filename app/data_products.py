@@ -287,27 +287,32 @@ class Votes(DataProduct):
 
         PROPOSAL_ID_FIELD = self.proposal_id_field_name
 
-        try:
-            proposal_id = str(event['proposal_id'])
-        except KeyError as e:
-            print(f"E292250323 - Problem with the following event {event}.")
+        if event['signature'] == 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)':
+            print(event)
+        
+        elif event['signature'] == 'VoteCast(address,uint256,uint8,uint256,string)':
 
-        weight = int(event.get('weight', 0))
-        votes = int(event.get('votes', 0))
+            try:
+                proposal_id = str(event['proposal_id'])
+            except KeyError as e:
+                print(f"E292250323 - Problem with the following event {event}.")
 
-        self.proposal_aggregation[proposal_id][event['support']] += weight + votes
+            weight = int(event.get('weight', 0))
+            votes = int(event.get('votes', 0))
 
-        event_cp = copy(event)
+            self.proposal_aggregation[proposal_id][event['support']] += weight + votes
 
-        del event_cp['sighash']
-        del event_cp['signature']
+            event_cp = copy(event)
 
-        self.voter_history[event['voter']].append(event_cp)
+            del event_cp['sighash']
+            del event_cp['signature']
 
-        event_cp = copy(event_cp)
-        del event_cp['proposal_id']
+            self.voter_history[event['voter']].append(event_cp)
 
-        self.proposal_vote_record[proposal_id].append(event_cp)
+            event_cp = copy(event_cp)
+            del event_cp['proposal_id']
+
+            self.proposal_vote_record[proposal_id].append(event_cp)
 
 
 
