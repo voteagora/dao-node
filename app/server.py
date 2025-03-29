@@ -779,30 +779,30 @@ async def bootstrap_event_feeds(app, loop):
     PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
     PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'
     PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
-
     PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
     PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
     PROPOSAL_EXECUTED = 'ProposalExecuted(uint256)'
 
-    if public_config['governor_spec']['name'] == 'compound':
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_1, proposals)
-        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
-    else:
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_1, proposals)
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_2, proposals)
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_3, proposals)
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_4, proposals)
-        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
-
-    app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CANCELED, proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_QUEUED, proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EXECUTED, proposals)
+    PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
+    if public_config['governor_spec']['name'] != 'compound':
+        PROPOSAL_CREATED_EVENTS.extend([PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4])
 
     PROPOSAL_LIFECYCLE_EVENTS = PROPOSAL_CREATED_EVENTS + [PROPOSAL_CANCELED, PROPOSAL_QUEUED, PROPOSAL_EXECUTED]
+    for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
+
+
+    VOTE_CAST_1 = 'VoteCast(address,uint256,uint8,uint256,string)'
+    VOTE_CAST_WITH_PARAMS_1 = 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)'
+
+    VOTE_EVENTS = [VOTE_CAST_1]    
+    if public_config['governor_spec']['name'] != 'compound':
+        VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
 
     votes = Votes(governor_spec=public_config['governor_spec'])
-    app.ctx.register(f'{chain_id}.{gov_addr}.VoteCast(address,uint256,uint8,uint256,string)', votes)
-
+    for VOTE_EVENT in VOTE_EVENTS:
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
+        
 
     ##########################
     # Instatiate an "EventFeed", for every...
@@ -811,32 +811,27 @@ async def bootstrap_event_feeds(app, loop):
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
 
-    ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
+    # ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
+    # app.ctx.add_event_feed(ev)
+    # app.add_task(ev.boot(app))
 
-    ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
+    # ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
+    # app.ctx.add_event_feed(ev)
+    # app.add_task(ev.boot(app))
 
-    ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
+    # ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
+    # app.ctx.add_event_feed(ev)
+    # app.add_task(ev.boot(app))
 
     if 'ptc' in deployment:
         ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
         app.ctx.add_event_feed(ev)
         app.add_task(ev.boot(app))
 
-    for signature in PROPOSAL_LIFECYCLE_EVENTS:
+    for signature in PROPOSAL_LIFECYCLE_EVENTS + VOTE_EVENTS:
        ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
        app.ctx.add_event_feed(ev)
        app.add_task(ev.boot(app))
-
-    ev = EventFeed(chain_id, gov_addr, 'VoteCast(address,uint256,uint8,uint256,string)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
-
 
 @app.after_server_start
 async def subscribe_event_fees(app, loop):
