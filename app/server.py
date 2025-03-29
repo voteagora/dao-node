@@ -539,6 +539,9 @@ Total = O(n) + O(page_size) + O(n * log(n)) + O(page_size) + Opr = O(n) + O(n * 
 )
 @measure
 async def delegates(request):
+    return await delegates_handler(app, request)
+
+async def delegates_handler(app, request):
 
     sort_by = request.args.get("sort_by", 'VP')
     sort_by_vp = sort_by == 'VP'
@@ -631,6 +634,9 @@ Add transaction index and log-index awareness.
 """)
 @measure
 async def delegate_vp(request, addr : str, block_number : int):
+    return await delegate_vp_handler(app, request, addr, block_number)
+
+async def delegate_vp_handler(app, request, addr, block_number):
 
     vp_history = [(0, 0)] + app.ctx.delegations.delegatee_vp_history[addr]
     index = bisect_left(vp_history, (block_number,)) - 1
