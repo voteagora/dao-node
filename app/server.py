@@ -430,13 +430,14 @@ async def proposal_handler(app, request, proposal_id):
 async def proposal_types(request):
 	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
 
+
 @app.route('/v1/proposal_type/<proposal_type_id>')
 @openapi.tag("Proposal State")
 @openapi.summary("Latest information about a specific proposal type")
 @measure
 async def proposal_type(request, proposal_type_id: int):
 	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
-                 'proposal_type_id' : proposal_type_id})
+                 'id' : proposal_type_id})
 
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
