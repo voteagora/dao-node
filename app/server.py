@@ -597,6 +597,7 @@ async def delegates_handler(app, request):
 
     return json({'delegates' : out})
 
+############################################################################################################################################################
 
 @app.route('/v1/delegate/<addr>')
 @openapi.tag("Delegation State")
@@ -652,6 +653,8 @@ async def delegate_vp_handler(app, request, addr, block_number):
                  'delegate' : addr,
                  'block_number' : block_number,
                  'history' : vp_history[1:]})
+
+#################################################################################################################################################
 
 @app.route('/v1/voting_power')
 @openapi.tag("Delegation State")
