@@ -333,6 +333,31 @@ async def balances(request, addr):
 	return json({'balance' : str(app.ctx.balances.balance_of(addr)),
                  'address' : addr})
 
+#############################################################################################################################################
+
+@app.route('/v1/proposals')
+@openapi.tag("Proposal State")
+@openapi.summary("All proposals with the latest state of their outcome.")
+@openapi.parameter(
+    "set", 
+    str, 
+    location="query", 
+    required=False, 
+    default="relevant",
+    description="Flag to filter the list of proposals, down to only the ones which are relevant."
+)
+@openapi.parameter(
+    "sort", 
+    str, 
+    location="query", 
+    required=False, 
+    default="", 
+    description="Key to sort the list of proposals by.  Recommended values: id, block_number, proposer, start_block, end_block"
+)
+@measure
+async def proposals(request):
+    return await proposals_handler(app, request)
+
 async def proposals_handler(app, request):
     proposal_set = request.args.get("set", "relevant").lower()
     sort_key = request.args.get("sort", "").lower()
@@ -358,29 +383,7 @@ async def proposals_handler(app, request):
 
     return json({'proposals' : proposals})
 
-@app.route('/v1/proposals')
-@openapi.tag("Proposal State")
-@openapi.summary("All proposals with the latest state of their outcome.")
-@openapi.parameter(
-    "set", 
-    str, 
-    location="query", 
-    required=False, 
-    default="relevant",
-    description="Flag to filter the list of proposals, down to only the ones which are relevant."
-)
-@openapi.parameter(
-    "sort", 
-    str, 
-    location="query", 
-    required=False, 
-    default="", 
-    description="Key to sort the list of proposals by.  Recommended values: id, block_number, proposer, start_block, end_block"
-)
-@measure
-async def proposals(request):
-    return await proposals_handler(app, request)
-
+##################################################################################################################################################
 
 @app.route('/v1/proposal/<proposal_id>')
 @openapi.tag("Proposal State")
@@ -404,7 +407,9 @@ None
 """)
 @measure
 async def proposal(request, proposal_id:str):
-    
+    return await proposal_handler(app, request, proposal_id)
+
+async def proposal_handler(app, request, proposal_id):
     proposal = app.ctx.proposals.proposals[proposal_id].to_dict()
 
     outcome = app.ctx.votes.proposal_aggregation[proposal_id]
