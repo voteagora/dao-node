@@ -1,6 +1,7 @@
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
+from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
 from copy import copy
 
@@ -133,6 +134,43 @@ LCREATED = len('ProposalCreated')
 LQUEUED = len('ProposalQueued')
 LEXECUTED = len('ProposalExecuted')
 LCANCELED = len('ProposalCanceled')
+
+def decode_proposal_calldata(calldata: str, abi_types):
+    """
+    Decode Ethereum calldata using provided ABI types
+    Args:
+        calldata: Hex string of calldata
+        abi_types: List of ABI type strings
+    Returns:
+        Tuple of decoded values
+    """
+    # Remove '0x' prefix if present
+    calldata = calldata.replace('0x', '')
+    # Convert to bytes
+    calldata_bytes = HexBytes(calldata)
+    
+    try:
+        # First try to decode just the first part (the array of tuples)
+        first_type = abi_types[0]
+        decoded_first = decode([first_type], calldata_bytes)
+        
+        if len(abi_types) > 1:
+            # If there's a second type, try to decode any remaining data
+            # This assumes the second part starts after the first decoded part
+            second_type = abi_types[1]
+            try:
+                # Get the remaining data after the first decode
+                remaining_data = calldata_bytes[64:]  # Skip the first dynamic pointer
+                decoded_second = decode([second_type], remaining_data)
+                return (decoded_first[0], decoded_second[0])
+            except Exception as e:
+                print(f"Failed to decode second part: {e}")
+                return (decoded_first[0], None)
+        return decoded_first[0]
+    except Exception as e:
+        print(f"Failed to decode calldata: {e}")
+        return None
+
 
 class Proposal:
     def __init__(self, creation_event):
