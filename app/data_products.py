@@ -173,11 +173,17 @@ def decode_proposal_calldata(calldata: str, abi_types):
 
 
 class Proposal:
-    def __init__(self, creation_event):
-        self.create_event = creation_event
+    def __init__(self, create_event):
+        # print(create_event.get('id', None))
+        # if create_event.get('voting_module', None) == '0x54a8fcbbf05ac14bef782a2060a8c752c7cc13a5':
+        #     print(create_event.keys())
+        # print(create_event.get('proposal_type', 'XXX'))
+        self.create_event = create_event
         self.canceled = False
         self.queued = False
         self.executed = False
+
+        self.result = defaultdict(nested_default_dict)
     
     def cancel(self, cancel_event):
         self.canceled = True
@@ -205,6 +211,45 @@ class Proposal:
             out['execute_event'] = self.execute_event
 
         return out
+    
+
+def decode_create_event(event) -> Proposal:
+
+    event['description'] = str(event['description']) # Some proposals are just bytes.
+
+    obj = event.get('values', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj[1:-1]
+            obj = obj.split(',')
+            obj = [int(x) for x in obj]
+        event['values'] = obj
+
+    obj = event.get('targets', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj.replace('"', '')
+            obj = obj[1:-1]
+            obj = obj.split(',')
+        event['targets'] = obj
+
+    obj = event.get('calldatas', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj.replace('"', '')
+            obj = obj[1:-1]
+            obj = obj.split(',')
+        event['calldatas'] = obj
+
+    obj = event.get('signatures', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj[2:-2]
+            obj = obj.split('","')
+        event['signatures'] = obj
+    
+    return Proposal(event)
+
 
 class Proposals(DataProduct):
 
@@ -223,14 +268,9 @@ class Proposals(DataProduct):
         except:
             print(f"E187250323 Problem getting signature from event: {event}.")
 
-        # TODO - should we be working with proposal_ids as numerical or strings? 
-        #        For now, we store as strings.
+        proposal_id = str(event[self.proposal_id_field_name])
 
-        PROPOSAL_ID_FIELD = self.proposal_id_field_name
-
-        proposal_id = str(event[PROPOSAL_ID_FIELD])
-
-        del event[PROPOSAL_ID_FIELD]
+        del event[self.proposal_id_field_name]
         event['id'] = proposal_id
 
         del event['signature']
@@ -238,41 +278,7 @@ class Proposals(DataProduct):
 
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
-                event['description'] = str(event['description']) # Some proposals are just bytes.
-
-                obj = event.get('values', Ellipsis)
-                if obj is not Ellipsis:
-                    if isinstance(obj, str):
-                        obj = obj[1:-1]
-                        obj = obj.split(',')
-                        obj = [int(x) for x in obj]
-                    event['values'] = obj
-
-                obj = event.get('targets', Ellipsis)
-                if obj is not Ellipsis:
-                    if isinstance(obj, str):
-                        obj = obj.replace('"', '')
-                        obj = obj[1:-1]
-                        obj = obj.split(',')
-                    event['targets'] = obj
-
-                obj = event.get('calldatas', Ellipsis)
-                if obj is not Ellipsis:
-                    if isinstance(obj, str):
-                        obj = obj.replace('"', '')
-                        obj = obj[1:-1]
-                        obj = obj.split(',')
-                    event['calldatas'] = obj
-
-                obj = event.get('signatures', Ellipsis)
-                if obj is not Ellipsis:
-                    if isinstance(obj, str):
-                        obj = obj[2:-2]
-                        obj = obj.split('","')
-                    event['signatures'] = obj
-
-
-                self.proposals[proposal_id] = Proposal(event)
+                self.proposals[proposal_id] = decode_create_event(event)
 
             elif 'ProposalQueued' == signature[:LQUEUED]:
                 self.proposals[proposal_id].queue(event)
@@ -310,9 +316,87 @@ class Proposals(DataProduct):
 def nested_default_dict():
     return defaultdict(int)
 
+"""
+class VoteAggregation:
+    def __init__(self):
+        self.result = defaultdict(int)
+
+    def tally(self, event):
+        weight = int(event.get('weight', 0))
+        votes = int(event.get('votes', 0))
+
+        self.result[event['support']] += weight + votes
+    
+    def outcome(self):
+
+        outcome = {}
+        
+        keys = self.result.keys()
+        for key in keys:
+            outcome[key] = str(self.result[key]) 
+
+        return outcome
+"""
+
+class VoteAggregation:
+    def __init__(self):
+        self.result = defaultdict(nested_default_dict)
+    
+    def tally(self, event):
+
+        votes = event.get('votes', 0)
+        weight = int(event.get('weight', votes))
+        
+        params = event.get('params', None)
+        if params:
+            params, = decode_abi(["uint256[]"], bytes.fromhex(params))
+            event['params'] = params
+
+            for param in params:
+                self.result[param][event['support']] += weight
+        else:
+            self.result['no-params'][event['support']] += weight
+        
+        return event
+
+    def totals(self):
+
+        totals = defaultdict(dict)
+        
+        for okey in self.result.keys():
+            for key, value in self.result[okey].items():
+                totals[okey].update(**{str(key) : str(value)})
+        
+        return totals
+"""
+class EmptyVoteError(Exception):
+    def __init__(self, ExpectedAggregationCls):
+        self.ExpectedAggregationCls = ExpectedAggregationCls
+
+class EmptyVoteAggregation:
+    def __init__(self):
+        pass
+    
+    def tally(self, event):
+
+        # We use '' here instead of "None" because
+        # the protocl permits people to vote on Optimistic proposals
+        # and those have params, but they are empty strings.
+        params = event.get('params', None)
+        
+        if params is None:
+            raise EmptyVoteError(VoteAggregation)
+
+        raise EmptyVoteError(VoteWithParamsAggregation)
+        
+    def outcome(self):
+        return {}
+"""
+
 class Votes(DataProduct):
     def __init__(self, governor_spec):
-        self.proposal_aggregation = defaultdict(nested_default_dict)
+        self.proposal_aggregations = defaultdict(VoteAggregation)
+
         self.voter_history = defaultdict(list)
         self.proposal_vote_record = defaultdict(list)
 
@@ -325,35 +409,49 @@ class Votes(DataProduct):
 
         PROPOSAL_ID_FIELD = self.proposal_id_field_name
 
-        if event['signature'] == 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)':
-            print(event)
+        try:
+            proposal_id = str(event['proposal_id'])
+        except KeyError as e:
+            print(f"E292250323 - Problem with the following event {event}.")
+
+        event = self.proposal_aggregations[proposal_id].tally(event)
+
+        """
+        aggregation = self.proposal_aggregation[proposal_id]
+
+        # FUUUUCK THIS IS AN ABSTAIN for a VotesWithParams
+        # https://optimistic.etherscan.io/tx/0x031b90a763468be9769a1c82caf7d6db69350e1f27ab92aebf4fccbb19071b58#eventlog
         
-        elif event['signature'] == 'VoteCast(address,uint256,uint8,uint256,string)':
+        # if proposal_id == '31049359136632781771607732021569520613741907517136820917236339424553298132866':
+        #    print(event)
 
-            try:
-                proposal_id = str(event['proposal_id'])
-            except KeyError as e:
-                print(f"E292250323 - Problem with the following event {event}.")
+        # This pattern might be just slightly too cute,
+        # ...all in the name of avoiding an if-statement or params field
+        # lookup at time of indexing, and also avoid a 2nd lookup
+        # serving time.
+        try: 
+            aggregation.tally(event)
+        except EmptyVoteError as error:
+            # if proposal_id == '31049359136632781771607732021569520613741907517136820917236339424553298132866':
+            #    print(event)
+            #    print(f"!!!!!!: {error.ExpectedAggregationCls()}")
+            aggregation = error.ExpectedAggregationCls()
+            aggregation.tally(event)
 
-            weight = int(event.get('weight', 0))
-            votes = int(event.get('votes', 0))
+        self.proposal_aggregation[proposal_id] = aggregation
+        """
 
-            self.proposal_aggregation[proposal_id][event['support']] += weight + votes
+        event_cp = copy(event)
 
-            event_cp = copy(event)
+        del event_cp['sighash']
+        del event_cp['signature']
 
-            del event_cp['sighash']
-            del event_cp['signature']
+        self.voter_history[event['voter']].append(event_cp)
 
-            self.voter_history[event['voter']].append(event_cp)
+        event_cp = copy(event_cp)
+        del event_cp['proposal_id']
 
-            event_cp = copy(event_cp)
-            del event_cp['proposal_id']
-
-            self.proposal_vote_record[proposal_id].append(event_cp)
-
-
-
+        self.proposal_vote_record[proposal_id].append(event_cp)
 
 class ParticipationModel:
     """

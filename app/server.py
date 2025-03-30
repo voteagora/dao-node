@@ -371,11 +371,8 @@ async def proposals_handler(app, request):
     proposals = []
     for prop in res:
         proposal = prop.to_dict()
-        outcome = app.ctx.votes.proposal_aggregation[proposal['id']]
-        keys = outcome.keys()
-        for key in keys:
-            outcome[key] = str(outcome[key])
-        proposal['proposal_results'] = outcome
+        totals = app.ctx.votes.proposal_aggregations[proposal['id']].totals()
+        proposal['totals'] = totals
         proposals.append(proposal)
     
     if sort_key:
@@ -412,11 +409,8 @@ async def proposal(request, proposal_id:str):
 async def proposal_handler(app, request, proposal_id):
     proposal = app.ctx.proposals.proposals[proposal_id].to_dict()
 
-    outcome = app.ctx.votes.proposal_aggregation[proposal_id]
-    keys = outcome.keys()
-    for key in keys:
-        outcome[key] = str(outcome[key])        
-    proposal['outcome'] = outcome
+    totals = app.ctx.votes.proposal_aggregations[proposal_id].totals()
+    proposal['totals'] = totals
 
     voting_record = app.ctx.votes.proposal_vote_record[proposal_id]
     proposal['voting_record'] = voting_record
@@ -802,7 +796,6 @@ async def bootstrap_event_feeds(app, loop):
     votes = Votes(governor_spec=public_config['governor_spec'])
     for VOTE_EVENT in VOTE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
-        
 
     ##########################
     # Instatiate an "EventFeed", for every...

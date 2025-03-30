@@ -93,11 +93,11 @@ The Error code number is of the form "E{line_number_as_of_date_added}{YYMMDD}{op
 
 # API Endpoint Support
 
-The table below excludesfunctionality related to partial and advanced voting
+The table below excludes functionality related to partial and advanced delegation.
 
 🚀 - Prod Grade + Performance Tests & Integration Tests Exists
 
-✅ - Prod Grade (Functional & Some Unit Tests Might Exist, likely more tests are needed )
+✅ - Prod Grade (Functional & Some Unit Tests Might Exist, likely more tests are coming soon)
 
 🚧 - WIP, Buyer Beware
 
@@ -109,8 +109,8 @@ The table below excludesfunctionality related to partial and advanced voting
 |----------|-------|----------------|---------|---------|---------|
 | GET `/balances/{address}`                       | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GET `/proposals[/{id}]` (standard proposals)    | ✅ | ✅ | ✅ | ✅ | 🕓 |
-| GET `/proposals[/{id}]` (approval proposals)    | 🕓 | 🕓 | 🕓 | 🕓 | 🕓 |
-| GET `/proposals[/{id}]` (optimistic proposals)  | 🕓 | 🕓 | 🕓 | 🕓 | 🕓 |
+| GET `/proposals[/{id}]` (approval proposals)    | ✅ | ✅ | ✅ | ✅ | 🕓 |
+| GET `/proposals[/{id}]` (optimistic proposals)  | ✅ | ✅ | ✅ | ✅ | 🕓 |
 | GET `/proposal-types`                           | 🚧 | ❌ | ❌ | ✅ | 🕓 |
 | GET `/proposal-types/{id}`                      | 🚧 | ❌ | ❌ | ✅ | 🕓 |
 | GET `/delegates`                                | 🚧 | ✅ | ✅ | ✅ | 🕓 |
