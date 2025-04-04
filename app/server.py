@@ -721,6 +721,12 @@ async def bootstrap_event_feeds(app, loop):
     token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
     abi_list.append(token_abi)
 
+    AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
+
+    modules = {}
+    if AGORA_GOV:
+        modules = {m['address'].lower() : m['name'] for m in deployment['gov']['modules']}
+
     gov_addr = deployment['gov']['address'].lower()
     print(f"Using {gov_addr=}", flush=True)
 
@@ -767,7 +773,7 @@ async def bootstrap_event_feeds(app, loop):
         app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string)', proposal_types)
 
 
-    proposals = Proposals(governor_spec=public_config['governor_spec'])
+    proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
 
     PROPOSAL_CREATED_1 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
     PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'

@@ -212,6 +212,17 @@ class Proposal:
 
         return out
     
+    def resolve_voting_module_name(self, modules):
+        self.voting_module_name = modules.get(self.voting_module_address, "standard")
+        self.create_event['voting_module_name'] = self.voting_module_name
+
+    @property
+    def voting_module_address(self):
+        addr = self.create_event.get('voting_module', None)
+        if addr:
+            return addr.lower()
+
+    
 
 def decode_create_event(event) -> Proposal:
 
@@ -253,13 +264,17 @@ def decode_create_event(event) -> Proposal:
 
 class Proposals(DataProduct):
 
-    def __init__(self, governor_spec):
+    def __init__(self, governor_spec, modules):
         self.proposals = {}
+
+        self.modules = modules
 
         if governor_spec['name'] == 'compound':
             self.proposal_id_field_name = 'id'
         else:
             self.proposal_id_field_name = 'proposal_id'
+
+        self.gov_spec = governor_spec
     
     def handle(self, event):
 
@@ -278,7 +293,12 @@ class Proposals(DataProduct):
 
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
-                self.proposals[proposal_id] = decode_create_event(event)
+                decoded_proposal_create_event = decode_create_event(event)
+                
+                if self.gov_spec['name'] == 'agora':
+                    decoded_proposal_create_event.resolve_voting_module_name(self.modules)
+                    
+                    self.proposals[proposal_id] = decoded_proposal_create_event
 
             elif 'ProposalQueued' == signature[:LQUEUED]:
                 self.proposals[proposal_id].queue(event)
