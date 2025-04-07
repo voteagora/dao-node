@@ -197,10 +197,6 @@ def decode_proposal_data(proposal_type, proposal_data):
 
 class Proposal:
     def __init__(self, create_event):
-        # print(create_event.get('id', None))
-        # if create_event.get('voting_module', None) == '0x54a8fcbbf05ac14bef782a2060a8c752c7cc13a5':
-        #     print(create_event.keys())
-        # print(create_event.get('proposal_type', 'XXX'))
         self.create_event = create_event
         self.canceled = False
         self.queued = False
