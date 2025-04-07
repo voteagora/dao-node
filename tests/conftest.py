@@ -12,3 +12,14 @@ def compound_governor_abis():
     abi = ABI.from_file('gov', abi_path)
     abis = ABISet('test-abis', [abi])
     return abis
+
+@pytest.fixture(scope="session")
+def op_governor_abis():
+    """
+    Session-scoped fixture that loads the op's agora governor ABIs.
+    This will be instantiated only once for the entire test session.
+    """
+    abi_path = os.path.join('tests', 'abis', 'op-gov.json')
+    abi = ABI.from_file('gov', abi_path)
+    abis = ABISet('test-abis', [abi])
+    return abis

@@ -49,7 +49,7 @@ async def test_proposals_endpoint(app, test_client, compound_governor_abis):
 
     prop83 = [proposal for proposal in resp.json['proposals'] if proposal['id'] == '83'][0]
 
-    assert prop83['totals']['no-params']['0'] == '4405600689481310079197606'
-    assert prop83['totals']['no-params']['1'] == '60410651581027066697650760'
-    assert prop83['totals']['no-params']['2'] == '5795658915470619580362791'
+    assert prop83['totals']['no-param']['0'] == '4405600689481310079197606'
+    assert prop83['totals']['no-param']['1'] == '60410651581027066697650760'
+    assert prop83['totals']['no-param']['2'] == '5795658915470619580362791'
 

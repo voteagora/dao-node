@@ -1,5 +1,5 @@
 import pytest
-from app.data_products import Balances, Delegations, Proposals
+from app.data_products import Balances, Delegations, Proposals, Votes
 from app.clients import CSVClient
 import csv
 import os
@@ -79,7 +79,6 @@ def test_Proposals_for_compound_governor_from_csv(compound_governor_abis):
     assert first_proposal is not None
     assert isinstance(first_proposal.create_event['id'], str)  # IDs are stored as strings
     assert 'description' in first_proposal.create_event
-    assert 'targets' in first_proposal.create_event
 
     assert 'targets' in first_proposal.create_event
     assert first_proposal.create_event['targets'][0] == '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984'
@@ -103,3 +102,53 @@ def test_Proposals_for_compound_governor_from_csv(compound_governor_abis):
 
     assert proposals.proposals['83'].create_event['id'] == '83'
     assert proposals.proposals['1'].create_event['id'] == '1'
+
+def test_Proposals_one_op_approval_from_csv(op_governor_abis):
+    
+    modules = {'0x8060b18290f48fc0bf2149eeb2f3c280bde7674f': 'approval'}
+    gov_spec = {'name': 'agora', 'version': 0.1}
+
+    proposals = Proposals(gov_spec, modules)
+        
+    csvc = CSVClient('tests/data/3000-op-approval-PID31049')
+    chain_id = 10
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)', op_governor_abis):
+        proposals.handle(row)
+    
+    # Get the first proposal from the data product
+    first_proposal = next(proposals.unfiltered())
+    
+    # Basic assertions to verify the data was loaded
+    assert first_proposal is not None
+    assert isinstance(first_proposal.create_event['id'], str)  # IDs are stored as strings
+
+    assert 'description' in first_proposal.create_event
+
+    del first_proposal.create_event['description']
+
+    assert first_proposal.create_event['proposal_type'] == 3
+    assert first_proposal.create_event['voting_module_name'] == 'approval'
+
+    assert first_proposal.create_event['decoded_proposal_data'] == (((0, (), (), (), 'World Foundation'), (0, (), (), (), 'Andrey Petrov'), (0, (), (), (), 'OP Labs'), (0, (), (), (), 'L2BEAT'), (0, (), (), (), 'Alchemy'), (0, (), (), (), 'Maggie Love'), (0, (), (), (), 'Gauntlet'), (0, (), (), (), 'Test in Prod'), (0, (), (), (), 'Yoav Weiss'), (0, (), (), (), 'ml_sudo'), (0, (), (), (), 'Kris Kaczor'), (0, (), (), (), 'Martin Tellechea'), (0, (), (), (), 'Ink'), (0, (), (), (), 'Coinbase'), (0, (), (), (), 'troy')), (15, 1, '0x0000000000000000000000000000000000000000', 6, 0))
+
+def test_Votes_one_op_approval_from_csv(op_governor_abis):
+    
+    gov_spec = {'name': 'agora', 'version': 0.1}
+
+    votes = Votes(gov_spec)
+        
+    csvc = CSVClient('tests/data/3000-op-approval-PID31049')
+    chain_id = 10
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', 'VoteCast(address,uint256,uint8,uint256,string)', op_governor_abis):
+        votes.handle(row)
+
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)', op_governor_abis):
+       votes.handle(row)
+
+    aggregations = votes.proposal_aggregations['31049359136632781771607732021569520613741907517136820917236339424553298132866']
+     
+    aggregations.result['no-param'][2] == 1087007682453656513592020
+    aggregations.result[0][1] == 32371488932049684561146389
+    aggregations.result[14][1] == 10504614280025813357834598
+    assert len(aggregations.result) == 16
+

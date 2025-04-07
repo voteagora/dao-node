@@ -171,6 +171,29 @@ def decode_proposal_calldata(calldata: str, abi_types):
         print(f"Failed to decode calldata: {e}")
         return None
 
+def decode_proposal_data(proposal_type, proposal_data):
+
+    if proposal_type == 'standard':
+        return None
+    
+    if proposal_type == 'approval':
+        abi = ["(uint256,address[],uint256[],bytes[],string)[]", "(uint8,uint8,address,uint128,uint128)"]
+        abi2 = ["(address[],uint256[],bytes[],string)[]",        "(uint8,uint8,address,uint128,uint128)"] # OP/alligator only? Only for 0xe1a17f4770769f9d77ef56dd3b92500df161f3a1704ab99aec8ccf8653cae400l
+    elif proposal_type == 'optimistic':
+        abi = ["(uint248,bool)"]
+    else:
+        raise Exception("Unknown Proposal Type: {}".format(proposal_type))
+
+    if proposal_data[:2] == '0x':
+        proposal_data = proposal_data[2:]
+    proposal_data = bytes.fromhex(proposal_data)
+
+    try:
+        result = decode_abi(abi, proposal_data)
+    except:
+        result = decode_abi(abi2, proposal_data)
+    
+    return result
 
 class Proposal:
     def __init__(self, create_event):
@@ -296,12 +319,17 @@ class Proposals(DataProduct):
 
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
-                decoded_proposal_create_event = decode_create_event(event)
+                proposal = decode_create_event(event)
                 
                 if self.gov_spec['name'] == 'agora':
-                    decoded_proposal_create_event.resolve_voting_module_name(self.modules)
+                    proposal.resolve_voting_module_name(self.modules)
+
+                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
+                    proposal_data = proposal.create_event['proposal_data']
+                
+                    proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)
                     
-                self.proposals[proposal_id] = decoded_proposal_create_event
+                self.proposals[proposal_id] = proposal
 
             elif 'ProposalQueued' == signature[:LQUEUED]:
                 self.proposals[proposal_id].queue(event)
@@ -378,7 +406,7 @@ class VoteAggregation:
             for param in params:
                 self.result[param][event['support']] += weight
         else:
-            self.result['no-params'][event['support']] += weight
+            self.result['no-param'][event['support']] += weight
         
         return event
 
