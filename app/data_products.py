@@ -419,31 +419,6 @@ class Votes(DataProduct):
 
         event = self.proposal_aggregations[proposal_id].tally(event)
 
-        """
-        aggregation = self.proposal_aggregation[proposal_id]
-
-        # FUUUUCK THIS IS AN ABSTAIN for a VotesWithParams
-        # https://optimistic.etherscan.io/tx/0x031b90a763468be9769a1c82caf7d6db69350e1f27ab92aebf4fccbb19071b58#eventlog
-        
-        # if proposal_id == '31049359136632781771607732021569520613741907517136820917236339424553298132866':
-        #    print(event)
-
-        # This pattern might be just slightly too cute,
-        # ...all in the name of avoiding an if-statement or params field
-        # lookup at time of indexing, and also avoid a 2nd lookup
-        # serving time.
-        try: 
-            aggregation.tally(event)
-        except EmptyVoteError as error:
-            # if proposal_id == '31049359136632781771607732021569520613741907517136820917236339424553298132866':
-            #    print(event)
-            #    print(f"!!!!!!: {error.ExpectedAggregationCls()}")
-            aggregation = error.ExpectedAggregationCls()
-            aggregation.tally(event)
-
-        self.proposal_aggregation[proposal_id] = aggregation
-        """
-
         event_cp = copy(event)
 
         del event_cp['sighash']
