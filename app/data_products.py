@@ -264,10 +264,13 @@ def decode_create_event(event) -> Proposal:
 
 class Proposals(DataProduct):
 
-    def __init__(self, governor_spec, modules):
+    def __init__(self, governor_spec, modules=None):
         self.proposals = {}
 
-        self.modules = modules
+        if modules:
+            self.modules = modules
+        else:
+            self.modules = {}
 
         if governor_spec['name'] == 'compound':
             self.proposal_id_field_name = 'id'
@@ -298,7 +301,7 @@ class Proposals(DataProduct):
                 if self.gov_spec['name'] == 'agora':
                     decoded_proposal_create_event.resolve_voting_module_name(self.modules)
                     
-                    self.proposals[proposal_id] = decoded_proposal_create_event
+                self.proposals[proposal_id] = decoded_proposal_create_event
 
             elif 'ProposalQueued' == signature[:LQUEUED]:
                 self.proposals[proposal_id].queue(event)
