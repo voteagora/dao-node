@@ -101,6 +101,8 @@ try:
     AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
     with open(AGORA_CONFIG_FILE, 'r') as f:
         config = yaml.safe_load(f)
+    
+    print(config)
     public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
     deployment = config['deployments'][CONTRACT_DEPLOYMENT]
@@ -741,7 +743,7 @@ async def bootstrap_event_feeds(app, loop):
     if 'ptc' in deployment:
         ptc_addr = deployment['ptc']['address'].lower()
         print(f"Using {ptc_addr=}", flush=True)
-        ptc_abi = ABI.from_file('ptc', f"/Users/jm/code/tenants/abis/v2/10/checked/{ptc_addr}.json")
+        ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
 
         proposal_type_set_signature = None
 
@@ -947,16 +949,9 @@ It is not a replacement for JSON-RPC provider, in the sense that contract-calls 
 """
     ),
 )
-
-# from sanic_ext import Extend
-# Extend(app, config={
-#    "openapi_title": "DAO Node",
-#     "openapi_description": "API Documentation for My Sanic Service",
-#     "openapi_version": "1.0.0",
-# })
     
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8001, dev=True, debug=True)
+    app.run(host="0.0.0.0", port=8004, dev=True, debug=True)
     #app.run(host="0.0.0.0", port=7654, dev=True, workers=1, access_log=True, debug=True)
 
