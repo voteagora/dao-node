@@ -810,17 +810,17 @@ async def bootstrap_event_feeds(app, loop):
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
 
-    # ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-    # app.ctx.add_event_feed(ev)
-    # app.add_task(ev.boot(app))
+    ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
 
-    # ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
-    # app.ctx.add_event_feed(ev)
-    # app.add_task(ev.boot(app))
+    ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
 
-    # ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
-    # app.ctx.add_event_feed(ev)
-    # app.add_task(ev.boot(app))
+    ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
 
     if 'ptc' in deployment:
         ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
