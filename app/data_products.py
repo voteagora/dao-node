@@ -367,27 +367,6 @@ class Proposals(DataProduct):
 def nested_default_dict():
     return defaultdict(int)
 
-"""
-class VoteAggregation:
-    def __init__(self):
-        self.result = defaultdict(int)
-
-    def tally(self, event):
-        weight = int(event.get('weight', 0))
-        votes = int(event.get('votes', 0))
-
-        self.result[event['support']] += weight + votes
-    
-    def outcome(self):
-
-        outcome = {}
-        
-        keys = self.result.keys()
-        for key in keys:
-            outcome[key] = str(self.result[key]) 
-
-        return outcome
-"""
 
 class VoteAggregation:
     def __init__(self):
@@ -419,30 +398,7 @@ class VoteAggregation:
                 totals[okey].update(**{str(key) : str(value)})
         
         return totals
-"""
-class EmptyVoteError(Exception):
-    def __init__(self, ExpectedAggregationCls):
-        self.ExpectedAggregationCls = ExpectedAggregationCls
 
-class EmptyVoteAggregation:
-    def __init__(self):
-        pass
-    
-    def tally(self, event):
-
-        # We use '' here instead of "None" because
-        # the protocl permits people to vote on Optimistic proposals
-        # and those have params, but they are empty strings.
-        params = event.get('params', None)
-        
-        if params is None:
-            raise EmptyVoteError(VoteAggregation)
-
-        raise EmptyVoteError(VoteWithParamsAggregation)
-        
-    def outcome(self):
-        return {}
-"""
 
 class Votes(DataProduct):
     def __init__(self, governor_spec):
