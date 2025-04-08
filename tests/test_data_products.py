@@ -147,8 +147,9 @@ def test_Votes_one_op_approval_from_csv(op_governor_abis):
 
     aggregations = votes.proposal_aggregations['31049359136632781771607732021569520613741907517136820917236339424553298132866']
      
-    aggregations.result['no-param'][2] == 1087007682453656513592020
-    aggregations.result[0][1] == 32371488932049684561146389
-    aggregations.result[14][1] == 10504614280025813357834598
+    assert aggregations.result['no-param'][2] == 1087007682453656513592020
+    assert aggregations.result[0][1] == 32371488932049684561146389
+    assert aggregations.result[14][1] == 10504614280025813357834598
+
     assert len(aggregations.result) == 16
 

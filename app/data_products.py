@@ -171,6 +171,18 @@ def decode_proposal_calldata(calldata: str, abi_types):
         print(f"Failed to decode calldata: {e}")
         return None
 
+def bytes_to_hex(obj):
+    if isinstance(obj, bytes):
+        return obj.hex()
+    elif isinstance(obj, dict):
+        return {k: bytes_to_hex(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [bytes_to_hex(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(bytes_to_hex(item) for item in obj)
+    else:
+        return obj
+        
 def decode_proposal_data(proposal_type, proposal_data):
 
     if proposal_type == 'standard':
@@ -192,7 +204,8 @@ def decode_proposal_data(proposal_type, proposal_data):
         result = decode_abi(abi, proposal_data)
     except:
         result = decode_abi(abi2, proposal_data)
-    
+        result = bytes_to_hex(result)
+
     return result
 
 class Proposal:
@@ -230,7 +243,10 @@ class Proposal:
             out['execute_event'] = self.execute_event
 
         return out
-    
+
+    def set_voting_module_name(self, name):
+        self.create_event['voting_module_name'] = name
+        
     def resolve_voting_module_name(self, modules):
         self.voting_module_name = modules.get(self.voting_module_address, "standard")
         self.create_event['voting_module_name'] = self.voting_module_name
@@ -321,9 +337,13 @@ class Proposals(DataProduct):
                     proposal.resolve_voting_module_name(self.modules)
 
                     voting_module_name = proposal.voting_module_name # standard / approval / optimistic
-                    proposal_data = proposal.create_event['proposal_data']
-                
-                    proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)
+
+                    if voting_module_name in ('approval','optimistic'):
+                        proposal_data = proposal.create_event['proposal_data']
+                    
+                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)
+                else:
+                    proposal.set_voting_module_name('standard')
                     
                 self.proposals[proposal_id] = proposal
 

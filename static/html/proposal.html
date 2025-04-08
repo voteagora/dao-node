@@ -96,6 +96,7 @@
         }
 
         function formatVotes(votes) {
+            console.log(votes);
             const eth = BigInt(votes) / BigInt(10 ** 18);
             return eth.toLocaleString(undefined, { maximumFractionDigits: 2 });
         }
@@ -132,7 +133,7 @@
             
             // Calculate cumulative sums for each support type
             const cumulativeVotes = sortedRecords.map(record => {
-                const votes = BigInt(record.votes);
+                const votes = BigInt(record.votes || record.weight);
                 switch (record.support) {
                     case 1: // For
                         forSum += votes;
@@ -248,9 +249,9 @@
                     `${proposal.start_block} - ${proposal.end_block}`;
 
                 // Update vote counts
-                document.getElementById('votesFor').textContent = formatVotes(proposal.proposal_results['1']) + ' ETH';
-                document.getElementById('votesAgainst').textContent = formatVotes(proposal.proposal_results['0']) + ' ETH';
-                document.getElementById('votesAbstain').textContent = formatVotes(proposal.proposal_results['2']) + ' ETH';
+                document.getElementById('votesFor').textContent = formatVotes(proposal.totals['no-param']['1']) + ' ETH';
+                document.getElementById('votesAgainst').textContent = formatVotes(proposal.totals['no-param']['0']) + ' ETH';
+                document.getElementById('votesAbstain').textContent = formatVotes(proposal.totals['no-param']['2']) + ' ETH';
 
                 // Update description
                 document.getElementById('description').innerHTML = marked.parse(proposal.description);
