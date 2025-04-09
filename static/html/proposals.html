@@ -41,6 +41,8 @@
                         <th>Title</th>
                         <th>Proposer</th>
                         <th>Status</th>
+                        <th>Start Block</th>
+                        <th>Proposal Type</th>
                         <th>Votes</th>
                         <th>Actions</th>
                     </tr>
@@ -102,9 +104,9 @@
             try {
                 // Convert all values to BigInt, defaulting to 0 if missing
                 const votes = {
-                    '0': BigInt(results['0'] || '0'),
-                    '1': BigInt(results['1'] || '0'),
-                    '2': BigInt(results['2'] || '0')
+                    '0': BigInt(results['no-param']['0'] || '0'),
+                    '1': BigInt(results['no-param']['1'] || '0'),
+                    '2': BigInt(results['no-param']['2'] || '0')
                 };
                 
                 const total = votes['0'] + votes['1'] + votes['2'];
@@ -175,7 +177,9 @@
                         <td>${title}</td>
                         <td>${formatAddress(proposal.proposer)}</td>
                         <td><span class="badge ${getStatusBadgeClass(getProposalStatus(proposal))}">${getProposalStatus(proposal)}</span></td>
-                        <td><small>${formatVotes(proposal.proposal_results)}</small></td>
+                        <td>${proposal.start_block}</td>
+                        <td>${proposal.voting_module_name}</td>
+                        <td><small>${formatVotes(proposal.totals)}</small></td>
                         <td>
                             <a href="/ui/proposal?id=${proposal.id}" class="btn btn-sm btn-primary">View</a>
                         </td>

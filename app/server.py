@@ -101,6 +101,8 @@ try:
     AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
     with open(AGORA_CONFIG_FILE, 'r') as f:
         config = yaml.safe_load(f)
+    
+    print(config)
     public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
     deployment = config['deployments'][CONTRACT_DEPLOYMENT]
@@ -333,30 +335,7 @@ async def balances(request, addr):
 	return json({'balance' : str(app.ctx.balances.balance_of(addr)),
                  'address' : addr})
 
-async def proposals_handler(app, request):
-    proposal_set = request.args.get("set", "relevant").lower()
-    sort_key = request.args.get("sort", "").lower()
-
-
-    if proposal_set == 'relevant':
-        res = app.ctx.proposals.relevant()
-    else:
-        res = app.ctx.proposals.unfiltered()
-
-    proposals = []
-    for prop in res:
-        proposal = prop.to_dict()
-        outcome = app.ctx.votes.proposal_aggregation[proposal['id']]
-        keys = outcome.keys()
-        for key in keys:
-            outcome[key] = str(outcome[key])
-        proposal['proposal_results'] = outcome
-        proposals.append(proposal)
-    
-    if sort_key:
-        proposals.sort(key=lambda x: x[sort_key], reverse=True)
-
-    return json({'proposals' : proposals})
+#############################################################################################################################################
 
 @app.route('/v1/proposals')
 @openapi.tag("Proposal State")
@@ -381,6 +360,29 @@ async def proposals_handler(app, request):
 async def proposals(request):
     return await proposals_handler(app, request)
 
+async def proposals_handler(app, request):
+    proposal_set = request.args.get("set", "relevant").lower()
+    sort_key = request.args.get("sort", "").lower()
+
+
+    if proposal_set == 'relevant':
+        res = app.ctx.proposals.relevant()
+    else:
+        res = app.ctx.proposals.unfiltered()
+
+    proposals = []
+    for prop in res:
+        proposal = prop.to_dict()
+        totals = app.ctx.votes.proposal_aggregations[proposal['id']].totals()
+        proposal['totals'] = totals
+        proposals.append(proposal)
+    
+    if sort_key:
+        proposals.sort(key=lambda x: x[sort_key], reverse=True)
+
+    return json({'proposals' : proposals})
+
+##################################################################################################################################################
 
 @app.route('/v1/proposal/<proposal_id>')
 @openapi.tag("Proposal State")
@@ -404,14 +406,13 @@ None
 """)
 @measure
 async def proposal(request, proposal_id:str):
-    
+    return await proposal_handler(app, request, proposal_id)
+
+async def proposal_handler(app, request, proposal_id):
     proposal = app.ctx.proposals.proposals[proposal_id].to_dict()
 
-    outcome = app.ctx.votes.proposal_aggregation[proposal_id]
-    keys = outcome.keys()
-    for key in keys:
-        outcome[key] = str(outcome[key])        
-    proposal['outcome'] = outcome
+    totals = app.ctx.votes.proposal_aggregations[proposal_id].totals()
+    proposal['totals'] = totals
 
     voting_record = app.ctx.votes.proposal_vote_record[proposal_id]
     proposal['voting_record'] = voting_record
@@ -425,13 +426,14 @@ async def proposal(request, proposal_id:str):
 async def proposal_types(request):
 	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
 
+
 @app.route('/v1/proposal_type/<proposal_type_id>')
 @openapi.tag("Proposal State")
 @openapi.summary("Latest information about a specific proposal type")
 @measure
 async def proposal_type(request, proposal_type_id: int):
 	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
-                 'proposal_type_id' : proposal_type_id})
+                 'id' : proposal_type_id})
 
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
@@ -533,6 +535,9 @@ Total = O(n) + O(page_size) + O(n * log(n)) + O(page_size) + Opr = O(n) + O(n * 
 )
 @measure
 async def delegates(request):
+    return await delegates_handler(app, request)
+
+async def delegates_handler(app, request):
 
     sort_by = request.args.get("sort_by", 'VP')
     sort_by_vp = sort_by == 'VP'
@@ -588,6 +593,7 @@ async def delegates(request):
 
     return json({'delegates' : out})
 
+############################################################################################################################################################
 
 @app.route('/v1/delegate/<addr>')
 @openapi.tag("Delegation State")
@@ -625,6 +631,9 @@ Add transaction index and log-index awareness.
 """)
 @measure
 async def delegate_vp(request, addr : str, block_number : int):
+    return await delegate_vp_handler(app, request, addr, block_number)
+
+async def delegate_vp_handler(app, request, addr, block_number):
 
     vp_history = [(0, 0)] + app.ctx.delegations.delegatee_vp_history[addr]
     index = bisect_left(vp_history, (block_number,)) - 1
@@ -640,6 +649,8 @@ async def delegate_vp(request, addr : str, block_number : int):
                  'delegate' : addr,
                  'block_number' : block_number,
                  'history' : vp_history[1:]})
+
+#################################################################################################################################################
 
 @app.route('/v1/voting_power')
 @openapi.tag("Delegation State")
@@ -709,8 +720,14 @@ async def bootstrap_event_feeds(app, loop):
 
     token_addr = deployment['token']['address'].lower()
     print(f"Using {token_addr=}", flush=True)
-    token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
+    token_abi = ABI.from_file('token', f"/Users/jm/code/tenants/abis/v2/10/checked/{token_addr}.json") #, chain_id=chain_id, implementation=True)
     abi_list.append(token_abi)
+
+    AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
+
+    modules = {}
+    if AGORA_GOV:
+        modules = {m['address'].lower() : m['name'] for m in deployment['gov']['modules']}
 
     gov_addr = deployment['gov']['address'].lower()
     print(f"Using {gov_addr=}", flush=True)
@@ -758,36 +775,35 @@ async def bootstrap_event_feeds(app, loop):
         app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string)', proposal_types)
 
 
-    proposals = Proposals(governor_spec=public_config['governor_spec'])
+    proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
 
     PROPOSAL_CREATED_1 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
     PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
     PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'
     PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
-
     PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
     PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
     PROPOSAL_EXECUTED = 'ProposalExecuted(uint256)'
 
-    if public_config['governor_spec']['name'] == 'compound':
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_1, proposals)
-        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
-    else:
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_1, proposals)
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_2, proposals)
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_3, proposals)
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CREATED_4, proposals)
-        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
-
-    app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_CANCELED, proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_QUEUED, proposals)
-    app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EXECUTED, proposals)
+    PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
+    if public_config['governor_spec']['name'] != 'compound':
+        PROPOSAL_CREATED_EVENTS.extend([PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4])
 
     PROPOSAL_LIFECYCLE_EVENTS = PROPOSAL_CREATED_EVENTS + [PROPOSAL_CANCELED, PROPOSAL_QUEUED, PROPOSAL_EXECUTED]
+    for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
+
+
+    VOTE_CAST_1 = 'VoteCast(address,uint256,uint8,uint256,string)'
+    VOTE_CAST_WITH_PARAMS_1 = 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)'
+
+    VOTE_EVENTS = [VOTE_CAST_1]    
+    if public_config['governor_spec']['name'] != 'compound':
+        VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
 
     votes = Votes(governor_spec=public_config['governor_spec'])
-    app.ctx.register(f'{chain_id}.{gov_addr}.VoteCast(address,uint256,uint8,uint256,string)', votes)
-
+    for VOTE_EVENT in VOTE_EVENTS:
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
 
     ##########################
     # Instatiate an "EventFeed", for every...
@@ -813,15 +829,10 @@ async def bootstrap_event_feeds(app, loop):
         app.ctx.add_event_feed(ev)
         app.add_task(ev.boot(app))
 
-    for signature in PROPOSAL_LIFECYCLE_EVENTS:
+    for signature in PROPOSAL_LIFECYCLE_EVENTS + VOTE_EVENTS:
        ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
        app.ctx.add_event_feed(ev)
        app.add_task(ev.boot(app))
-
-    ev = EventFeed(chain_id, gov_addr, 'VoteCast(address,uint256,uint8,uint256,string)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
-
 
 @app.after_server_start
 async def subscribe_event_fees(app, loop):
@@ -938,16 +949,9 @@ It is not a replacement for JSON-RPC provider, in the sense that contract-calls 
 """
     ),
 )
-
-# from sanic_ext import Extend
-# Extend(app, config={
-#    "openapi_title": "DAO Node",
-#     "openapi_description": "API Documentation for My Sanic Service",
-#     "openapi_version": "1.0.0",
-# })
     
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8001, dev=True, debug=True)
+    app.run(host="0.0.0.0", port=8004, dev=True, debug=True)
     #app.run(host="0.0.0.0", port=7654, dev=True, workers=1, access_log=True, debug=True)
 

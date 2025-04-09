@@ -1,6 +1,7 @@
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
+from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
 from copy import copy
 
@@ -134,12 +135,87 @@ LQUEUED = len('ProposalQueued')
 LEXECUTED = len('ProposalExecuted')
 LCANCELED = len('ProposalCanceled')
 
+def decode_proposal_calldata(calldata: str, abi_types):
+    """
+    Decode Ethereum calldata using provided ABI types
+    Args:
+        calldata: Hex string of calldata
+        abi_types: List of ABI type strings
+    Returns:
+        Tuple of decoded values
+    """
+    # Remove '0x' prefix if present
+    calldata = calldata.replace('0x', '')
+    # Convert to bytes
+    calldata_bytes = HexBytes(calldata)
+    
+    try:
+        # First try to decode just the first part (the array of tuples)
+        first_type = abi_types[0]
+        decoded_first = decode([first_type], calldata_bytes)
+        
+        if len(abi_types) > 1:
+            # If there's a second type, try to decode any remaining data
+            # This assumes the second part starts after the first decoded part
+            second_type = abi_types[1]
+            try:
+                # Get the remaining data after the first decode
+                remaining_data = calldata_bytes[64:]  # Skip the first dynamic pointer
+                decoded_second = decode([second_type], remaining_data)
+                return (decoded_first[0], decoded_second[0])
+            except Exception as e:
+                print(f"Failed to decode second part: {e}")
+                return (decoded_first[0], None)
+        return decoded_first[0]
+    except Exception as e:
+        print(f"Failed to decode calldata: {e}")
+        return None
+
+def bytes_to_hex(obj):
+    if isinstance(obj, bytes):
+        return obj.hex()
+    elif isinstance(obj, dict):
+        return {k: bytes_to_hex(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [bytes_to_hex(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(bytes_to_hex(item) for item in obj)
+    else:
+        return obj
+        
+def decode_proposal_data(proposal_type, proposal_data):
+
+    if proposal_type == 'standard':
+        return None
+    
+    if proposal_type == 'approval':
+        abi = ["(uint256,address[],uint256[],bytes[],string)[]", "(uint8,uint8,address,uint128,uint128)"]
+        abi2 = ["(address[],uint256[],bytes[],string)[]",        "(uint8,uint8,address,uint128,uint128)"] # OP/alligator only? Only for 0xe1a17f4770769f9d77ef56dd3b92500df161f3a1704ab99aec8ccf8653cae400l
+    elif proposal_type == 'optimistic':
+        abi = ["(uint248,bool)"]
+    else:
+        raise Exception("Unknown Proposal Type: {}".format(proposal_type))
+
+    if proposal_data[:2] == '0x':
+        proposal_data = proposal_data[2:]
+    proposal_data = bytes.fromhex(proposal_data)
+
+    try:
+        result = decode_abi(abi, proposal_data)
+    except:
+        result = decode_abi(abi2, proposal_data)
+        result = bytes_to_hex(result)
+
+    return result
+
 class Proposal:
-    def __init__(self, creation_event):
-        self.create_event = creation_event
+    def __init__(self, create_event):
+        self.create_event = create_event
         self.canceled = False
         self.queued = False
         self.executed = False
+
+        self.result = defaultdict(nested_default_dict)
     
     def cancel(self, cancel_event):
         self.canceled = True
@@ -168,15 +244,75 @@ class Proposal:
 
         return out
 
+    def set_voting_module_name(self, name):
+        self.create_event['voting_module_name'] = name
+        
+    def resolve_voting_module_name(self, modules):
+        self.voting_module_name = modules.get(self.voting_module_address, "standard")
+        self.create_event['voting_module_name'] = self.voting_module_name
+
+    @property
+    def voting_module_address(self):
+        addr = self.create_event.get('voting_module', None)
+        if addr:
+            return addr.lower()
+
+    
+
+def decode_create_event(event) -> Proposal:
+
+    event['description'] = str(event['description']) # Some proposals are just bytes.
+
+    obj = event.get('values', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj[1:-1]
+            obj = obj.split(',')
+            obj = [int(x) for x in obj]
+        event['values'] = obj
+
+    obj = event.get('targets', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj.replace('"', '')
+            obj = obj[1:-1]
+            obj = obj.split(',')
+        event['targets'] = obj
+
+    obj = event.get('calldatas', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj.replace('"', '')
+            obj = obj[1:-1]
+            obj = obj.split(',')
+        event['calldatas'] = obj
+
+    obj = event.get('signatures', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj[2:-2]
+            obj = obj.split('","')
+        event['signatures'] = obj
+    
+    return Proposal(event)
+
+
 class Proposals(DataProduct):
 
-    def __init__(self, governor_spec):
+    def __init__(self, governor_spec, modules=None):
         self.proposals = {}
+
+        if modules:
+            self.modules = modules
+        else:
+            self.modules = {}
 
         if governor_spec['name'] == 'compound':
             self.proposal_id_field_name = 'id'
         else:
             self.proposal_id_field_name = 'proposal_id'
+
+        self.gov_spec = governor_spec
     
     def handle(self, event):
 
@@ -185,14 +321,9 @@ class Proposals(DataProduct):
         except:
             print(f"E187250323 Problem getting signature from event: {event}.")
 
-        # TODO - should we be working with proposal_ids as numerical or strings? 
-        #        For now, we store as strings.
+        proposal_id = str(event[self.proposal_id_field_name])
 
-        PROPOSAL_ID_FIELD = self.proposal_id_field_name
-
-        proposal_id = str(event[PROPOSAL_ID_FIELD])
-
-        del event[PROPOSAL_ID_FIELD]
+        del event[self.proposal_id_field_name]
         event['id'] = proposal_id
 
         del event['signature']
@@ -200,41 +331,21 @@ class Proposals(DataProduct):
 
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
-                event['description'] = str(event['description']) # Some proposals are just bytes.
+                proposal = decode_create_event(event)
+                
+                if self.gov_spec['name'] == 'agora':
+                    proposal.resolve_voting_module_name(self.modules)
 
-                obj = event.get('values', Ellipsis)
-                if obj is not Ellipsis:
-                    if isinstance(obj, str):
-                        obj = obj[1:-1]
-                        obj = obj.split(',')
-                        obj = [int(x) for x in obj]
-                    event['values'] = obj
+                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
 
-                obj = event.get('targets', Ellipsis)
-                if obj is not Ellipsis:
-                    if isinstance(obj, str):
-                        obj = obj.replace('"', '')
-                        obj = obj[1:-1]
-                        obj = obj.split(',')
-                    event['targets'] = obj
-
-                obj = event.get('calldatas', Ellipsis)
-                if obj is not Ellipsis:
-                    if isinstance(obj, str):
-                        obj = obj.replace('"', '')
-                        obj = obj[1:-1]
-                        obj = obj.split(',')
-                    event['calldatas'] = obj
-
-                obj = event.get('signatures', Ellipsis)
-                if obj is not Ellipsis:
-                    if isinstance(obj, str):
-                        obj = obj[2:-2]
-                        obj = obj.split('","')
-                    event['signatures'] = obj
-
-
-                self.proposals[proposal_id] = Proposal(event)
+                    if voting_module_name in ('approval','optimistic'):
+                        proposal_data = proposal.create_event['proposal_data']
+                    
+                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)
+                else:
+                    proposal.set_voting_module_name('standard')
+                    
+                self.proposals[proposal_id] = proposal
 
             elif 'ProposalQueued' == signature[:LQUEUED]:
                 self.proposals[proposal_id].queue(event)
@@ -272,9 +383,43 @@ class Proposals(DataProduct):
 def nested_default_dict():
     return defaultdict(int)
 
+
+class VoteAggregation:
+    def __init__(self):
+        self.result = defaultdict(nested_default_dict)
+    
+    def tally(self, event):
+
+        votes = event.get('votes', 0)
+        weight = int(event.get('weight', votes))
+        
+        params = event.get('params', None)
+        if params:
+            params, = decode_abi(["uint256[]"], bytes.fromhex(params))
+            event['params'] = params
+
+            for param in params:
+                self.result[param][event['support']] += weight
+        else:
+            self.result['no-param'][event['support']] += weight
+        
+        return event
+
+    def totals(self):
+
+        totals = defaultdict(dict)
+        
+        for okey in self.result.keys():
+            for key, value in self.result[okey].items():
+                totals[okey].update(**{str(key) : str(value)})
+        
+        return totals
+
+
 class Votes(DataProduct):
     def __init__(self, governor_spec):
-        self.proposal_aggregation = defaultdict(nested_default_dict)
+        self.proposal_aggregations = defaultdict(VoteAggregation)
+
         self.voter_history = defaultdict(list)
         self.proposal_vote_record = defaultdict(list)
 
@@ -292,10 +437,7 @@ class Votes(DataProduct):
         except KeyError as e:
             print(f"E292250323 - Problem with the following event {event}.")
 
-        weight = int(event.get('weight', 0))
-        votes = int(event.get('votes', 0))
-
-        self.proposal_aggregation[proposal_id][event['support']] += weight + votes
+        event = self.proposal_aggregations[proposal_id].tally(event)
 
         event_cp = copy(event)
 
@@ -308,9 +450,6 @@ class Votes(DataProduct):
         del event_cp['proposal_id']
 
         self.proposal_vote_record[proposal_id].append(event_cp)
-
-
-
 
 class ParticipationModel:
     """
