@@ -720,7 +720,7 @@ async def bootstrap_event_feeds(app, loop):
 
     token_addr = deployment['token']['address'].lower()
     print(f"Using {token_addr=}", flush=True)
-    token_abi = ABI.from_file('token', f"/Users/jm/code/tenants/abis/v2/10/checked/{token_addr}.json") #, chain_id=chain_id, implementation=True)
+    token_abi = ABI.from_file('token', chain_id=chain_id, implementation=True)
     abi_list.append(token_abi)
 
     AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
