@@ -41,6 +41,7 @@
                     <th>Voting Power</th>
                     <th>Delegations</th>
                     <th>Participation</th>
+                    <th>Delegation Type</th>
                 </tr>
             </thead>
             <tbody>
@@ -105,6 +106,7 @@
                         <td>${formatVotingPower(delegate.voting_power)}</td>
                         <td>${delegate.from_cnt}</td>
                         <td>${formatParticipation(delegate.participation)}</td>
+                        <td>${delegate.amount === 10000 ? 'Full' : `${(delegate.amount / 100).toFixed(2)}%`}</td>
                     `;
                     tbody.appendChild(row);
                 });

@@ -600,8 +600,15 @@ async def delegates_handler(app, request):
 @openapi.summary("Information about a specific delegate")
 @measure
 async def delegate(request, addr):
-
-    from_list = [(a, str(app.ctx.balances.balance_of(a))) for a in app.ctx.delegations.delegatee_list[addr]]
+    from_list = []
+    for delegator in app.ctx.delegations.delegatee_list[addr]:
+        balance = str(app.ctx.balances.balance_of(delegator))
+        # Check if this is a partial delegation
+        if addr in app.ctx.delegations.delegation_amounts and delegator in app.ctx.delegations.delegation_amounts[addr]:
+            amount = app.ctx.delegations.delegation_amounts[addr][delegator]
+        else:
+            amount = 10000  # Full delegation
+        from_list.append((delegator, balance, amount))
 
     return json({'delegate' : 
                 {'addr' : addr,
@@ -726,7 +733,7 @@ async def bootstrap_event_feeds(app, loop):
     AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
 
     modules = {}
-    if AGORA_GOV:
+    if AGORA_GOV and 'modules' in deployment['gov'] and deployment['gov']['modules']:
         modules = {m['address'].lower() : m['name'] for m in deployment['gov']['modules']}
 
     gov_addr = deployment['gov']['address'].lower()
@@ -767,6 +774,7 @@ async def bootstrap_event_feeds(app, loop):
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
     app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
+    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,(address,uint96)[],(address,uint96)[])', delegations)
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
@@ -821,6 +829,10 @@ async def bootstrap_event_feeds(app, loop):
     app.add_task(ev.boot(app))
 
     ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
+    app.ctx.add_event_feed(ev)
+    app.add_task(ev.boot(app))
+
+    ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,(address,uint96)[],(address,uint96)[])', abis, dcqs)
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 

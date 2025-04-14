@@ -80,6 +80,7 @@ class Delegations(DataProduct):
         self.delegatee_cnt = defaultdict(int) #  dele
         
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
+        self.delegation_amounts = defaultdict(dict)
 
         self.voting_power = 0
 
@@ -109,6 +110,46 @@ class Delegations(DataProduct):
                     print(f"E109250323 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
+
+        elif signature == 'DelegateChanged(address,(address,uint96)[],(address,uint96)[])':
+            delegator = event['delegator'].lower()
+            
+            # Handle old delegations removal
+            for old_delegation in event.get('old_delegatees', []):
+                old_delegate = old_delegation[0].lower()
+                amount = int(old_delegation[1])
+
+                if old_delegate in self.delegatee_list:
+                    if delegator in self.delegatee_list[old_delegate]:
+                        self.delegatee_list[old_delegate].remove(delegator)
+                        self.delegatee_cnt[old_delegate] = len(self.delegatee_list[old_delegate])
+                    self.delegation_amounts[old_delegate].pop(delegator, None)
+                    
+                    # Update voting power
+                    self.delegatee_vp[old_delegate] -= amount
+                    self.delegatee_vp_history[old_delegate].append({
+                        'block_number': block_number,
+                        'voting_power': self.delegatee_vp[old_delegate]
+                    })
+
+            # Handle new delegations addition
+            for new_delegation in event.get('new_delegatees', []):
+                new_delegate = new_delegation[0].lower()
+                amount = int(new_delegation[1])
+                
+                if new_delegate not in self.delegatee_list:
+                    self.delegatee_list[new_delegate] = []
+                if delegator not in self.delegatee_list[new_delegate]:
+                    self.delegatee_list[new_delegate].append(delegator)
+                    self.delegatee_cnt[new_delegate] = len(self.delegatee_list[new_delegate])
+                self.delegation_amounts[new_delegate][delegator] = amount
+                
+                # Update voting power
+                self.delegatee_vp[new_delegate] += amount
+                self.delegatee_vp_history[new_delegate].append({
+                    'block_number': block_number,
+                    'voting_power': self.delegatee_vp[new_delegate]
+                })
 
         elif signature == 'DelegateVotesChanged(address,uint256,uint256)':
 
