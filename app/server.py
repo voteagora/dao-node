@@ -727,7 +727,7 @@ async def bootstrap_event_feeds(app, loop):
 
     modules = {}
     if AGORA_GOV:
-        modules = {m['address'].lower() : m['name'] for m in deployment['gov']['modules']}
+        modules = {m['address'].lower() : m['name'] for m in deployment['gov'].get('modules', [])}
 
     gov_addr = deployment['gov']['address'].lower()
     print(f"Using {gov_addr=}", flush=True)
@@ -752,7 +752,10 @@ async def bootstrap_event_feeds(app, loop):
                 if fragment.signature.startswith("ProposalTypeSet"):
                     proposal_type_set_signature = fragment.signature
 
-        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 'ProposalTypeSet(uint256,uint16,uint16,string)', 'ProposalTypeSet(uint8,uint16,uint16,string,string)'), f"found {proposal_type_set_signature}"
+        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 
+                                               'ProposalTypeSet(uint256,uint16,uint16,string)', 
+                                               'ProposalTypeSet(uint8,uint16,uint16,string,string)',
+                                               'ProposalTypeSet(uint8,uint16,uint16,string,string,address)'), f"found {proposal_type_set_signature}"
         abi_list.append(ptc_abi)
     
     abis = ABISet('daonode', abi_list)
@@ -761,8 +764,11 @@ async def bootstrap_event_feeds(app, loop):
     ##########################
     # Instantiate a "Data Product", that would need to be maintained given one or more events.
 
-    balances = Balances(token_spec=public_config['token_spec'])
-    app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', balances)
+    ERC20 = public_config['token_spec']['name'] == 'erc20'
+
+    if ERC20:
+        balances = Balances(token_spec=public_config['token_spec'])
+        app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', balances)
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
@@ -773,20 +779,30 @@ async def bootstrap_event_feeds(app, loop):
         app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', proposal_types)
         app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint256,uint16,uint16,string)', proposal_types)
         app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string)', proposal_types)
+        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string,address)', proposal_types)
 
 
     proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
 
     PROPOSAL_CREATED_1 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
-    PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
-    PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'
-    PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
+    PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'
+
+    PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
+    PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
+
     PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
     PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
     PROPOSAL_EXECUTED = 'ProposalExecuted(uint256)'
 
-    PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
-    if public_config['governor_spec']['name'] != 'compound':
+    gov_spec_name = public_config['governor_spec']['name']
+    if gov_spec_name != 'compound':
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
+    elif gov_spec_name == 'agora' and public_config['governor_spec'] == 0.1:
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
+    elif gov_spec_name == 'agora':
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_4]
+    else:
+        raise Exception("Govenor Unsupported: {}")
         PROPOSAL_CREATED_EVENTS.extend([PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4])
 
     PROPOSAL_LIFECYCLE_EVENTS = PROPOSAL_CREATED_EVENTS + [PROPOSAL_CANCELED, PROPOSAL_QUEUED, PROPOSAL_EXECUTED]
@@ -812,9 +828,10 @@ async def bootstrap_event_feeds(app, loop):
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
 
-    ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
+    if ERC20:
+        ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
+        app.ctx.add_event_feed(ev)
+        app.add_task(ev.boot(app))
 
     ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
     app.ctx.add_event_feed(ev)
