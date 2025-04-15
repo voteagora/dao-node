@@ -21,6 +21,8 @@ class Balances(DataProduct):
     def __init__(self, token_spec):
         self.balances = defaultdict(int)
 
+        self.erc20 = token_spec['name'] == 'erc20'
+
         # U is for uniswap, for lack of a better framing.
         if token_spec['version'] == 'U':
             self.value_field_name = 'amount'
