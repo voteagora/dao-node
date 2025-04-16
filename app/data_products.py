@@ -80,6 +80,7 @@ class Delegations(DataProduct):
         # Data about the delegatee (ie, the delegate's influence)
         self.delegatee_list = defaultdict(list) #  list of delegators
         self.delegatee_cnt = defaultdict(int) #  dele
+        self.delegatee_info = defaultdict(list) # list of (delegator, block_number, transaction_index) tuples
         
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
 
@@ -91,6 +92,7 @@ class Delegations(DataProduct):
 
         signature = event['signature']
         block_number = event['block_number']
+        transaction_index = event['transaction_index']
 
         if signature == 'DelegateChanged(address,address,address)':
 
@@ -102,11 +104,14 @@ class Delegations(DataProduct):
             self.delegator[delegator] = to_delegate
 
             self.delegatee_list[to_delegate].append(delegator)
+            self.delegatee_info[to_delegate].append((delegator, block_number, transaction_index))
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
                     self.delegatee_list[from_delegate].remove(delegator)
                     self.delegatee_cnt[from_delegate] = len(self.delegatee_list[from_delegate])
+                    # Remove the delegator info from old delegate
+                    self.delegatee_info[from_delegate] = [info for info in self.delegatee_info[from_delegate] if info[0] != delegator]
                 except ValueError as e:
                     print(f"E109250323 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
