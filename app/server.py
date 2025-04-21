@@ -785,6 +785,7 @@ async def bootstrap_event_feeds(app, loop):
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
+        scopes = Scopes()
 
         PROP_TYPE_SET_SIGNATURE = None
 
@@ -797,6 +798,9 @@ async def bootstrap_event_feeds(app, loop):
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , scopes)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', scopes)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , scopes)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
 

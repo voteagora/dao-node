@@ -70,7 +70,8 @@ class ProposalTypes(DataProduct):
 
         elif 'Scope' in signature:
             
-            scope_key = copy(event['scope_key'])
+            event = copy(event)
+            scope_key = event['scope_key']
             del event['scope_key']
             del event['signature']
 
