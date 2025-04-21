@@ -29,6 +29,7 @@ from sanic.blueprints import Blueprint
 from .middleware import start_timer, add_server_timing_header, measure
 from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel, Scopes
+from .signatures import *
 from . import __version__
 
 ######################################################################
