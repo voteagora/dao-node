@@ -1,9 +1,11 @@
+from copy import copy
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
 from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
-from copy import copy
+
+from .signatures import *
 
 class DataProduct(ABC):
 
@@ -142,7 +144,7 @@ class Delegations(DataProduct):
         signature = event['signature']
         block_number = event['block_number']
 
-        if signature == 'DelegateChanged(address,address,address)':
+        if signature == DELEGATE_CHANGED:
 
             delegator = event['delegator'].lower()
 
@@ -162,7 +164,7 @@ class Delegations(DataProduct):
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
-        elif signature == 'DelegateVotesChanged(address,uint256,uint256)':
+        elif signature == DELEGATE_VOTES_CHANGE:
 
             delegatee = event['delegate'].lower()
 

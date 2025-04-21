@@ -770,36 +770,22 @@ async def bootstrap_event_feeds(app, loop):
 
     if ERC20:
         balances = Balances(token_spec=public_config['token_spec'])
-        app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', balances)
+        app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     delegations = Delegations()
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
+    app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
+    app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED}', delegations)
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint256,uint16,uint16,string)', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string)', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string,address)', proposal_types)
 
-        # Register scope events
-        scopes = Scopes()
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeCreated(uint8,bytes24,bytes4,string)', scopes)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeDisabled(uint8,bytes24)', scopes)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeDeleted(uint8,bytes24)', scopes)
+        app.ctx.register(f'{chain_id}.{ptc_addr}.{PROP_TYPE_SET_1}', proposal_types)
+        app.ctx.register(f'{chain_id}.{ptc_addr}.{PROP_TYPE_SET_2}', proposal_types)
+        app.ctx.register(f'{chain_id}.{ptc_addr}.{PROP_TYPE_SET_3}', proposal_types)
+        app.ctx.register(f'{chain_id}.{ptc_addr}.{PROP_TYPE_SET_4}', proposal_types)
+
 
     proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
-
-    PROPOSAL_CREATED_1 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
-    PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'
-
-    PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
-    PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
-
-    PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
-    PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
-    PROPOSAL_EXECUTED = 'ProposalExecuted(uint256)'
 
     gov_spec_name = public_config['governor_spec']['name']
     if gov_spec_name == 'compound':
@@ -815,10 +801,6 @@ async def bootstrap_event_feeds(app, loop):
     for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
 
-
-    VOTE_CAST_1 = 'VoteCast(address,uint256,uint8,uint256,string)'
-    VOTE_CAST_WITH_PARAMS_1 = 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)'
-
     VOTE_EVENTS = [VOTE_CAST_1]    
     if public_config['governor_spec']['name'] != 'compound':
         VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
@@ -833,15 +815,15 @@ async def bootstrap_event_feeds(app, loop):
     #       can know to read in the past and subscribe to the future.
 
     if ERC20:
-        ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
+        ev = EventFeed(chain_id, token_addr, TRANSFER, abis, dcqs)
         app.ctx.add_event_feed(ev)
         app.add_task(ev.boot(app))
 
-    ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
+    ev = EventFeed(chain_id, token_addr, DELEGATE_VOTES_CHANGE, abis, dcqs)
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
-    ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
+    ev = EventFeed(chain_id, token_addr, DELEGATE_CHANGED, abis, dcqs)
     app.ctx.add_event_feed(ev)
     app.add_task(ev.boot(app))
 
