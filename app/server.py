@@ -242,6 +242,7 @@ class DataProductContext:
 
         self.dps = defaultdict(list)
         self.event_feeds = []
+        self.event_feed_meta = defaultdict(list)
     
     def handle_dispatch(self, chain_id_contract_signature, context):
 
@@ -255,8 +256,13 @@ class DataProductContext:
         for data_product in self.dps[chain_id_contract_signature]:
             data_product.handle(context)
 
-    def register(self, signature, data_product):
-        self.dps[signature].append(data_product)
+    def register(self, chain_id_contract_signature, data_product):
+
+        _, contract, signature = chain_id_contract_signature.split(".")
+
+        self.event_feed_meta[contract].append(signature)
+
+        self.dps[chain_id_contract_signature].append(data_product)
 
         setattr(self, data_product.name, data_product)
 
@@ -813,40 +819,14 @@ async def bootstrap_event_feeds(app, loop):
     # 🎪 🍔 Instantiate an "Event Feed" for every network, contract, and relevant 
     #       event signature.  Then register each one with the client sequencer so it
     #       can know to read in the past and subscribe to the future.
+    #       This has been automatically handled, by picking up metadata from
+    #       the data product registration step.  
 
-    if ERC20:
-        ev = EventFeed(chain_id, token_addr, TRANSFER, abis, dcqs)
-        app.ctx.add_event_feed(ev)
-        app.add_task(ev.boot(app))
-
-    ev = EventFeed(chain_id, token_addr, DELEGATE_VOTES_CHANGE, abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
-
-    ev = EventFeed(chain_id, token_addr, DELEGATE_CHANGED, abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
-
-    if 'ptc' in deployment:
-        ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
-        app.ctx.add_event_feed(ev)
-        app.add_task(ev.boot(app))
-
-        # Add scope event feeds
-        scope_events = [
-            'ScopeCreated(uint8,bytes24,bytes4,string)',
-            'ScopeDisabled(uint8,bytes24)',
-            'ScopeDeleted(uint8,bytes24)'
-        ]
-        for signature in scope_events:
-            ev = EventFeed(chain_id, ptc_addr, signature, abis, dcqs)
+    for address, signatures in app.ctx.event_feed_meta.items():
+        for signature in signatures:
+            ev = EventFeed(chain_id, address, signature, abis, dcqs)
             app.ctx.add_event_feed(ev)
             app.add_task(ev.boot(app))
-
-    for signature in PROPOSAL_LIFECYCLE_EVENTS + VOTE_EVENTS:
-       ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
-       app.ctx.add_event_feed(ev)
-       app.add_task(ev.boot(app))
 
 @app.after_server_start
 async def subscribe_event_fees(app, loop):
