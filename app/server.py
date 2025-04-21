@@ -28,7 +28,7 @@ from sanic.blueprints import Blueprint
 
 from .middleware import start_timer, add_server_timing_header, measure
 from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
-from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
+from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel, Scopes
 from . import __version__
 
 ######################################################################
@@ -435,6 +435,23 @@ async def proposal_type(request, proposal_type_id: int):
 	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
                  'id' : proposal_type_id})
 
+@app.route('/v1/scopes')
+@openapi.tag("Scope State")
+@openapi.summary("Get all scopes")
+@measure
+async def scopes(request):
+    return json({'scopes': app.ctx.scopes.get_all_scopes()})
+
+@app.route('/v1/scope/<scope_key>')
+@openapi.tag("Scope State")
+@openapi.summary("Get a specific scope")
+@measure
+async def scope(request, scope_key: str):
+    scope = app.ctx.scopes.get_scope(scope_key)
+    if not scope:
+        return json({'error': 'Scope not found'}, status=404)
+    return json({'scope': scope})
+
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
 
@@ -781,6 +798,11 @@ async def bootstrap_event_feeds(app, loop):
         app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string)', proposal_types)
         app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string,address)', proposal_types)
 
+        # Register scope events
+        scopes = Scopes()
+        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeCreated(uint8,bytes24,bytes4,string)', scopes)
+        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeDisabled(uint8,bytes24)', scopes)
+        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeDeleted(uint8,bytes24)', scopes)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
 
@@ -844,6 +866,17 @@ async def bootstrap_event_feeds(app, loop):
         ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
         app.ctx.add_event_feed(ev)
         app.add_task(ev.boot(app))
+
+        # Add scope event feeds
+        scope_events = [
+            'ScopeCreated(uint8,bytes24,bytes4,string)',
+            'ScopeDisabled(uint8,bytes24)',
+            'ScopeDeleted(uint8,bytes24)'
+        ]
+        for signature in scope_events:
+            ev = EventFeed(chain_id, ptc_addr, signature, abis, dcqs)
+            app.ctx.add_event_feed(ev)
+            app.add_task(ev.boot(app))
 
     for signature in PROPOSAL_LIFECYCLE_EVENTS + VOTE_EVENTS:
        ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
