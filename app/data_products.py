@@ -49,18 +49,46 @@ class Balances(DataProduct):
 
 class ProposalTypes(DataProduct):
     def __init__(self):
-        self.proposal_types = {}
+        self.proposal_types = defaultdict(dict)
         self.proposal_types_history = defaultdict(list)
 
     def handle(self, event):
 
-        proposal_type_info = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
+        signature = event['signature']
 
         proposal_type_id = event['proposal_type_id']
 
-        self.proposal_types[proposal_type_id] = proposal_type_info
-        self.proposal_types_history[proposal_type_id].append(event)
-    
+        if 'ProposalTypeSet' in signature:
+            proposal_type_info = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
+
+            self.proposal_types[proposal_type_id].update(**proposal_type_info)
+
+            if not 'scopes' in self.proposal_types[proposal_type_id].keys():
+                self.proposal_types[proposal_type_id]['scopes'] = {}
+
+            self.proposal_types_history[proposal_type_id].append(event)
+
+        elif 'Scope' in signature:
+            
+            scope_key = copy(event['scope_key'])
+            del event['scope_key']
+            del event['signature']
+
+            if 'Created' in signature:
+                del event['proposal_type_id']
+                self.proposal_types[proposal_type_id]['scopes'][scope_key] = event
+                status = 'created'
+                self.proposal_types[proposal_type_id]['scopes'][scope_key]['disabled_event'] = {}
+                self.proposal_types[proposal_type_id]['scopes'][scope_key]['deleted_event'] = {}
+            elif 'Disabled' in signature:
+                self.proposal_types[proposal_type_id]['scopes'][scope_key]['disabled_event'] = event
+                status = 'disabled'
+            elif 'Deleted' in signature:
+                self.proposal_types[proposal_type_id]['scopes'][scope_key]['deleted_event'] = event
+                status = 'deleted'
+            
+            self.proposal_types[proposal_type_id]['scopes'][scope_key]['status'] = status
+
     def get_historic_proposal_type(self, proposal_type_id, block_number):
 
         proposal_type_history = self.proposal_types_history[proposal_type_id]
