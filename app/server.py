@@ -785,11 +785,17 @@ async def bootstrap_event_feeds(app, loop):
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
 
-        app.ctx.register(f'{chain_id}.{ptc_addr}.{PROP_TYPE_SET_1}', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.{PROP_TYPE_SET_2}', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.{PROP_TYPE_SET_3}', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.{PROP_TYPE_SET_4}', proposal_types)
+        PROP_TYPE_SET_SIGNATURE = None
 
+        for prop_type_set_signature in [PROP_TYPE_SET_1, PROP_TYPE_SET_2, PROP_TYPE_SET_3, PROP_TYPE_SET_4]:
+            if abis.get_by_signature(prop_type_set_signature):
+                app.ctx.register(f'{chain_id}.{ptc_addr}.{prop_type_set_signature}', proposal_types)
+                PROP_TYPE_SET_SIGNATURE = prop_type_set_signature
+        
+        if AGORA_GOV and public_config['governor_spec']['version'] >= 1.1:
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
 
