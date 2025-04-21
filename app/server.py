@@ -758,20 +758,8 @@ async def bootstrap_event_feeds(app, loop):
         ptc_addr = deployment['ptc']['address'].lower()
         print(f"Using {ptc_addr=}", flush=True)
         ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
-
-        proposal_type_set_signature = None
-
-        for fragment in ptc_abi.fragments:
-            if fragment.type == 'event':
-                if fragment.signature.startswith("ProposalTypeSet"):
-                    proposal_type_set_signature = fragment.signature
-
-        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 
-                                               'ProposalTypeSet(uint256,uint16,uint16,string)', 
-                                               'ProposalTypeSet(uint8,uint16,uint16,string,string)',
-                                               'ProposalTypeSet(uint8,uint16,uint16,string,string,address)'), f"found {proposal_type_set_signature}"
         abi_list.append(ptc_abi)
-    
+
     abis = ABISet('daonode', abi_list)
 
     #################################################################################
