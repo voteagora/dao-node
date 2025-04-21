@@ -697,24 +697,22 @@ async def voting_power(request):
 
 #################################################################################
 #
-# Event registration
+# ⏫ 🌎 BOOT SEQUENCE
 #
 ################################################################################
-
 
 @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
 
+    #################################################################################
+    # ⚡️ 📀 Client Setup
+
     clients = []
 
-    # gcsc = GCSClient('gs://eth-event-feed')
-    
     csvc = CSVClient(DAO_NODE_DATA_PATH)
     if csvc.is_valid():
         clients.append(csvc)
     
-    # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
-
     # rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
     # if rpcc.is_valid():
     #    clients.append(rpcc)
@@ -723,14 +721,13 @@ async def bootstrap_event_feeds(app, loop):
     # if jwsc.is_valid():
     #    clients.append(jwsc)
 
-
-    ##########################
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
 
-    ##########################
-    # Get a full picture of all available contracts relevant for this app.
+    #################################################################################
+    # 👀 🕹️ ABI Setup - Load the ABIs relevant for the DAO.  
 
+    # Get a full picture of all available contracts relevant for this DAO.
     chain_id = int(deployment['chain_id'])
 
     abi_list = []
@@ -777,9 +774,9 @@ async def bootstrap_event_feeds(app, loop):
     
     abis = ABISet('daonode', abi_list)
 
-
-    ##########################
-    # Instantiate a "Data Product", that would need to be maintained given one or more events.
+    #################################################################################
+    # 🎪 🧠 Instantiate "Data Products".  These are the singletons that store data 
+    #      in RAM, that need to be maintained for every event.
 
     ERC20 = public_config['token_spec']['name'] == 'erc20'
 
@@ -842,12 +839,10 @@ async def bootstrap_event_feeds(app, loop):
     for VOTE_EVENT in VOTE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
 
-    ##########################
-    # Instatiate an "EventFeed", for every...
-    #   - network, contract, and relevant event signature.
-    #   - a fully-qualified ABI for all contracts in use globally across the app.
-    #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
-
+    #################################################################################
+    # 🎪 🍔 Instantiate an "Event Feed" for every network, contract, and relevant 
+    #       event signature.  Then register each one with the client sequencer so it
+    #       can know to read in the past and subscribe to the future.
 
     if ERC20:
         ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
