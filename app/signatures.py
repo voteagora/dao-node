@@ -19,3 +19,7 @@ PROP_TYPE_SET_4 = 'ProposalTypeSet(uint8,uint16,uint16,string,string,address)'
 
 VOTE_CAST_1 = 'VoteCast(address,uint256,uint8,uint256,string)'
 VOTE_CAST_WITH_PARAMS_1 = 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)'
+
+SCOPE_CREATED  = 'ScopeCreated(uint8,bytes24,bytes4,string)'
+SCOPE_DELETED  = 'ScopeDeleted(uint8,bytes24)'
+SCOPE_DISABLED = 'ScopeDisabled(uint8,bytes24)'
