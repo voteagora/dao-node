@@ -170,7 +170,7 @@ def test_ProposalTypes_proposal_type_set_with_one_scope_created(pguild_ptc_abi):
     assert pt.proposal_types[2]['quorum'] == 3300
     assert pt.proposal_types[2]['approval_threshold'] == 5100
 
-    assert pt.proposal_types[1]['scopes']['02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537']['description'] == 'Distribute splits contract'
+    assert pt.proposal_types[1]['scopes'][0]['description'] == 'Distribute splits contract'
 
     assert len(pt.get_all_live_scopes()) == 1
 
