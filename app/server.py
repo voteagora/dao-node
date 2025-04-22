@@ -432,33 +432,22 @@ async def proposal_handler(app, request, proposal_id):
 @openapi.summary("Latest information all proposal types")
 @measure
 async def proposal_types(request):
+    return await proposal_types_handler(app, request)
+
+async def proposal_types_handler(app, request):
 	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
 
-
-@app.route('/v1/proposal_type/<proposal_type_id>')
-@openapi.tag("Proposal State")
-@openapi.summary("Latest information about a specific proposal type")
-@measure
-async def proposal_type(request, proposal_type_id: int):
-	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
-                 'id' : proposal_type_id})
 
 @app.route('/v1/scopes')
 @openapi.tag("Scope State")
 @openapi.summary("Get all scopes")
 @measure
 async def scopes(request):
+    return await scopes_handler(app, request)
+
+async def scopes_handler(app, request):
     return json({'scopes': app.ctx.proposal_types.get_all_live_scopes()})
 
-@app.route('/v1/scope/<scope_key>')
-@openapi.tag("Scope State")
-@openapi.summary("Get a specific scope")
-@measure
-async def scope(request, scope_key: str):
-    scope = app.ctx.scopes.get_scope(scope_key)
-    if not scope:
-        return json({'error': 'Scope not found'}, status=404)
-    return json({'scope': scope})
 
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
