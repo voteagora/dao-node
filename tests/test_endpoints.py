@@ -2,9 +2,10 @@ import pytest
 from unittest.mock import Mock, AsyncMock
 from sanic import Sanic
 from sanic.response import json
-from app.server import proposals_handler
-from app.data_products import Proposals, Votes
+from app.server import proposals_handler, proposal_types_handler, scopes_handler
+from app.data_products import Proposals, Votes, ProposalTypes
 from app.clients import CSVClient
+from app.signatures import *
 
 @pytest.fixture
 def app():
@@ -13,7 +14,15 @@ def app():
     @app.route('/v1/proposals')
     async def proposals(request):
         return await proposals_handler(app, request)
-    
+
+    @app.route('/v1/proposal_types')
+    async def proposal_types(request):
+        return await proposal_types_handler(app, request)
+
+    @app.route('/v1/scopes')
+    async def scopes(request):
+        return await scopes_handler(app, request)
+
     return app
 
 @pytest.fixture
@@ -53,3 +62,40 @@ async def test_proposals_endpoint(app, test_client, compound_governor_abis):
     assert prop83['totals']['no-param']['1'] == '60410651581027066697650760'
     assert prop83['totals']['no-param']['2'] == '5795658915470619580362791'
 
+@pytest.mark.asyncio
+async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
+
+    pt = ProposalTypes()
+
+    csvc = CSVClient('tests/data/4000-pguild-ptc-w-scopes')
+    chain_id = 1115511
+
+    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', PROP_TYPE_SET_4, pguild_ptc_abi):
+        pt.handle(row)
+    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', SCOPE_CREATED, pguild_ptc_abi):
+        pt.handle(row)
+    
+    app.ctx.proposal_types = pt
+
+    req, resp = await test_client.get('/v1/proposal_types')
+    assert resp.status == 200
+    assert len(resp.json) == 1
+
+    expected_array_element = {'quorum': 0, 'approval_threshold': 0, 'name': 'Signal Votes', 'scopes': {}}   
+    proposal_type_id = '0' 
+    assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
+
+    expected_array_element = {'quorum': 0, 'approval_threshold': 5100, 'name': 'Distribute Splits', 'scopes': {'02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537': {'block_number': 8118843, 'transaction_index': 66, 'log_index': 113, 'selector': '2d3f5537', 'description': 'Distribute splits contract', 'disabled_event': {}, 'deleted_event': {}, 'status': 'created'}}}
+    proposal_type_id = '1'
+    assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
+
+    req, resp = await test_client.get('/v1/scopes')
+    assert resp.status == 200
+    assert len(resp.json) == 1
+
+    expected_array_element = {'block_number': 8118843, 'transaction_index': 66, 'log_index': 113, 'selector': '2d3f5537', 'description': 'Distribute splits contract', 'disabled_event': {}, 'status': 'created', 'proposal_type_id': 1, 'scope_key': '02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537'}
+    scope_array_position = 0
+    assert expected_array_element == resp.json['scopes'][scope_array_position]
+
+
+    

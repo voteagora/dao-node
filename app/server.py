@@ -19,6 +19,7 @@ from web3.providers.persistent import (
 )
 from google.cloud import storage
 import websocket
+from copy import copy
 
 from sanic_ext import openapi
 from sanic.worker.manager import WorkerManager
@@ -28,7 +29,8 @@ from sanic.blueprints import Blueprint
 
 from .middleware import start_timer, add_server_timing_header, measure
 from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
-from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel, Scopes
+from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
+from .signatures import *
 from . import __version__
 
 ######################################################################
@@ -242,6 +244,7 @@ class DataProductContext:
 
         self.dps = defaultdict(list)
         self.event_feeds = []
+        self.event_feed_meta = defaultdict(list)
     
     def handle_dispatch(self, chain_id_contract_signature, context):
 
@@ -255,8 +258,13 @@ class DataProductContext:
         for data_product in self.dps[chain_id_contract_signature]:
             data_product.handle(context)
 
-    def register(self, signature, data_product):
-        self.dps[signature].append(data_product)
+    def register(self, chain_id_contract_signature, data_product):
+
+        _, contract, signature = chain_id_contract_signature.split(".")
+
+        self.event_feed_meta[contract].append(signature)
+
+        self.dps[chain_id_contract_signature].append(data_product)
 
         setattr(self, data_product.name, data_product)
 
@@ -424,33 +432,22 @@ async def proposal_handler(app, request, proposal_id):
 @openapi.summary("Latest information all proposal types")
 @measure
 async def proposal_types(request):
+    return await proposal_types_handler(app, request)
+
+async def proposal_types_handler(app, request):
 	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
 
-
-@app.route('/v1/proposal_type/<proposal_type_id>')
-@openapi.tag("Proposal State")
-@openapi.summary("Latest information about a specific proposal type")
-@measure
-async def proposal_type(request, proposal_type_id: int):
-	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
-                 'id' : proposal_type_id})
 
 @app.route('/v1/scopes')
 @openapi.tag("Scope State")
 @openapi.summary("Get all scopes")
 @measure
 async def scopes(request):
-    return json({'scopes': app.ctx.scopes.get_all_scopes()})
+    return await scopes_handler(app, request)
 
-@app.route('/v1/scope/<scope_key>')
-@openapi.tag("Scope State")
-@openapi.summary("Get a specific scope")
-@measure
-async def scope(request, scope_key: str):
-    scope = app.ctx.scopes.get_scope(scope_key)
-    if not scope:
-        return json({'error': 'Scope not found'}, status=404)
-    return json({'scope': scope})
+async def scopes_handler(app, request):
+    return json({'scopes': app.ctx.proposal_types.get_all_live_scopes()})
+
 
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
@@ -697,24 +694,22 @@ async def voting_power(request):
 
 #################################################################################
 #
-# Event registration
+# ⏫ 🌎 BOOT SEQUENCE
 #
 ################################################################################
-
 
 @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
 
+    #################################################################################
+    # ⚡️ 📀 Client Setup
+
     clients = []
 
-    # gcsc = GCSClient('gs://eth-event-feed')
-    
     csvc = CSVClient(DAO_NODE_DATA_PATH)
     if csvc.is_valid():
         clients.append(csvc)
     
-    # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
-
     # rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
     # if rpcc.is_valid():
     #    clients.append(rpcc)
@@ -723,14 +718,13 @@ async def bootstrap_event_feeds(app, loop):
     # if jwsc.is_valid():
     #    clients.append(jwsc)
 
-
-    ##########################
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
 
-    ##########################
-    # Get a full picture of all available contracts relevant for this app.
+    #################################################################################
+    # 👀 🕹️ ABI Setup - Load the ABIs relevant for the DAO.  
 
+    # Get a full picture of all available contracts relevant for this DAO.
     chain_id = int(deployment['chain_id'])
 
     abi_list = []
@@ -761,65 +755,45 @@ async def bootstrap_event_feeds(app, loop):
         ptc_addr = deployment['ptc']['address'].lower()
         print(f"Using {ptc_addr=}", flush=True)
         ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
-
-        proposal_type_set_signature = None
-
-        for fragment in ptc_abi.fragments:
-            if fragment.type == 'event':
-                if fragment.signature.startswith("ProposalTypeSet"):
-                    proposal_type_set_signature = fragment.signature
-
-        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 
-                                               'ProposalTypeSet(uint256,uint16,uint16,string)', 
-                                               'ProposalTypeSet(uint8,uint16,uint16,string,string)',
-                                               'ProposalTypeSet(uint8,uint16,uint16,string,string,address)'), f"found {proposal_type_set_signature}"
         abi_list.append(ptc_abi)
-    
+
     abis = ABISet('daonode', abi_list)
 
-
-    ##########################
-    # Instantiate a "Data Product", that would need to be maintained given one or more events.
+    #################################################################################
+    # 🎪 🧠 Instantiate "Data Products".  These are the singletons that store data 
+    #      in RAM, that need to be maintained for every event.
 
     ERC20 = public_config['token_spec']['name'] == 'erc20'
 
     if ERC20:
         balances = Balances(token_spec=public_config['token_spec'])
-        app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', balances)
+        app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     delegations = Delegations()
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
+    app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
+    app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED}', delegations)
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint256,uint16,uint16,string)', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string)', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string,address)', proposal_types)
 
-        # Register scope events
-        scopes = Scopes()
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeCreated(uint8,bytes24,bytes4,string)', scopes)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeDisabled(uint8,bytes24)', scopes)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeDeleted(uint8,bytes24)', scopes)
+        PROP_TYPE_SET_SIGNATURE = None
+
+        for prop_type_set_signature in [PROP_TYPE_SET_1, PROP_TYPE_SET_2, PROP_TYPE_SET_3, PROP_TYPE_SET_4]:
+            if abis.get_by_signature(prop_type_set_signature):
+                app.ctx.register(f'{chain_id}.{ptc_addr}.{prop_type_set_signature}', proposal_types)
+                PROP_TYPE_SET_SIGNATURE = prop_type_set_signature
+        
+        if AGORA_GOV and public_config['governor_spec']['version'] >= 1.1:
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
-
-    PROPOSAL_CREATED_1 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
-    PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'
-
-    PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
-    PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
-
-    PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
-    PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
-    PROPOSAL_EXECUTED = 'ProposalExecuted(uint256)'
 
     gov_spec_name = public_config['governor_spec']['name']
     if gov_spec_name == 'compound':
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
-    elif gov_spec_name == 'agora' and public_config['governor_spec'] == 0.1:
+    elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 0.1:
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
     elif gov_spec_name == 'agora':
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_4]
@@ -830,10 +804,6 @@ async def bootstrap_event_feeds(app, loop):
     for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
 
-
-    VOTE_CAST_1 = 'VoteCast(address,uint256,uint8,uint256,string)'
-    VOTE_CAST_WITH_PARAMS_1 = 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)'
-
     VOTE_EVENTS = [VOTE_CAST_1]    
     if public_config['governor_spec']['name'] != 'compound':
         VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
@@ -842,46 +812,18 @@ async def bootstrap_event_feeds(app, loop):
     for VOTE_EVENT in VOTE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
 
-    ##########################
-    # Instatiate an "EventFeed", for every...
-    #   - network, contract, and relevant event signature.
-    #   - a fully-qualified ABI for all contracts in use globally across the app.
-    #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
+    #################################################################################
+    # 🎪 🍔 Instantiate an "Event Feed" for every network, contract, and relevant 
+    #       event signature.  Then register each one with the client sequencer so it
+    #       can know to read in the past and subscribe to the future.
+    #       This has been automatically handled, by picking up metadata from
+    #       the data product registration step.  
 
-
-    if ERC20:
-        ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-        app.ctx.add_event_feed(ev)
-        app.add_task(ev.boot(app))
-
-    ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
-
-    ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
-
-    if 'ptc' in deployment:
-        ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
-        app.ctx.add_event_feed(ev)
-        app.add_task(ev.boot(app))
-
-        # Add scope event feeds
-        scope_events = [
-            'ScopeCreated(uint8,bytes24,bytes4,string)',
-            'ScopeDisabled(uint8,bytes24)',
-            'ScopeDeleted(uint8,bytes24)'
-        ]
-        for signature in scope_events:
-            ev = EventFeed(chain_id, ptc_addr, signature, abis, dcqs)
+    for address, signatures in app.ctx.event_feed_meta.items():
+        for signature in signatures:
+            ev = EventFeed(chain_id, address, signature, abis, dcqs)
             app.ctx.add_event_feed(ev)
             app.add_task(ev.boot(app))
-
-    for signature in PROPOSAL_LIFECYCLE_EVENTS + VOTE_EVENTS:
-       ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
-       app.ctx.add_event_feed(ev)
-       app.add_task(ev.boot(app))
 
 @app.after_server_start
 async def subscribe_event_fees(app, loop):

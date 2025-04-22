@@ -1,9 +1,11 @@
+from copy import copy
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
 from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
-from copy import copy
+
+from .signatures import *
 
 class DataProduct(ABC):
 
@@ -47,18 +49,55 @@ class Balances(DataProduct):
 
 class ProposalTypes(DataProduct):
     def __init__(self):
-        self.proposal_types = {}
+        self.proposal_types = defaultdict(dict)
         self.proposal_types_history = defaultdict(list)
 
     def handle(self, event):
 
-        proposal_type_info = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
+        signature = event['signature']
 
         proposal_type_id = event['proposal_type_id']
 
-        self.proposal_types[proposal_type_id] = proposal_type_info
-        self.proposal_types_history[proposal_type_id].append(event)
-    
+        if 'ProposalTypeSet' in signature:
+            proposal_type_info = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
+
+            self.proposal_types[proposal_type_id].update(**proposal_type_info)
+
+            if not 'scopes' in self.proposal_types[proposal_type_id].keys():
+                self.proposal_types[proposal_type_id]['scopes'] = {}
+
+            self.proposal_types_history[proposal_type_id].append(event)
+
+        elif 'Scope' in signature:
+            
+            event = copy(event)
+            scope_key = event['scope_key']
+
+            del event['scope_key']
+            del event['signature']
+            del event['sighash']
+
+            if 'Created' in signature:
+                del event['proposal_type_id']
+                self.proposal_types[proposal_type_id]['scopes'][scope_key] = event
+                status = 'created'
+                self.proposal_types[proposal_type_id]['scopes'][scope_key]['disabled_event'] = {}
+                self.proposal_types[proposal_type_id]['scopes'][scope_key]['deleted_event'] = {}
+            elif 'Disabled' in signature:
+                self.proposal_types[proposal_type_id]['scopes'][scope_key]['disabled_event'] = event
+                status = 'disabled'
+            elif 'Deleted' in signature:
+                self.proposal_types[proposal_type_id]['scopes'][scope_key]['deleted_event'] = event
+                status = 'deleted'
+            else:
+                raise Exception(f"Event signature {signature} not handled.")
+            
+            self.proposal_types[proposal_type_id]['scopes'][scope_key]['status'] = status
+        
+        else:
+            raise Exception(f"Event signature {signature} not handled.")
+
+
     def get_historic_proposal_type(self, proposal_type_id, block_number):
 
         proposal_type_history = self.proposal_types_history[proposal_type_id]
@@ -72,56 +111,21 @@ class ProposalTypes(DataProduct):
 
         return {k : pit_proposal_type[k] for k in ['quorum', 'approval_threshold', 'name']}
 
-class Scopes(DataProduct):
-    def __init__(self):
-        self.scopes = {}
-        self.scopes_history = defaultdict(list)
-        self.disabled_scopes = set()
-        self.deleted_scopes = set()
+    def get_all_live_scopes(self):
 
-    def handle(self, event):
-        signature = event['signature']
-        proposal_type_id = event['proposal_type_id']
-        scope_key = event['scope_key']
+        out = []
 
-        if signature == 'ScopeCreated(uint8,bytes24,bytes4,string)':
-            scope_info = {
-                'proposal_type_id': proposal_type_id,
-                'scope_key': scope_key,
-                'selector': event['selector'],
-                'description': event['description']
-            }
-            self.scopes[scope_key] = scope_info
-            self.scopes_history[scope_key].append(event)
-            # Remove from disabled/deleted sets if it was there
-            self.disabled_scopes.discard(scope_key)
-            self.deleted_scopes.discard(scope_key)
+        for prop_type_id, prop_type in self.proposal_types.items():
+            for scope_key, scope in prop_type.get('scopes', {}).items():
+                scope_copy = copy(scope)
+                del scope_copy['deleted_event']
+                if 'status' != 'deleted':
+                    scope_copy['proposal_type_id'] = prop_type_id
+                    scope_copy['scope_key'] = scope_key
+                    out.append(scope_copy)
+        
+        return out
 
-        elif signature == 'ScopeDisabled(uint8,bytes24)':
-            self.disabled_scopes.add(scope_key)
-
-        elif signature == 'ScopeDeleted(uint8,bytes24)':
-            self.deleted_scopes.add(scope_key)
-            # Remove from disabled set if it was there
-            self.disabled_scopes.discard(scope_key)
-
-    def get_scope(self, scope_key):
-        if scope_key in self.deleted_scopes:
-            return None
-        scope = self.scopes.get(scope_key)
-        if not scope:
-            return None
-        return {
-            **scope,
-            'disabled': scope_key in self.disabled_scopes
-        }
-
-    def get_all_scopes(self):
-        return [
-            self.get_scope(scope_key)
-            for scope_key in self.scopes.keys()
-            if scope_key not in self.deleted_scopes
-        ]
 
 class Delegations(DataProduct):
     def __init__(self):
@@ -142,7 +146,7 @@ class Delegations(DataProduct):
         signature = event['signature']
         block_number = event['block_number']
 
-        if signature == 'DelegateChanged(address,address,address)':
+        if signature == DELEGATE_CHANGED:
 
             delegator = event['delegator'].lower()
 
@@ -162,7 +166,7 @@ class Delegations(DataProduct):
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
-        elif signature == 'DelegateVotesChanged(address,uint256,uint256)':
+        elif signature == DELEGATE_VOTES_CHANGE:
 
             delegatee = event['delegate'].lower()
 
