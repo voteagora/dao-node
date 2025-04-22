@@ -1,9 +1,10 @@
 import pytest
-from app.data_products import Balances, Delegations, Proposals, Votes
+from app.data_products import Balances, Delegations, Proposals, Votes, ProposalTypes
 from app.clients import CSVClient
 import csv
 import os
 from abifsm import ABI, ABISet
+from app.signatures import *
 
 ####################################
 #
@@ -153,3 +154,34 @@ def test_Votes_one_op_approval_from_csv(op_governor_abis):
 
     assert len(aggregations.result) == 16
 
+def test_ProposalTypes_proposal_type_set_with_one_scope_created(pguild_ptc_abi):
+
+    pt = ProposalTypes()
+
+    csvc = CSVClient('tests/data/4000-pguild-ptc-w-scopes')
+    chain_id = 1115511
+
+    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', PROP_TYPE_SET_4, pguild_ptc_abi):
+        pt.handle(row)
+    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', SCOPE_CREATED, pguild_ptc_abi):
+        pt.handle(row)
+    
+    assert len(pt.proposal_types) == 3
+    assert pt.proposal_types[2]['quorum'] == 3300
+    assert pt.proposal_types[2]['approval_threshold'] == 5100
+
+    assert pt.proposal_types[1]['scopes']['02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537']['description'] == 'Distribute splits contract'
+
+    assert len(pt.get_all_live_scopes()) == 1
+
+    expected_scope = {'block_number': 8118843,
+                      'description': 'Distribute splits contract',
+                      'disabled_event': {},
+                      'log_index': 113,
+                      'proposal_type_id': 1,
+                      'scope_key': '02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537',
+                      'selector': '2d3f5537',
+                      'status': 'created',
+                      'transaction_index': 66}
+
+    assert expected_scope in pt.get_all_live_scopes()
