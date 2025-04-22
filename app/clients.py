@@ -3,6 +3,9 @@ from pathlib import Path
 from .utils import camel_to_snake
 import csv
 import os
+import sys
+
+csv.field_size_limit(sys.maxsize)
 
 DEBUG = False
 
@@ -61,7 +64,7 @@ class CSVClient:
             except FileNotFoundError:
                 warn(f"Warning: {fname} not found, skipping.")
                 reader = []
-
+            
             for row in reader:
 
                 row['block_number'] = int(row['block_number'])
