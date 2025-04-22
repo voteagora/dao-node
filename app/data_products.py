@@ -120,8 +120,8 @@ class ProposalTypes(DataProduct):
                 scope_copy = copy(scope)
                 del scope_copy['deleted_event']
                 if 'status' != 'deleted':
-                    scope['proposal_type_id'] = prop_type_id
-                    scope['scope_key'] = scope_key
+                    scope_copy['proposal_type_id'] = prop_type_id
+                    scope_copy['scope_key'] = scope_key
                     out.append(scope_copy)
         
         return out
