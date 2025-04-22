@@ -75,6 +75,7 @@ class ProposalTypes(DataProduct):
 
             del event['scope_key']
             del event['signature']
+            del event['sighash']
 
             if 'Created' in signature:
                 del event['proposal_type_id']
