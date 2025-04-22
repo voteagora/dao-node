@@ -771,7 +771,11 @@ async def bootstrap_event_feeds(app, loop):
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
-    app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED}', delegations)
+
+    if 'IVotesPartialDelegation' in public_config['token_spec']['interfaces']:
+        app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_2}', delegations)
+    else:
+        app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_1}', delegations)
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()

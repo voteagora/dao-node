@@ -1,6 +1,7 @@
 TRANSFER = 'Transfer(address,address,uint256)'
 DELEGATE_VOTES_CHANGE = 'DelegateVotesChanged(address,uint256,uint256)'
-DELEGATE_CHANGED = 'DelegateChanged(address,address,address)'
+DELEGATE_CHANGED_1 = 'DelegateChanged(address,address,address)'
+DELEGATE_CHANGED_2 = 'DelegateChanged(address,(address,uint96)[],(address,uint96)[])'
 
 PROPOSAL_CREATED_1 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
 PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'

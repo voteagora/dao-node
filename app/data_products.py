@@ -146,7 +146,7 @@ class Delegations(DataProduct):
         signature = event['signature']
         block_number = event['block_number']
 
-        if signature == DELEGATE_CHANGED:
+        if signature == DELEGATE_CHANGED_1:
 
             delegator = event['delegator'].lower()
 
