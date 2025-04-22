@@ -178,7 +178,6 @@ def test_ProposalTypes_proposal_type_set_with_one_scope_created(pguild_ptc_abi):
                       'description': 'Distribute splits contract',
                       'disabled_event': {},
                       'log_index': 113,
-                      'proposal_type_id': 1,
                       'scope_key': '02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537',
                       'selector': '2d3f5537',
                       'status': 'created',

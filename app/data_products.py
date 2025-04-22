@@ -72,39 +72,27 @@ class ProposalTypes(DataProduct):
             event = copy(event)
             scope_key = event['scope_key']
 
-            del event['scope_key']
             del event['signature']
             del event['sighash']
 
             if 'Created' in signature:
                 del event['proposal_type_id']
-                scope = {
-                    'scope_key': scope_key,
-                    'proposal_type_id': proposal_type_id,
-                    'block_number': event['block_number'],
-                    'transaction_index': event['transaction_index'],
-                    'log_index': event['log_index'],
-                    'selector': event['selector'],
-                    'description': event['description'],
-                    'disabled_event': {},
-                    'deleted_event': {},
-                    'status': 'created'
-                }
-                self.proposal_types[proposal_type_id]['scopes'].append(scope)
+                event['status'] = 'created'
+                event['disabled_event'] = {}
+                event['deleted_event'] = {}
+                self.proposal_types[proposal_type_id]['scopes'].append(event)
             elif 'Disabled' in signature:
                 # Will disable all scopes with the scope_key
                 for scope in self.proposal_types[proposal_type_id]['scopes']:
                     if scope['scope_key'] == scope_key:
                         scope['disabled_event'] = event
                         scope['status'] = 'disabled'
-                        break
             elif 'Deleted' in signature:
                 # Will delete all scopes with the scope_key
                 for scope in self.proposal_types[proposal_type_id]['scopes']:
                     if scope['scope_key'] == scope_key:
                         scope['deleted_event'] = event
                         scope['status'] = 'deleted'
-                        break
             else:
                 raise Exception(f"Event signature {signature} not handled.")
         
