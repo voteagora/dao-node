@@ -89,8 +89,14 @@ class ProposalTypes(DataProduct):
             elif 'Deleted' in signature:
                 self.proposal_types[proposal_type_id]['scopes'][scope_key]['deleted_event'] = event
                 status = 'deleted'
+            else:
+                raise Exception(f"Event signature {signature} not handled.")
             
             self.proposal_types[proposal_type_id]['scopes'][scope_key]['status'] = status
+        
+        else:
+            raise Exception(f"Event signature {signature} not handled.")
+
 
     def get_historic_proposal_type(self, proposal_type_id, block_number):
 
