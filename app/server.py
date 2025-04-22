@@ -19,6 +19,7 @@ from web3.providers.persistent import (
 )
 from google.cloud import storage
 import websocket
+from copy import copy
 
 from sanic_ext import openapi
 from sanic.worker.manager import WorkerManager
@@ -28,7 +29,7 @@ from sanic.blueprints import Blueprint
 
 from .middleware import start_timer, add_server_timing_header, measure
 from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
-from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel, Scopes
+from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
 from .signatures import *
 from . import __version__
 
@@ -447,7 +448,7 @@ async def proposal_type(request, proposal_type_id: int):
 @openapi.summary("Get all scopes")
 @measure
 async def scopes(request):
-    return json({'scopes': app.ctx.scopes.get_all_scopes()})
+    return json({'scopes': app.ctx.proposal_types.get_all_live_scopes()})
 
 @app.route('/v1/scope/<scope_key>')
 @openapi.tag("Scope State")
@@ -785,7 +786,6 @@ async def bootstrap_event_feeds(app, loop):
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
-        scopes = Scopes()
 
         PROP_TYPE_SET_SIGNATURE = None
 
@@ -798,9 +798,6 @@ async def bootstrap_event_feeds(app, loop):
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
-            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , scopes)
-            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', scopes)
-            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , scopes)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
 
