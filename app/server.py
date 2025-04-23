@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import csv, time, pdb, os
+import csv, time, pdb, os, logging
 import datetime as dt
 import asyncio
 import psycopg2 
@@ -13,7 +13,6 @@ from bisect import bisect_left
 
 import yaml
 from google.cloud import storage
-import websocket
 from copy import copy
 
 from sanic_ext import openapi
@@ -164,9 +163,14 @@ class EventFeed:
         self.block = None
         self.booting = True
     
+        self.logr = logging.getLogger("sanic.root")
+
+
     def archive_read(self):
 
         for client in self.cs:
+
+            self.logr.info(f"Reading archive for client of type {type(client)}")
 
             if client.timeliness == 'archive':
 
@@ -184,6 +188,8 @@ class EventFeed:
 
         async for client in self.cs.get_async_iterator():
 
+            self.logr.info(f"Reading archive for client of type {type(client)}")
+
             if client.timeliness == 'realtime':
 
                 if self.block is None:
@@ -192,6 +198,8 @@ class EventFeed:
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
                 async for event in reader:
+
+                    self.logr.info(f"Received real-time event at block #: {event['block_number']}")
 
                     self.block = max(self.block, event['block_number'])
 
@@ -203,7 +211,7 @@ class EventFeed:
 
         start = dt.datetime.now()
 
-        print(f"Loading {self.chain_id}.{self.address}.{self.signature}", flush=True)
+        self.logr.info(f"Loading {self.chain_id}.{self.address}.{self.signature}")
 
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
@@ -213,22 +221,25 @@ class EventFeed:
                 data_product_dispatcher.handle(event)
 
             if (cnt % 1_000_000) == 0:
-                print(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}", flush=True)
+                logr.info(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}")
         
         end = dt.datetime.now()
-
-        print(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.", flush=True)
         
         await asyncio.sleep(.01)
 
         self.booting = False
 
+        self.logr.info(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.")
+
         return 
     
     async def run(self, app):
 
+        t = 30
         while self.booting:
-            await asyncio.sleep(5)
+            self.logr.info(f"Wait {t} seconds...")
+            await asyncio.sleep(t)
+            t = max(5, t - 1)
 
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
@@ -826,6 +837,7 @@ async def subscribe_event_fees(app, loop):
 
     print("Adding signal handler for each event feed.")
     for ev in app.ctx.event_feeds:
+        (f"Invoking ev.run(app) for {ev.signature}")
         app.add_task(ev.run(app))
 
 
