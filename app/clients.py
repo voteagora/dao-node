@@ -4,6 +4,8 @@ from .utils import camel_to_snake
 import csv
 import os
 import sys
+from web3 import Web3, AsyncWeb3, WebSocketProvider
+import websocket
 
 csv.field_size_limit(sys.maxsize)
 
