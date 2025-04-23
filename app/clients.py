@@ -6,7 +6,6 @@ import os
 import sys
 from datetime import datetime, timedelta
 from web3 import Web3, AsyncWeb3, WebSocketProvider
-# from web3.middleware.geth_poa import geth_poa_middleware
 from web3.middleware import ExtraDataToPOAMiddleware
 import websocket
 
@@ -127,7 +126,7 @@ class JsonRpcHistHttpClient:
         w3 = Web3(Web3.HTTPProvider(self.url))
 
         if DAO_NODE_USE_POA_MIDDLEWARE:
-            w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+            w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
         
         return w3
 
@@ -305,7 +304,7 @@ class JsonRpcRTWsClient:
         async with AsyncWeb3(WebSocketProvider(self.url)) as w3:
 
             if DAO_NODE_USE_POA_MIDDLEWARE:
-                w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+                w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
             
             EVENT_NAME = abi['name']            
             contract_events = w3.eth.contract(abi=[abi]).events
