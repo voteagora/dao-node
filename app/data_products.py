@@ -113,19 +113,6 @@ class ProposalTypes(DataProduct):
 
         return {k : pit_proposal_type[k] for k in ['quorum', 'approval_threshold', 'name']}
 
-    def get_all_live_scopes(self):
-
-        out = []
-
-        for prop_type_id, prop_type in self.proposal_types.items():
-            for scope in prop_type.get('scopes', []):
-                if scope['status'] != 'deleted':
-                    scope_copy = copy(scope)
-                    del scope_copy['deleted_event']
-                    out.append(scope_copy)
-        
-        return out
-
 
 class Delegations(DataProduct):
     def __init__(self):

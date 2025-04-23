@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock
 from sanic import Sanic
 from sanic.response import json
-from app.server import proposals_handler, proposal_types_handler, scopes_handler
+from app.server import proposals_handler, proposal_types_handler
 from app.data_products import Proposals, Votes, ProposalTypes
 from app.clients import CSVClient
 from app.signatures import *
@@ -18,10 +18,6 @@ def app():
     @app.route('/v1/proposal_types')
     async def proposal_types(request):
         return await proposal_types_handler(app, request)
-
-    @app.route('/v1/scopes')
-    async def scopes(request):
-        return await scopes_handler(app, request)
 
     return app
 
@@ -88,14 +84,6 @@ async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
     expected_array_element = {'quorum': 0, 'approval_threshold': 5100, 'name': 'Distribute Splits', 'scopes': [{'scope_key': '02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537', 'block_number': 8118843, 'transaction_index': 66, 'log_index': 113, 'selector': '2d3f5537', 'description': 'Distribute splits contract', 'disabled_event': {}, 'deleted_event': {}, 'status': 'created'}]}
     proposal_type_id = '1'
     assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
-
-    req, resp = await test_client.get('/v1/scopes')
-    assert resp.status == 200
-    assert len(resp.json) == 1
-
-    expected_array_element = {'block_number': 8118843, 'transaction_index': 66, 'log_index': 113, 'selector': '2d3f5537', 'description': 'Distribute splits contract', 'disabled_event': {}, 'status': 'created', 'scope_key': '02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537'}
-    scope_array_position = 0
-    assert expected_array_element == resp.json['scopes'][scope_array_position]
 
 
     
