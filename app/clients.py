@@ -4,8 +4,12 @@ from .utils import camel_to_snake
 import csv
 import os
 import sys
+from web3 import Web3, AsyncWeb3, WebSocketProvider
+import websocket
 
 csv.field_size_limit(sys.maxsize)
+
+DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
 
 DEBUG = False
 
