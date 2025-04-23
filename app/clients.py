@@ -1,7 +1,11 @@
+from warnings import warn
 from pathlib import Path
 from .utils import camel_to_snake
 import csv
 import os
+import sys
+
+csv.field_size_limit(sys.maxsize)
 
 DEBUG = False
 
@@ -56,8 +60,13 @@ class CSVClient:
 
         if after == 0:
             
-            reader = csv.DictReader(open(fname))
-
+            try:
+                fs = open(fname)
+                reader = csv.DictReader(fs)
+            except FileNotFoundError:
+                warn(f"Warning: {fname} not found, skipping.")
+                reader = []
+            
             for row in reader:
 
                 row['block_number'] = int(row['block_number'])
