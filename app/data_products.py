@@ -64,8 +64,7 @@ class ProposalTypes(DataProduct):
             self.proposal_types[proposal_type_id].update(**proposal_type_info)
 
             if not 'scopes' in self.proposal_types[proposal_type_id].keys():
-                self.proposal_types[proposal_type_id]['scopes'] = {}
-
+                self.proposal_types[proposal_type_id]['scopes'] = []
             self.proposal_types_history[proposal_type_id].append(event)
 
         elif 'Scope' in signature:
@@ -73,26 +72,29 @@ class ProposalTypes(DataProduct):
             event = copy(event)
             scope_key = event['scope_key']
 
-            del event['scope_key']
             del event['signature']
             del event['sighash']
 
             if 'Created' in signature:
                 del event['proposal_type_id']
-                self.proposal_types[proposal_type_id]['scopes'][scope_key] = event
-                status = 'created'
-                self.proposal_types[proposal_type_id]['scopes'][scope_key]['disabled_event'] = {}
-                self.proposal_types[proposal_type_id]['scopes'][scope_key]['deleted_event'] = {}
+                event['status'] = 'created'
+                event['disabled_event'] = {}
+                event['deleted_event'] = {}
+                self.proposal_types[proposal_type_id]['scopes'].append(event)
             elif 'Disabled' in signature:
-                self.proposal_types[proposal_type_id]['scopes'][scope_key]['disabled_event'] = event
-                status = 'disabled'
+                # Will disable all scopes with the scope_key
+                for scope in self.proposal_types[proposal_type_id]['scopes']:
+                    if scope['scope_key'] == scope_key:
+                        scope['disabled_event'] = event
+                        scope['status'] = 'disabled'
             elif 'Deleted' in signature:
-                self.proposal_types[proposal_type_id]['scopes'][scope_key]['deleted_event'] = event
-                status = 'deleted'
+                # Will delete all scopes with the scope_key
+                for scope in self.proposal_types[proposal_type_id]['scopes']:
+                    if scope['scope_key'] == scope_key:
+                        scope['deleted_event'] = event
+                        scope['status'] = 'deleted'
             else:
                 raise Exception(f"Event signature {signature} not handled.")
-            
-            self.proposal_types[proposal_type_id]['scopes'][scope_key]['status'] = status
         
         else:
             raise Exception(f"Event signature {signature} not handled.")
@@ -110,21 +112,6 @@ class ProposalTypes(DataProduct):
             pit_proposal_type = proposal_type
 
         return {k : pit_proposal_type[k] for k in ['quorum', 'approval_threshold', 'name']}
-
-    def get_all_live_scopes(self):
-
-        out = []
-
-        for prop_type_id, prop_type in self.proposal_types.items():
-            for scope_key, scope in prop_type.get('scopes', {}).items():
-                scope_copy = copy(scope)
-                del scope_copy['deleted_event']
-                if 'status' != 'deleted':
-                    scope_copy['proposal_type_id'] = prop_type_id
-                    scope_copy['scope_key'] = scope_key
-                    out.append(scope_copy)
-        
-        return out
 
 
 class Delegations(DataProduct):

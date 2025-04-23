@@ -437,18 +437,6 @@ async def proposal_types(request):
 async def proposal_types_handler(app, request):
 	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
 
-
-@app.route('/v1/scopes')
-@openapi.tag("Scope State")
-@openapi.summary("Get all scopes")
-@measure
-async def scopes(request):
-    return await scopes_handler(app, request)
-
-async def scopes_handler(app, request):
-    return json({'scopes': app.ctx.proposal_types.get_all_live_scopes()})
-
-
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
 
