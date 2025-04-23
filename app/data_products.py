@@ -59,7 +59,7 @@ class ProposalTypes(DataProduct):
         proposal_type_id = event['proposal_type_id']
 
         if 'ProposalTypeSet' in signature:
-            proposal_type_info = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
+            proposal_type_info = {k : event.get(k, None) for k in ['quorum', 'approval_threshold', 'name', 'module']}
 
             self.proposal_types[proposal_type_id].update(**proposal_type_info)
 
