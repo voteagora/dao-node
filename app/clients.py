@@ -6,11 +6,15 @@ import os
 import sys
 from datetime import datetime, timedelta
 from web3 import Web3, AsyncWeb3, WebSocketProvider
+# from web3.middleware.geth_poa import geth_poa_middleware
+from web3.middleware import ExtraDataToPOAMiddleware
 import websocket
 
 csv.field_size_limit(sys.maxsize)
 
 DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
+
+DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
 
 DEBUG = False
 
@@ -118,12 +122,21 @@ class JsonRpcHistHttpClient:
         self.url = url
         self.fallback_block = None
 
+    def connect(self):
+        
+        w3 = Web3(Web3.HTTPProvider(self.url))
+
+        if DAO_NODE_USE_POA_MIDDLEWARE:
+            w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        
+        return w3
+
     def is_valid(self):
 
         if self.url in ('', 'ignored', None):
             ans = False
         else:
-            w3 = Web3(Web3.HTTPProvider(self.url))
+            w3 = self.connect()
             ans = w3.is_connected()
         
         if ans:
@@ -138,8 +151,8 @@ class JsonRpcHistHttpClient:
         if self.fallback_block is not None:
             return self.fallback_block
         
-        w3 = Web3(Web3.HTTPProvider(self.url))
-
+        w3 = self.connect()
+            
         if not w3.is_connected():
             raise Exception(f"Could not connect to {self.url}")
 
@@ -159,7 +172,7 @@ class JsonRpcHistHttpClient:
             # print(f"Block {block.number}: {block_time.isoformat()} UTC")
 
             if block_time < target_date:
-                print(f"\nFound block from 4+ days ago: {block.number} @ {block_time.isoformat()} UTC")
+                print(f"Found block from 4+ days ago: {block.number} @ {block_time.isoformat()} UTC")
 
                 self.fallback_block = block.number 
 
@@ -211,10 +224,7 @@ class JsonRpcHistHttpClient:
 
     def read(self, chain_id, address, signature, abis, after):
 
-        w3 = Web3(Web3.HTTPProvider(self.url))
-
-        if not w3.is_connected():
-            raise Exception(f"Could not connect to {self.url}")
+        w3 = self.connect()
 
         event = abis.get_by_signature(signature)
         
@@ -293,6 +303,9 @@ class JsonRpcRTWsClient:
         abi = event.literal
 
         async with AsyncWeb3(WebSocketProvider(self.url)) as w3:
+
+            if DAO_NODE_USE_POA_MIDDLEWARE:
+                w3.middleware_onion.inject(geth_poa_middleware, layer=0)
             
             EVENT_NAME = abi['name']            
             contract_events = w3.eth.contract(abi=[abi]).events

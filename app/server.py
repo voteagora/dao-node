@@ -12,11 +12,6 @@ from pathlib import Path
 from bisect import bisect_left
 
 import yaml
-from web3 import AsyncWeb3, Web3
-from web3.providers.persistent import (
-    AsyncIPCProvider,
-    WebSocketProvider,
-)
 from google.cloud import storage
 import websocket
 from copy import copy
