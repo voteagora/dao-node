@@ -48,13 +48,11 @@ class CSVClient:
         abi_frag = abis.get_by_signature(signature)
 
         if abi_frag is None:
-            print(f"Signature `{signature}` Not Found")
-            return
+            raise KeyError(f"Signature `{signature}` Not Found")
 
         fname = self.fname(chain_id, address, signature)
 
         int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
-        array_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'].endswith('[]')]
 
         cnt = 0
 
@@ -88,44 +86,6 @@ class CSVClient:
                 row['signature'] = signature
                 row['sighash'] = abi_frag.topic
 
-                # Handle array fields
-                for array_field in array_fields:
-                    if array_field in row:
-                        try:
-                            # Handle empty arrays
-                            if row[array_field] == '[]':
-                                row[array_field] = []
-                                continue
-
-                            # Remove outer quotes and brackets
-                            array_str = row[array_field].strip('"').strip('[]')
-                            if array_str:
-                                # For delegate arrays, each element is a tuple of (address, amount)
-                                if array_field in ('old_delegatees', 'new_delegatees'):
-                                    parsed_array = []
-                                    # Split by '],[' to get individual tuples
-                                    tuples = array_str.split('],[')
-                                    for tuple_str in tuples:
-                                        # Clean up the tuple string
-                                        tuple_str = tuple_str.strip('[]').strip('"')
-                                        if tuple_str:
-                                            # Split by comma, but only split on the first comma
-                                            parts = tuple_str.split(',', 1)
-                                            if len(parts) == 2:
-                                                addr = parts[0].strip().strip('"')
-                                                amount = parts[1].strip()
-                                                parsed_array.append([addr, int(amount)])
-                                    row[array_field] = parsed_array
-                                else:
-                                    # For other arrays, split by comma and strip whitespace
-                                    array_values = [val.strip().strip('"') for val in array_str.split(',')]
-                                    row[array_field] = array_values
-                            else:
-                                row[array_field] = []
-                        except Exception as e:
-                            print(f"E182250323 - Problem parsing array field {array_field}: {e}", flush=True)
-
-                # Handle integer fields
                 for int_field in int_fields:
                     try:
                         row[int_field] = int(row[int_field])

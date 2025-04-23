@@ -622,7 +622,11 @@ async def delegate(request, addr):
             amount = app.ctx.delegations.delegation_amounts[addr][delegator]
         else:
             amount = 10000  # Full delegation
-        from_list.append((delegator, balance, amount))
+        from_list.append({
+            'address': delegator,
+            'balance': balance,
+            'percentage': amount
+        })
 
     return json({'delegate' : 
                 {'addr' : addr,

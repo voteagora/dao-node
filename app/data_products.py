@@ -142,6 +142,31 @@ class Delegations(DataProduct):
 
         self.delegatee_vp_history = defaultdict(list)
 
+    def _parse_delegate_array(self, array_str):
+        array_str = array_str.strip('"')
+        if not array_str or array_str == '[]':
+            return []
+            
+        # Remove outer brackets
+        array_str = array_str.strip('[]')
+        if not array_str:
+            return []
+            
+        parsed_array = []
+        # Split by '],[' to get individual tuples
+        tuples = array_str.split('],[')
+        for tuple_str in tuples:
+            # Clean up the tuple string
+            tuple_str = tuple_str.strip('[]')
+            if tuple_str:
+                # Split by comma, but only split on the first comma
+                parts = tuple_str.split(',', 1)
+                if len(parts) == 2:
+                    addr = parts[0].strip().strip('"')
+                    amount = parts[1].strip()
+                    parsed_array.append([addr, int(amount)])
+        return parsed_array
+
     def handle(self, event):
 
         signature = event['signature']
@@ -170,10 +195,14 @@ class Delegations(DataProduct):
         elif signature == DELEGATE_CHANGED_2:
             delegator = event['delegator'].lower()
             
+            # Parse old and new delegations
+            old_delegatees = self._parse_delegate_array(event.get('old_delegatees', '[]'))
+            new_delegatees = self._parse_delegate_array(event.get('new_delegatees', '[]'))
+            
             # Handle old delegations removal
-            for old_delegation in event.get('old_delegatees', []):
+            for old_delegation in old_delegatees:
                 old_delegate = old_delegation[0].lower()
-                amount = int(old_delegation[1])
+                amount = old_delegation[1]
 
                 if old_delegate in self.delegatee_list:
                     if delegator in self.delegatee_list[old_delegate]:
@@ -189,9 +218,9 @@ class Delegations(DataProduct):
                     })
 
             # Handle new delegations addition
-            for new_delegation in event.get('new_delegatees', []):
+            for new_delegation in new_delegatees:
                 new_delegate = new_delegation[0].lower()
-                amount = int(new_delegation[1])
+                amount = new_delegation[1]
                 
                 if new_delegate not in self.delegatee_list:
                     self.delegatee_list[new_delegate] = []
