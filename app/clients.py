@@ -4,6 +4,7 @@ from .utils import camel_to_snake
 import csv
 import os
 import sys
+from datetime import datetime, timedelta
 from web3 import Web3, AsyncWeb3, WebSocketProvider
 import websocket
 
@@ -44,7 +45,7 @@ class CSVClient:
             print(f"The path '{self.path}' does not exist, this client is not valid.")
             return False
 
-    def fallback_block(self):
+    def get_fallback_block(self):
         return 0
 
     def fname(self, chain_id, address, signature):
@@ -137,7 +138,7 @@ class JsonRpcHistHttpClient:
         if self.fallback_block is not None:
             return self.fallback_block
         
-        w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI))
+        w3 = Web3(Web3.HTTPProvider(self.url))
 
         if not w3.is_connected():
             raise Exception(f"Could not connect to {self.url}")
@@ -150,17 +151,15 @@ class JsonRpcHistHttpClient:
         print(f"Searching for a block ~4 days ago from block {latest_block}")
 
         # Step backwards to find the block
-        for i in range(latest_block, 0, DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN):
+        for i in range(latest_block, 0, -1 * DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN):
 
             block = w3.eth.get_block(i)
             block_time = datetime.utcfromtimestamp(block.timestamp)
 
-            print(f"Block {block.number}: {block_time.isoformat()} UTC")
+            # print(f"Block {block.number}: {block_time.isoformat()} UTC")
 
             if block_time < target_date:
-                print(f"\nFound block from 4+ days ago:")
-                print(f"Block Number: {block.number}")
-                print(f"Block Time: {block_time.isoformat()} UTC")
+                print(f"\nFound block from 4+ days ago: {block.number} @ {block_time.isoformat()} UTC")
 
                 self.fallback_block = block.number 
 
