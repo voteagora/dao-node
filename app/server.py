@@ -166,13 +166,16 @@ class EventFeed:
         self.signature = signature
         self.abis = abis
         self.cs = client_sequencer
-        self.block = 0
+        self.block = None
+        self.booting = True
     
     def archive_read(self):
 
         for client in self.cs:
 
             if client.timeliness == 'archive':
+
+                self.block = client.get_fallback_block()
 
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
@@ -187,6 +190,9 @@ class EventFeed:
         async for client in self.cs.get_async_iterator():
 
             if client.timeliness == 'realtime':
+
+                if self.block is None:
+                    raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
@@ -220,9 +226,14 @@ class EventFeed:
         
         await asyncio.sleep(.01)
 
+        self.booting = False
+
         return 
     
     async def run(self, app):
+
+        while self.booting:
+            await asyncio.sleep(5)
 
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
