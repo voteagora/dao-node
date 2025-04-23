@@ -166,13 +166,15 @@ class EventFeed:
         self.signature = signature
         self.abis = abis
         self.cs = client_sequencer
-        self.block = 0
+        self.block = None
     
     def archive_read(self):
 
         for client in self.cs:
 
             if client.timeliness == 'archive':
+
+                self.block = client.get_fallback_block()
 
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
@@ -183,6 +185,9 @@ class EventFeed:
                     yield event
 
     async def realtime_async_read(self):
+
+        if self.block is None:
+            raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
         async for client in self.cs.get_async_iterator():
 

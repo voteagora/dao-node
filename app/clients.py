@@ -44,6 +44,9 @@ class CSVClient:
             print(f"The path '{self.path}' does not exist, this client is not valid.")
             return False
 
+    def fallback_block(self):
+        return 0
+
     def fname(self, chain_id, address, signature):
         return self.path / f'{chain_id}/{address}/{signature}.csv'
 
@@ -112,6 +115,7 @@ class JsonRpcHistHttpClient:
 
     def __init__(self, url):
         self.url = url
+        self.fallback_block = None
 
     def is_valid(self):
 
@@ -127,7 +131,44 @@ class JsonRpcHistHttpClient:
             print(f"The server '{self.url}' is not valid.")
         
         return ans
+    
+    def get_fallback_block(self):
+
+        if self.fallback_block is not None:
+            return self.fallback_block
         
+        w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI))
+
+        if not w3.is_connected():
+            raise Exception(f"Could not connect to {self.url}")
+
+        now = datetime.utcnow()
+        target_date = now - timedelta(days=4)
+
+        latest_block = w3.eth.block_number
+
+        print(f"Searching for a block ~4 days ago from block {latest_block}")
+
+        # Step backwards to find the block
+        for i in range(latest_block, 0, DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN):
+
+            block = w3.eth.get_block(i)
+            block_time = datetime.utcfromtimestamp(block.timestamp)
+
+            print(f"Block {block.number}: {block_time.isoformat()} UTC")
+
+            if block_time < target_date:
+                print(f"\nFound block from 4+ days ago:")
+                print(f"Block Number: {block.number}")
+                print(f"Block Time: {block_time.isoformat()} UTC")
+
+                self.fallback_block = block.number 
+
+                return block.number
+        else:
+            print("No block older than 4 days found.")
+            return 0
+
     def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi):
 
         all_logs = []
