@@ -31,6 +31,8 @@ from .signatures import *
 from . import __version__
 from .logsetup import get_logger 
 
+import random
+
 glogr = get_logger('global')
 
 ######################################################################
@@ -170,19 +172,22 @@ class EventFeed:
         self.signature = signature
         self.abis = abis
         self.cs = client_sequencer
-        self.block = None
+        self.block = 0
         self.booting = True
 
 
     def archive_read(self):
 
-        for client in self.cs:
+        for i, client in enumerate(self.cs):
 
             if client.timeliness == 'archive':
 
-                logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
+                if i > 0:
+                    self.block = max(self.block, client.get_fallback_block(self.signature))
 
-                self.block = client.get_fallback_block(self.signature)
+                emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
+
+                logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client)} from block {self.block}")
 
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
@@ -191,6 +196,8 @@ class EventFeed:
                     self.block = max(self.block, event['block_number'])
 
                     yield event
+
+                logr.info(f"{emoji} Done reading from {client.timeliness} client of type {type(client)} at block {self.block}")
 
     async def realtime_async_read(self):
 
