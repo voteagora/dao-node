@@ -834,9 +834,9 @@ async def bootstrap_event_feeds(app, loop):
 @app.after_server_start
 async def subscribe_event_fees(app, loop):
 
-    print("Adding signal handler for each event feed.")
+    logr.info("Adding signal handler for each event feed.")
     for ev in app.ctx.event_feeds:
-        (f"Invoking ev.run(app) for {ev.signature}")
+        logr.info(f"Invoking ev.run(app) for {ev.signature}")
         app.add_task(ev.run(app))
 
 
