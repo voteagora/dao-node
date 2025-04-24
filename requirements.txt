@@ -18,7 +18,6 @@ abifsm @ git+https://github.com/voteagora/abifsm@master
 PyYAML
 argh
 web3
-psycopg2-binary
-websocket-client
+websocket-client>=14.2
 sanic-ext
 python-dotenv

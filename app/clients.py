@@ -3,9 +3,11 @@ from pathlib import Path
 import csv
 import os
 import sys
+import json
 from datetime import datetime, timedelta
-import websocket
+import websocket, websockets
 import asyncio
+from eth_abi.abi import decode as decode_abi
 
 from web3 import Web3, AsyncWeb3, WebSocketProvider
 from web3.middleware import ExtraDataToPOAMiddleware
@@ -262,7 +264,7 @@ class JsonRpcHistHttpClient:
            
             yield out
             
-class JsonRpcRTWsClient:
+class JsonRpcRTWsClientV1:
     timeliness = 'realtime'
 
     def __init__(self, url):
@@ -290,22 +292,22 @@ class JsonRpcRTWsClient:
     
     async def read(self, chain_id, address, signature, abis, after):
 
-        block = after
-
         while True:
             logr.info(f"Starting read-loop for {chain_id} {address} {signature}")
             try:
-                async for event in self.attempt_read(chain_id, address, signature, abis, block):
-                    # TODO - figure out a way to handle intra-block disconnects where we have >1 event per block.
-                    block = event['block_number']
+                async for event in self.attempt_read(chain_id, address, signature, abis):
                     yield event
+            except websockets.exceptions.ConnectionClosedError as err:
+                logr.exception(f"ConnectionClosedError: Problem getting real time data for {address} {signature}: {err}")
             except Exception as err:
-                errlogr.info("info note was here")
-                errlogr.error("error note was here")
-                logr.exception(f"Problem getting real time data for {address} {signature}: {err}")
+                logr.exception(f"Other Exception: Problem getting real time data for {address} {signature}: {err}")
+                # TODO - reduce this.  Honestly, we might need a pool of websockets, and then
+                # a mechanism to de-dupe or replay.
                 await asyncio.sleep(120)
-
-    async def attempt_read(self, chain_id, address, signature, abis, after):
+            finally:
+                logr.info("[WS TASK] Exiting WebSocket listener task.")
+                
+    async def attempt_read(self, chain_id, address, signature, abis):
 
         event = abis.get_by_signature(signature)
         
@@ -341,20 +343,103 @@ class JsonRpcRTWsClient:
                 out['signature'] = signature
                 out['sighash'] = event.topic
 
-                def bytes_to_str(x):
-                    if isinstance(x, bytes):
-                        return x.hex()
-                    return x
 
-                def array_of_bytes_to_str(x):
-                    if isinstance(x, list):
-                        return [bytes_to_str(i) for i in x]
-                    elif isinstance(x, bytes):
-                        return bytes_to_str(x)
-                    return x
+class JsonRpcRTWsClient(JsonRpcRTWsClientV1):
 
-                out = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in out.items()}
+    @staticmethod
+    def decode_payload(ws_payload, inputs, signature, topic):
 
-                logr.info(f"Received event {out['signature']} at block {out['block_number']}")
+        def bytes_to_str(x):
+            if isinstance(x, bytes):
+                return x.hex()
+            return x
 
-                yield out
+        def array_of_bytes_to_str(x):
+            if isinstance(x, list):
+                return [bytes_to_str(i) for i in x]
+            elif isinstance(x, bytes):
+                return bytes_to_str(x)
+            return x
+            
+        log_data = ws_payload["data"]
+        log_topics = ws_payload["topics"]
+
+        # Extract indexed vs non-indexed inputs
+        indexed_inputs = [i for i in inputs if i['indexed']]
+        non_indexed_inputs = [i for i in inputs if not i['indexed']]
+
+        # Decode indexed topics (skip topic[0] which is event sig hash)
+        indexed_values = [
+            decode_abi([i["type"]], bytes.fromhex(t[2:]))[0]
+            for i, t in zip(indexed_inputs, log_topics[1:])
+        ]
+        non_indexed_values = list(decode_abi(
+            [i["type"] for i in non_indexed_inputs],
+            bytes.fromhex(log_data[2:])
+        ))
+
+        decoded = {}
+        for i, arg in enumerate(indexed_inputs + non_indexed_inputs):
+            decoded[arg["name"]] = (indexed_values + non_indexed_values)[i]
+
+        out = {
+            "block_number": int(ws_payload["blockNumber"], 16),
+            "log_index": int(ws_payload["logIndex"], 16),
+            "transaction_index": int(ws_payload["transactionIndex"], 16),
+            "signature": signature,
+            "sighash": topic,
+        }
+        out.update(decoded)
+
+        out = {
+            camel_to_snake(k): array_of_bytes_to_str(v)
+            for k, v in out.items()
+        }
+
+        return out
+
+    async def attempt_read(self, chain_id, address, signature, abis):
+
+        after = None # 'after' is only included in the signature to be compatible with the other method calls.
+
+        event = abis.get_by_signature(signature)
+        
+        abi = event.literal
+
+        inputs = abi['inputs']
+
+        # Extract indexed vs non-indexed inputs
+        indexed_inputs = [i for i in inputs if i['indexed']]
+        non_indexed_inputs = [i for i in inputs if not i['indexed']]
+
+        async with websockets.connect(self.url, ping_interval=5, ping_timeout=3) as ws:
+   
+            subscribe_params = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "eth_subscribe",
+                "params": [
+                    "logs",
+                    {
+                        "address": address,
+                        "topics": ["0x" + event.topic]
+                    }
+                ]
+            }
+
+            await ws.send(json.dumps(subscribe_params))
+            subscription_response = await ws.recv()
+            subscription = json.loads(subscription_response)
+            sub_id = subscription.get("result")
+            logr.info(f"Setup subscription ID: {sub_id} for address: {address}")
+
+            while True:
+                message = json.loads(await ws.recv())
+                if message.get("method") == "eth_subscription":
+                    result = message["params"]["result"]
+
+                    out = self.decode_payload(result, inputs, event.signature, event.topic)
+
+                    logr.info(f"Received event {out['signature']} at block {out['block_number']}")
+                    yield out
+                await asyncio.sleep(0.1)
