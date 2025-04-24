@@ -289,10 +289,14 @@ class JsonRpcRTWsClient:
     
     async def read(self, chain_id, address, signature, abis, after):
 
+        block = after
+
         while True:
             logr.info(f"Starting read-loop for {chain_id} {address} {signature}")
             try:
-                async for event in self.attempt_read(chain_id, address, signature, abis, after):
+                async for event in self.attempt_read(chain_id, address, signature, abis, block):
+                    # TODO - figure out a way to handle intra-block disconnects where we have >1 event per block.
+                    block = event['blockNumber']
                     yield event
             except Exception as err:
                 errlogr.info("info note was here")
