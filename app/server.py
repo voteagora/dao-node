@@ -20,6 +20,7 @@ from sanic.worker.manager import WorkerManager
 from sanic import Sanic
 from sanic.response import text, html, json
 from sanic.blueprints import Blueprint
+from sanic.log import logger as logr
 
 from .middleware import start_timer, add_server_timing_header, measure
 from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
@@ -162,8 +163,6 @@ class EventFeed:
         self.cs = client_sequencer
         self.block = None
         self.booting = True
-    
-        self.logr = logging.getLogger("sanic.root")
 
 
     def archive_read(self):
@@ -172,7 +171,7 @@ class EventFeed:
 
             if client.timeliness == 'archive':
 
-                self.logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
+                logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
 
                 self.block = client.get_fallback_block()
 
@@ -190,7 +189,7 @@ class EventFeed:
 
             if client.timeliness == 'realtime':
 
-                self.logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
+                logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
 
                 if self.block is None:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
@@ -199,7 +198,7 @@ class EventFeed:
 
                 async for event in reader:
 
-                    self.logr.info(f"Received real-time event at block #: {event['block_number']}")
+                    logr.info(f"Received real-time event at block #: {event['block_number']}")
 
                     self.block = max(self.block, event['block_number'])
 
@@ -211,7 +210,7 @@ class EventFeed:
 
         start = dt.datetime.now()
 
-        self.logr.info(f"Loading {self.chain_id}.{self.address}.{self.signature}")
+        logr.info(f"Loading {self.chain_id}.{self.address}.{self.signature}")
 
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
@@ -229,7 +228,7 @@ class EventFeed:
 
         self.booting = False
 
-        self.logr.info(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.")
+        logr.info(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.")
 
         return 
     
@@ -237,7 +236,7 @@ class EventFeed:
 
         t = 30
         while self.booting:
-            self.logr.info(f"Wait {t} seconds...")
+            logr.info(f"Wait {t} seconds...")
             await asyncio.sleep(t)
             t = max(5, t - 1)
 
@@ -855,8 +854,8 @@ from sanic import response
 @openapi.summary("Server health check")
 async def health_check(request):
 
-    request.app.logger.info("checking health")
-    
+    logr.info("checking health")
+
     # Get list of files
     try:
         files = os.listdir(DAO_NODE_DATA_PATH)
