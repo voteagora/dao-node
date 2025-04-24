@@ -5,6 +5,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 import websocket
+import asyncio
 
 from web3 import Web3, AsyncWeb3, WebSocketProvider
 from web3.middleware import ExtraDataToPOAMiddleware
@@ -296,7 +297,7 @@ class JsonRpcRTWsClient:
             try:
                 async for event in self.attempt_read(chain_id, address, signature, abis, block):
                     # TODO - figure out a way to handle intra-block disconnects where we have >1 event per block.
-                    block = event['blockNumber']
+                    block = event['block_number']
                     yield event
             except Exception as err:
                 errlogr.info("info note was here")
