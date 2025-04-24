@@ -45,7 +45,7 @@ class CSVClient:
             print(f"The path '{self.path}' does not exist, this client is not valid.")
             return False
 
-    def get_fallback_block(self):
+    def get_fallback_block(self, signature):
         return 0
 
     def fname(self, chain_id, address, signature):
@@ -116,7 +116,7 @@ class JsonRpcHistHttpClient:
 
     def __init__(self, url):
         self.url = url
-        self.fallback_block = None
+        self.fallback_block = {}
 
     def connect(self):
         
@@ -142,10 +142,12 @@ class JsonRpcHistHttpClient:
         
         return ans
     
-    def get_fallback_block(self):
+    def get_fallback_block(self, signature):
 
-        if self.fallback_block is not None:
-            return self.fallback_block
+        cur_fallback = self.fallback_block.get(signature, None)
+
+        if cur_fallback:
+            return cur_fallback
         
         w3 = self.connect()
             
@@ -170,7 +172,7 @@ class JsonRpcHistHttpClient:
             if block_time < target_date:
                 logr.info(f"Found block from 4+ days ago: {block.number} @ {block_time.isoformat()} UTC")
 
-                self.fallback_block = block.number 
+                self.fallback_block[signature] = block.number 
 
                 return block.number
         else:

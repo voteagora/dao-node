@@ -182,7 +182,7 @@ class EventFeed:
 
                 logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
 
-                self.block = client.get_fallback_block()
+                self.block = client.get_fallback_block(self.signature)
 
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
