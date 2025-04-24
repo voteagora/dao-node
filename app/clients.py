@@ -1,13 +1,16 @@
 from warnings import warn
 from pathlib import Path
-from .utils import camel_to_snake
 import csv
 import os
 import sys
 from datetime import datetime, timedelta
+import websocket
+
 from web3 import Web3, AsyncWeb3, WebSocketProvider
 from web3.middleware import ExtraDataToPOAMiddleware
-import websocket
+from sanic.log import logger as logr, error_logger as errlogr
+
+from .utils import camel_to_snake
 
 csv.field_size_limit(sys.maxsize)
 
@@ -16,15 +19,6 @@ DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NO
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
 
 DEBUG = False
-
-class GCSClient:
-    timeliness = 'archive'
-
-    def __init__(self, bucket):
-        self.bucket = bucket
-    
-    def read(self, chain_id, address, signature, abi_frag, after):
-        pass
 
 INT_TYPES = [f"uint{i}" for i in range(8, 257, 8)]
 INT_TYPES.append("uint")
@@ -171,13 +165,13 @@ class JsonRpcHistHttpClient:
             # print(f"Block {block.number}: {block_time.isoformat()} UTC")
 
             if block_time < target_date:
-                print(f"Found block from 4+ days ago: {block.number} @ {block_time.isoformat()} UTC")
+                logr.info(f"Found block from 4+ days ago: {block.number} @ {block_time.isoformat()} UTC")
 
                 self.fallback_block = block.number 
 
                 return block.number
         else:
-            print("No block older than 4 days found.")
+            logr.info("No block older than 4 days found.")
             return 0
 
     def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi):
@@ -192,8 +186,7 @@ class JsonRpcHistHttpClient:
 
             to_block = min(from_block + step - 1, end_block)  # Ensure we don't exceed the end_block
 
-            if DEBUG:
-                print(f"Looping block {from_block=}, {to_block=}")
+            logr.debug(f"Looping block {from_block=}, {to_block=}")
 
             # Set filter parameters for each range
             event_filter = {
@@ -212,8 +205,7 @@ class JsonRpcHistHttpClient:
 
             all_logs.extend(map(processor, logs)) 
 
-            if DEBUG:
-                print(f"Fetched logs from block {from_block} to {to_block}. Total logs: {len(all_logs)}")
+            logr.info(f"Fetched logs from block {from_block} to {to_block}. Total logs: {len(all_logs)}")
 
             if (len(all_logs) > 4000) and DEBUG:
                 break
@@ -294,8 +286,21 @@ class JsonRpcRTWsClient:
             print(f"The server '{self.url}' is not valid.")
         
         return ans
-
+    
     async def read(self, chain_id, address, signature, abis, after):
+
+        while True:
+            logr.info(f"Starting read-loop for {chain_id} {address} {signature}")
+            try:
+                async for event in self.attempt_read(chain_id, address, signature, abis, after):
+                    yield event
+            except Exception as err:
+                errlogr.info("info note was here")
+                errlogr.error("error note was here")
+                logr.exception(f"Problem getting real time data for {address} {signature}: {err}")
+                await asyncio.sleep(120)
+
+    async def attempt_read(self, chain_id, address, signature, abis, after):
 
         event = abis.get_by_signature(signature)
         
@@ -316,7 +321,8 @@ class JsonRpcRTWsClient:
             }
 
             subscription_id = await w3.eth.subscribe("logs", event_filter)
-            print(f"Setup subscription ID: {subscription_id} for {event_filter}")
+            logr.info(f"Setup subscription ID: {subscription_id} for {event_filter}")
+
             async for response in w3.socket.process_subscriptions():
 
                 decoded_response = processor(response['result'])
@@ -344,6 +350,6 @@ class JsonRpcRTWsClient:
 
                 out = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in out.items()}
 
-                print(f"Received event {out['signature']} at block {out['block_number']}")
+                logr.info(f"Received event {out['signature']} at block {out['block_number']}")
 
                 yield out
