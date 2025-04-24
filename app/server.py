@@ -1,6 +1,10 @@
 from dotenv import load_dotenv
+from pyenvdiff import Environment
 
 load_dotenv()
+
+from importlib.metadata import version as importlib_version
+this_env = Environment()
 
 import csv, time, pdb, os, logging
 import datetime as dt
@@ -201,8 +205,6 @@ class EventFeed:
 
                 async for event in reader:
 
-                    logr.info(f"Received real-time event at block #: {event['block_number']}")
-
                     self.block = max(self.block, event['block_number'])
 
                     yield event
@@ -237,12 +239,7 @@ class EventFeed:
     
     async def run(self, app):
 
-        t = 30
-        while self.booting:
-            logr.info(f"Wait {t} seconds...")
-            await asyncio.sleep(t)
-            t = max(5, t - 1)
-
+        logr.info(f"Running...")
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
         async for event in self.realtime_async_read():
@@ -877,7 +874,8 @@ async def health_check(request):
         "config" : public_config,
         "deployment": public_deployment,
         "version": __version__,
-        "gitsha": GIT_COMMIT_SHA
+        "gitsha": GIT_COMMIT_SHA,
+        "env": {'PipDistributions' : {mod : importlib_version(mod) for mod in ['websockets', 'web3', 'sanic', 'sanic-ext', 'abifsm']}}
     })
 
 @app.get("/config")

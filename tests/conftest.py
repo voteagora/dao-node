@@ -22,3 +22,24 @@ def pguild_ptc_abi():
     abi = ABI.from_file('ptc', abi_path)
     abis = ABISet('test-abis', [abi])
     return abis
+
+@pytest.fixture(scope="session")
+def pguild_token_abi():
+    abi_path = os.path.join('tests', 'abis', 'pguild-token.json')
+    abi = ABI.from_file('token', abi_path)
+    abis = ABISet('test-abis', [abi])
+    return abis
+
+@pytest.fixture(scope="session")
+def cyber_token_abi():
+    abi_path = os.path.join('tests', 'abis', 'cyber-token.json')
+    abi = ABI.from_file('token', abi_path)
+    abis = ABISet('test-abis', [abi])
+    return abis
+
+@pytest.fixture(scope="session")
+def scroll_token_abi():
+    abi_path = os.path.join('tests', 'abis', 'scroll-token.json')
+    abi = ABI.from_file('token', abi_path)
+    abis = ABISet('test-abis', [abi])
+    return abis
