@@ -735,7 +735,7 @@ async def bootstrap_event_feeds(app, loop):
     abi_list = []
 
     token_addr = deployment['token']['address'].lower()
-    logr.info(f"Using {token_addr=}", flush=True)
+    logr.info(f"Using {token_addr=}")
     token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
     abi_list.append(token_abi)
 
@@ -746,7 +746,7 @@ async def bootstrap_event_feeds(app, loop):
         modules = {m['address'].lower() : m['name'] for m in deployment['gov'].get('modules', [])}
 
     gov_addr = deployment['gov']['address'].lower()
-    logr.info(f"Using {gov_addr=}", flush=True)
+    logr.info(f"Using {gov_addr=}")
 
     GOV_ABI_OVERRIDE_URL = os.getenv('GOV_ABI_OVERRIDE_URL', None)
     if GOV_ABI_OVERRIDE_URL:
@@ -758,7 +758,7 @@ async def bootstrap_event_feeds(app, loop):
 
     if 'ptc' in deployment:
         ptc_addr = deployment['ptc']['address'].lower()
-        logr.info(f"Using {ptc_addr=}", flush=True)
+        logr.info(f"Using {ptc_addr=}")
         ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
         abi_list.append(ptc_abi)
 
