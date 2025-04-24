@@ -568,13 +568,11 @@ async def delegates_handler(app, request):
     if sort_by_vp:
         out = list(app.ctx.delegations.delegatee_vp.items())
     elif sort_by_mrd:
-        out = [(addr, event.get('block_number', 0)) 
-               for addr, event in app.ctx.delegations.delegatee_latest_event.items() 
-               if event]  # Only include delegates with events
+        out = [(addr, event['block_number']) 
+               for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
     elif sort_by_old:
-        out = [(addr, event.get('block_number', 0)) 
-               for addr, event in app.ctx.delegations.delegatee_oldest_event.items() 
-               if event]  # Only include delegates with events
+        out = [(addr, event['block_number']) 
+               for addr, event in app.ctx.delegations.delegatee_oldest_event.items()]
     else:
         out = list(app.ctx.delegations.delegatee_cnt.items())
 
