@@ -879,10 +879,10 @@ async def bootstrap_event_feeds(app, loop):
     #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
 
 
-    # if ERC20:
-    #     ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-    #     app.ctx.add_event_feed(ev)
-    #     app.add_task(ev.boot(app))
+    if ERC20:
+        ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
+        app.ctx.add_event_feed(ev)
+        app.add_task(ev.boot(app))
 
     ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
     app.ctx.add_event_feed(ev)
