@@ -46,6 +46,9 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
     
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
+GIT_COMMIT_SHA = os.getenv('GIT_COMMIT_SHA', 'n/a')
+logr.info(f"GIT_COMMIT_SHA={GIT_COMMIT_SHA}")
+
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
 
 def secret_text(t, n):
@@ -66,11 +69,11 @@ if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     if 'alchemy.com' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('ALCHEMY_API_KEY', '') 
-        print(f"Using alchemy for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
+        logr.info(f"Using alchemy for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
 
     if 'quiknode.pro' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('QUICKNODE_API_KEY', '')
-        print(f"Using quiknode.pro for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
+        logr.info(f"Using quiknode.pro for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
     
 
 DAO_NODE_REALTIME_NODE_WS = os.getenv('DAO_NODE_REALTIME_NODE_WS', None)
@@ -85,11 +88,11 @@ if DAO_NODE_REALTIME_NODE_WS:
 
     if 'alchemy.com' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('ALCHEMY_API_KEY', '')
-        print(f"Using alchemy for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
+        logr.info(f"Using alchemy for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
     
     if 'quiknode.pro' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
-        print(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
+        logr.info(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
 
 
 try:
@@ -97,14 +100,14 @@ try:
     with open(AGORA_CONFIG_FILE, 'r') as f:
         config = yaml.safe_load(f)
     
-    print(config)
+    logr.info(config)
     public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
     deployment = config['deployments'][CONTRACT_DEPLOYMENT]
     del config['deployments']
     public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id'] if k in deployment}
 except:
-    print("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
+    logr.info("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
     config = {
         'friendly_short_name': 'Unknown',
         'deployments': {}
@@ -262,7 +265,7 @@ class DataProductContext:
     
     def handle_dispatch(self, chain_id_contract_signature, context):
 
-        print(f"Handle Dispatch Called : {chain_id_contract_signature}")
+        logr.info(f"Handle Dispatch Called : {chain_id_contract_signature}")
 
         data_product_dispatchers = self.dps[chain_id_contract_signature]
 
@@ -323,7 +326,7 @@ async def proposal_ui(request):
 # 
 # @app.signal("data.model.<chain_id_contract_signature>")
 # async def log_event_signal_handler(chain_id_contract_signature, **context):
-#     print(f"Handling: {chain_id_contract_signature}")
+#     logr.info(f"Handling: {chain_id_contract_signature}")
 #     app.ctx.handle_dispatch(chain_id_contract_signature, context)
 
 ######################################################################
@@ -568,9 +571,9 @@ async def delegates_handler(app, request):
         out = list(app.ctx.delegations.delegatee_cnt.items())
 
     # TODO This should not be necessary.  The data model should prune zeros.
-    print(f"Number of records: {len(out)}")
+    logr.info(f"Number of records: {len(out)}")
     out = [obj for obj in out if obj[1] > 0]
-    print(f"Number of records (excluding zeros): {len(out)}")
+    logr.info(f"Number of records (excluding zeros): {len(out)}")
 
     out.sort(key=lambda x: x[1], reverse = reverse)    
 
@@ -732,7 +735,7 @@ async def bootstrap_event_feeds(app, loop):
     abi_list = []
 
     token_addr = deployment['token']['address'].lower()
-    print(f"Using {token_addr=}", flush=True)
+    logr.info(f"Using {token_addr=}", flush=True)
     token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
     abi_list.append(token_abi)
 
@@ -743,11 +746,11 @@ async def bootstrap_event_feeds(app, loop):
         modules = {m['address'].lower() : m['name'] for m in deployment['gov'].get('modules', [])}
 
     gov_addr = deployment['gov']['address'].lower()
-    print(f"Using {gov_addr=}", flush=True)
+    logr.info(f"Using {gov_addr=}", flush=True)
 
     GOV_ABI_OVERRIDE_URL = os.getenv('GOV_ABI_OVERRIDE_URL', None)
     if GOV_ABI_OVERRIDE_URL:
-        print("Overriding Gov ABI")
+        logr.info("Overriding Gov ABI")
         gov_abi = ABI.from_url('gov', GOV_ABI_OVERRIDE_URL)
     else:
         gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
@@ -755,7 +758,7 @@ async def bootstrap_event_feeds(app, loop):
 
     if 'ptc' in deployment:
         ptc_addr = deployment['ptc']['address'].lower()
-        print(f"Using {ptc_addr=}", flush=True)
+        logr.info(f"Using {ptc_addr=}", flush=True)
         ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
         abi_list.append(ptc_abi)
 
@@ -854,8 +857,6 @@ from sanic import response
 @openapi.summary("Server health check")
 async def health_check(request):
 
-    logr.info("checking health")
-
     # Get list of files
     try:
         files = os.listdir(DAO_NODE_DATA_PATH)
@@ -875,7 +876,8 @@ async def health_check(request):
         "ip_address": ip_address,
         "config" : public_config,
         "deployment": public_deployment,
-        "version": __version__
+        "version": __version__,
+        "gitsha": GIT_COMMIT_SHA
     })
 
 @app.get("/config")

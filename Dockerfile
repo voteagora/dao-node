@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+ARG GIT_COMMIT_SHA
+ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
+
 # Install system dependencies needed for building the C extension
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
