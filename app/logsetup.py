@@ -4,7 +4,6 @@ import time
 def get_logger(name: str):
     logger = logging.getLogger(name)
     if not logger.handlers:  # prevent adding multiple handlers
-        print(f"ADDING HANDLER!!!!!!😀 {id(logger)}")
         handler = logging.StreamHandler()
         formatter = logging.Formatter("%(asctime)s %(levelname)s: %(message)s", "%Y-%m-%d %H:%M:%S")
         handler.setFormatter(formatter)
