@@ -162,14 +162,12 @@ class Delegations(DataProduct):
                     'block_number': block_number,
                     'delegator': delegator,
                     'from_delegate': from_delegate,
-                    'event': event
                 }
             
             self.delegatee_latest_event[to_delegate] = {
                 'block_number': block_number,
                 'delegator': delegator,
                 'from_delegate': from_delegate,
-                'event': event
             }
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):

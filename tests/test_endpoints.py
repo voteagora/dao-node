@@ -59,8 +59,7 @@ async def test_proposals_endpoint(app, test_client, compound_governor_abis):
     assert prop83['totals']['no-param']['2'] == '5795658915470619580362791'
 
 @pytest.mark.asyncio
-async def test_delegates_endpoint_sort_by_oldest():
-    app = Mock()
+async def test_delegates_endpoint_sort_by_oldest(app):
     
     request = Mock()
     request.args = {
@@ -107,8 +106,7 @@ async def test_delegates_endpoint_sort_by_oldest():
     assert delegates[0]["from_cnt"] == 10
 
 @pytest.mark.asyncio
-async def test_delegates_endpoint_sort_by_latest():
-    app = Mock()
+async def test_delegates_endpoint_sort_by_latest(app):
     
     request = Mock()
     request.args = {
