@@ -9,8 +9,6 @@ this_env = Environment()
 import csv, time, pdb, os, logging
 import datetime as dt
 import asyncio
-import psycopg2 
-import psycopg2.extras
 from collections import defaultdict
 from pathlib import Path
 from bisect import bisect_left
