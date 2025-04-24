@@ -29,6 +29,9 @@ from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
 from .signatures import *
 from . import __version__
+from .logsetup import get_logger 
+
+glogr = get_logger('global')
 
 ######################################################################
 #
@@ -49,7 +52,7 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
 GIT_COMMIT_SHA = os.getenv('GIT_COMMIT_SHA', 'n/a')
-logr.info(f"GIT_COMMIT_SHA={GIT_COMMIT_SHA}")
+glogr.info(f"GIT_COMMIT_SHA={GIT_COMMIT_SHA}")
 
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
 
@@ -60,6 +63,7 @@ def secret_text(t, n):
         return t[:n] + "***..."
 
 DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', None)
+glogr.info(f"{DAO_NODE_ARCHIVE_NODE_HTTP=}")
 if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     # This pattern enables a deployer to put either the base URL in plane text or the full URL in
@@ -71,11 +75,11 @@ if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     if 'alchemy.com' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('ALCHEMY_API_KEY', '') 
-        logr.info(f"Using alchemy for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
+        glogr.info(f"Using alchemy for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
 
     if 'quiknode.pro' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('QUICKNODE_API_KEY', '')
-        logr.info(f"Using quiknode.pro for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
+        glogr.info(f"Using quiknode.pro for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
     
 
 DAO_NODE_REALTIME_NODE_WS = os.getenv('DAO_NODE_REALTIME_NODE_WS', None)
@@ -90,11 +94,11 @@ if DAO_NODE_REALTIME_NODE_WS:
 
     if 'alchemy.com' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('ALCHEMY_API_KEY', '')
-        logr.info(f"Using alchemy for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
+        glogr.info(f"Using alchemy for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
     
     if 'quiknode.pro' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
-        logr.info(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
+        glogr.info(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
 
 
 try:
@@ -102,14 +106,14 @@ try:
     with open(AGORA_CONFIG_FILE, 'r') as f:
         config = yaml.safe_load(f)
     
-    logr.info(config)
+    glogr.info(config)
     public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
     deployment = config['deployments'][CONTRACT_DEPLOYMENT]
     del config['deployments']
     public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id'] if k in deployment}
 except:
-    logr.info("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
+    glogr.info("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
     config = {
         'friendly_short_name': 'Unknown',
         'deployments': {}
@@ -836,7 +840,6 @@ async def subscribe_event_fees(app, loop):
     for ev in app.ctx.event_feeds:
         logr.info(f"Invoking ev.run(app) for {ev.signature}")
         app.add_task(ev.run(app))
-
 
 ##################################
 #
