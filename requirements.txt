@@ -19,5 +19,6 @@ PyYAML
 argh
 web3
 websockets>=14.2
+websocket-client
 sanic-ext
 python-dotenv
