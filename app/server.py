@@ -170,9 +170,9 @@ class EventFeed:
 
         for client in self.cs:
 
-            self.logr.info(f"Reading archive for client of type {type(client)}")
-
             if client.timeliness == 'archive':
+
+                self.logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
 
                 self.block = client.get_fallback_block()
 
@@ -188,9 +188,9 @@ class EventFeed:
 
         async for client in self.cs.get_async_iterator():
 
-            self.logr.info(f"Reading archive for client of type {type(client)}")
-
             if client.timeliness == 'realtime':
+
+                self.logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
 
                 if self.block is None:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
@@ -854,6 +854,9 @@ from sanic import response
 @openapi.tag("Checks")
 @openapi.summary("Server health check")
 async def health_check(request):
+
+    request.app.logger.info("checking health")
+    
     # Get list of files
     try:
         files = os.listdir(DAO_NODE_DATA_PATH)
