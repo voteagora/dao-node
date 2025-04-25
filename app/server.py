@@ -488,7 +488,7 @@ Regardless of options, there are two base steps in all responses:
 - 🔴 O(n) for purging delegates with 0 Voting Power (VP) or Delegator Count (DC).  🚧 This should move to the indexing in the long-run.
 - 🟢 O(page_size) loop added to serialize the response.
 
-### 🟡 Sorting only (by VP or Delegator-Count)
+### 🟡 Sorting only (by VP, Delegator-Count, or Last-Vote-Block)
 O(n * log(n)) is the average for python's built in `sort` method.
 
 This could be improved by moving the sort upstream to the indexing stage, perhaps on completion of the boot. Framework enhancements are needed to achieve this.
@@ -540,7 +540,7 @@ Total = O(n) + O(page_size) + O(n * log(n)) + O(page_size) + Opr = O(n) + O(n * 
     location="query", 
     required=False, 
     default='VP',
-    description="Sort by either voting-power ('VP') or delegator-count ('DC')."
+    description="Sort by either voting-power ('VP'), delegator-count ('DC'), or last-vote-block ('LVB')."
 )
 @openapi.parameter(
     "reverse", 
@@ -556,7 +556,7 @@ Total = O(n) + O(page_size) + O(n * log(n)) + O(page_size) + Opr = O(n) + O(n * 
     location="query", 
     required=False, 
     default='DC,PR',
-    description="Comma seperated list of other dimensions to include, beyond the sort-by criteria. Use 'VP', 'DC' and 'PR' for voting power, delegator count and participation rate respectively."
+    description="Comma seperated list of other dimensions to include, beyond the sort-by criteria. Use 'VP', 'DC', 'PR', and 'LVB' for voting power, delegator count, participation rate, and last vote block respectively."
 )
 @measure
 async def delegates(request):
@@ -566,22 +566,37 @@ async def delegates_handler(app, request):
 
     sort_by = request.args.get("sort_by", 'VP')
     sort_by_vp = sort_by == 'VP'
+    sort_by_dc = sort_by == 'DC'
+    sort_by_lvb = sort_by == 'LVB'
     offset = int(request.args.get("offset", DEFAULT_OFFSET))
     page_size = int(request.args.get("page_size", DEFAULT_PAGE_SIZE))
     reverse = request.args.get("reverse", "true").lower() == "true"
     include = request.args.get("include", 'DC,PR').split(",")
 
+    # Get the initial list based on sort criteria
     if sort_by_vp:
         out = list(app.ctx.delegations.delegatee_vp.items())
-    else:
+    elif sort_by_dc:
         out = list(app.ctx.delegations.delegatee_cnt.items())
+    elif sort_by_lvb:
+        # Create a list of (address, last_vote_block) tuples
+        out = [(addr, app.ctx.delegations.latest_vote_block.get(addr, 0)) 
+               for addr in set(app.ctx.delegations.delegatee_vp.keys())]
+    else:
+        # Default to VP if sort_by is not recognized
+        out = list(app.ctx.delegations.delegatee_vp.items())
 
-    # TODO This should not be necessary.  The data model should prune zeros.
+    # TODO This should not be necessary. The data model should prune zeros.
     logr.info(f"Number of records: {len(out)}")
-    out = [obj for obj in out if obj[1] > 0]
+    if sort_by_lvb:
+        # For LVB, we keep all records including those with 0 vote block
+        # but filter out addresses with 0 voting power
+        out = [obj for obj in out if app.ctx.delegations.delegatee_vp.get(obj[0], 0) > 0]
+    else:
+        out = [obj for obj in out if obj[1] > 0]
     logr.info(f"Number of records (excluding zeros): {len(out)}")
 
-    out.sort(key=lambda x: x[1], reverse = reverse)    
+    out.sort(key=lambda x: x[1], reverse=reverse)    
 
     if offset:
         out = out[offset:]
@@ -593,30 +608,38 @@ async def delegates_handler(app, request):
     add_delegator_count = 'DC' in include
     add_participation_rate = 'PR' in include
     add_voting_power = 'VP' in include
+    add_last_vote_block = 'LVB' in include
 
     if add_participation_rate:
         pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
 
-    if sort_by_vp:
-        if add_delegator_count and add_participation_rate:
-            out = [{'addr' : obj[0], 'voting_power' : str(obj[1]), 'from_cnt' : app.ctx.delegations.delegatee_cnt[obj[0]], 'participation' : pm.calculate(obj[0])} for obj in out]
-        elif add_delegator_count:
-            out = [{'addr' : obj[0], 'voting_power' : str(obj[1]), 'from_cnt' : app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
-        elif add_participation_rate:
-            out = [{'addr' : obj[0], 'voting_power' : str(obj[1]), 'participation' : pm.calculate(obj[0])} for obj in out]
-        else:
-            out = [{'addr' : obj[0], 'voting_power' : str(obj[1])} for obj in out]
-    else: # sort_by_from_cnt
-        if add_voting_power and add_participation_rate:
-            out = [{'addr' : obj[0], 'from_cnt' : obj[1], 'voting_power' : str(app.ctx.delegations.delegatee_vp[obj[0]]), 'participation' : pm.calculate(obj[0])} for obj in out]
-        elif add_voting_power:
-            out = [{'addr' : obj[0], 'from_cnt' : obj[1], 'voting_power' : str(app.ctx.delegations.delegatee_vp[obj[0]])} for obj in out]
-        elif add_participation_rate:
-            out = [{'addr' : obj[0], 'from_cnt' : obj[1], 'participation' : pm.calculate(obj[0])} for obj in out]
-        else:
-            out = [{'addr' : obj[0], 'from_cnt' : obj[1]} for obj in out]
+    # Build the response objects based on sort criteria and includes
+    result = []
+    for obj in out:
+        addr = obj[0]
+        item = {'addr': addr}
+        
+        # Add the sort field
+        if sort_by_vp:
+            item['voting_power'] = str(obj[1])
+        elif sort_by_dc:
+            item['from_cnt'] = obj[1]
+        elif sort_by_lvb:
+            item['last_vote_block'] = obj[1]
+        
+        # Add additional fields based on includes
+        if add_voting_power and not sort_by_vp:
+            item['voting_power'] = str(app.ctx.delegations.delegatee_vp[addr])
+        if add_delegator_count and not sort_by_dc:
+            item['from_cnt'] = app.ctx.delegations.delegatee_cnt[addr]
+        if add_participation_rate:
+            item['participation'] = pm.calculate(addr)
+        if add_last_vote_block and not sort_by_lvb:
+            item['last_vote_block'] = app.ctx.delegations.latest_vote_block.get(addr, 0)
+        
+        result.append(item)
 
-    return json({'delegates' : out})
+    return json({'delegates': result})
 
 ############################################################################################################################################################
 
@@ -776,9 +799,9 @@ async def bootstrap_event_feeds(app, loop):
 
     ERC20 = public_config['token_spec']['name'] == 'erc20'
 
-    if ERC20:
-        balances = Balances(token_spec=public_config['token_spec'])
-        app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
+    # if ERC20:
+    #     balances = Balances(token_spec=public_config['token_spec'])
+    #     app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
@@ -826,6 +849,8 @@ async def bootstrap_event_feeds(app, loop):
     votes = Votes(governor_spec=public_config['governor_spec'])
     for VOTE_EVENT in VOTE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
+        # Also register vote events to be handled by the delegations handler
+        app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, delegations)
 
     #################################################################################
     # 🎪 🍔 Instantiate an "Event Feed" for every network, contract, and relevant 

@@ -127,6 +127,9 @@ class Delegations(DataProduct):
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
+        
+        # Track the latest vote block number for each voter
+        self.latest_vote_block = defaultdict(int)
 
     def handle(self, event):
 
@@ -172,6 +175,11 @@ class Delegations(DataProduct):
 
             self.delegatee_vp_history[delegatee].append((block_number, new_votes))
 
+        # Handling for vote events
+        elif signature in [VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1]:
+            voter = event['voter'].lower()
+            if block_number > self.latest_vote_block[voter]:
+                self.latest_vote_block[voter] = block_number
 
 LCREATED = len('ProposalCreated')
 LQUEUED = len('ProposalQueued')
