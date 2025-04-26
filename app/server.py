@@ -191,13 +191,13 @@ class EventFeed:
 
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
+                cnt = 0
                 for event in reader:
-
+                    cnt += 1
                     self.block = max(self.block, event['block_number'])
-
                     yield event
 
-                logr.info(f"{emoji} Done reading from {client.timeliness} client of type {type(client)} at block {self.block}")
+                logr.info(f"{emoji} Done reading {cnt} {self.signature} events as ofDaoNode block {self.block}")
 
     async def realtime_async_read(self):
 
@@ -248,7 +248,6 @@ class EventFeed:
     
     async def run(self, app):
 
-        logr.info(f"Running...")
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
         async for event in self.realtime_async_read():
@@ -737,6 +736,7 @@ async def bootstrap_event_feeds(app, loop):
 
     # Get a full picture of all available contracts relevant for this DAO.
     chain_id = int(deployment['chain_id'])
+    AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
 
     abi_list = []
 
@@ -744,12 +744,6 @@ async def bootstrap_event_feeds(app, loop):
     logr.info(f"Using {token_addr=}")
     token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
     abi_list.append(token_abi)
-
-    AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
-
-    modules = {}
-    if AGORA_GOV:
-        modules = {m['address'].lower() : m['name'] for m in deployment['gov'].get('modules', [])}
 
     gov_addr = deployment['gov']['address'].lower()
     logr.info(f"Using {gov_addr=}")
@@ -803,7 +797,7 @@ async def bootstrap_event_feeds(app, loop):
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
 
-    proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
+    proposals = Proposals(governor_spec=public_config['governor_spec'])
 
     gov_spec_name = public_config['governor_spec']['name']
     if gov_spec_name in ('compound', 'ENSGovernor'):

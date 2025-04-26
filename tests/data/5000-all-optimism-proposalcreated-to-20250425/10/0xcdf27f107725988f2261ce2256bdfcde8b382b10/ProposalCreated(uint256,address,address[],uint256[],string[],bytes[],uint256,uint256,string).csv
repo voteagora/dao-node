@@ -1,0 +1,156 @@
+block_number,transaction_index,log_index,proposal_id,proposer,targets,values,signatures,calldatas,start_block,end_block,description
+72813609,0,1,28601282374834906210319879956567232553560898502158891728063939287236508034960,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],72820184,72866211,Test vote -- please use this to try out on-chain voting!
+72882380,0,1,89934444025525534467725222948723300602129924689317116631018191521555230364343,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[0b3d90cc],72888955,72934982,"Test vote 2: Electric Boogaloo \n\n JK, let's use this one :)"
+72973366,0,2,103606400798595803012644966342403441743733355496979747669804254618774477345292,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[0b3d90cc],72979941,73044365,Test Vote 3: All Together Now -- Come try out the new vote.optimism.io!
+83227193,0,1,90839767999322802375479087567202389126141447078032129455920633707568400402209,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],83233768,83298192,All Optimism Delegates are bound by the delegate code of conduct (https://gov.optimism.io/t/delegate-code-of-conduct/3943.) Severe code of conduct violations are subject to a three month suspension and are decided via Token House vote. This Delegate Suspension Proposal is eligible for voting in Voting Cycle #11: https://gov.optimism.io/t/delegate-suspension-fractal-visions/5710
+83241938,0,3,27878184270712708211495755831534918916136653803154031118511283847257927730426,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],83241938,83306362,"Delegate Suspension: Fractal Visions - All Optimism Delegates are bound by the delegate code of conduct (https://gov.optimism.io/t/delegate-code-of-conduct/3943.) Severe code of conduct violations are subject to a three month suspension and are decided via Token House vote. - This Delegate Suspension Proposal is eligible for voting in Voting Cycle #11: https://gov.optimism.io/t/delegate-suspension-fractal-visions/5710 // Note: the approval threshold for this proposal is 51%, or 20424975 OP. The value displayed by the frontend may differ."
+83243672,0,1,114732572201709734114347859370226754519763657304898989580338326275038680037913,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],83243672,83308096,"Upgrade Proposal: Bedrock - This proposal outlines the Optimism Collective’s first Protocol upgrade of Optimism Mainnet to the Bedrock release. This upgrade aims to provide unprecedented modularity, simplicity, and Ethereum equivalence to the L2 network, with positive impacts on performance and security. Bedrock is the codebase which will help Optimism stand the test of time, and is also preparatory step towards the multi-chain future. - This Protocol Upgrade proposal is eligible for voting in Voting Cycle #11: https://gov.optimism.io/t/final-upgrade-proposal-bedrock-v2/5548"
+94832299,0,1,103695324913424597802389181312722993037601032681914451632412140667432224173014,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],94832299,94896723,# Intent #4 Budget Proposal \n Season 4 lays the groundwork to align the entire community around Collective Intents. Intents are directional goals that allow the Collective to align and focus. Intent #4 is: Governance Accessibility. The Foundation has set this Intent and proposed a budget of 3M OP to support Proposed Missions in Season 4. Any budget that is not allocated to Missions under this Intent will be returned to the Governance Fund. This Season 4 proposal is eligible for voting in Special Voting Cycle #12a: [https://gov.optimism.io/t/collective-intents/5874#intent-4-governance-accessibility-6](https://gov.optimism.io/t/collective-intents/5874#intent-4-governance-accessibility-6)
+94832299,0,2,94365805422398770067924881378455503928423439630602149628781926844759467250082,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],94832299,94896723,# Intent #3 Budget Proposal \n Season 4 lays the groundwork to align the entire community around Collective Intents. Intents are directional goals that allow the Collective to align and focus. Intent #3 is: Spread Awareness of the Optimistic Vision. The Foundation has selected this Intent from commnunity suggestions and proposed a budget of 1M OP to support Proposed Missions in Season 4. Any budget that is not allocated to Missions under this Intent will be returned to the Governance Fund. This Season 4 proposal is eligible for voting in Special Voting Cycle #12a: [https://gov.optimism.io/t/collective-intents/5874#intent-3-spread-awareness-of-the-optimistic-vision-4](https://gov.optimism.io/t/collective-intents/5874#intent-3-spread-awareness-of-the-optimistic-vision-4)
+94832299,0,3,32970701904870446614408373011942917680422376755229075190214017021915019093516,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],94832299,94896723,"# Intent #2 - Council Intent Budget Proposal \n In Season 3, we experimented with a Grants Council. If renewed, the Grants Council would manage Intent #2: Innovate on Novel Applications.  If this Council Intent Budget is approved, it will renew the Council for another Season and elect the proposal author, Dane Lund, as Council Lead. Reviewer Elections will take place in Special Voting Cycle #12b, if this budget is approved. Any budget that is not allocated to Missions under this Intent will be returned to the Governance Fund. This Season 4 proposal is eligible for voting in Special Voting Cycle #12a: - [https://gov.optimism.io/t/draft-season-4-council-intent-budget-proposal/5925](https://gov.optimism.io/t/draft-season-4-council-intent-budget-proposal/5925) - [https://gov.optimism.io/t/council-framework-and-renewal/5884](https://gov.optimism.io/t/council-framework-and-renewal/5884)"
+94832299,0,4,51738314696473345172141808043782330430064117614433447104828853768775712054864,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],94832299,94896723,# Intent #1 Budget Proposal \n Season 4 lays the groundwork to align the entire community around Collective Intents. Intents are directional goals that allow the Collective to align and focus. Intent #1 is: Progress Towards Technical Decentralization. The Foundation has set this Intent and proposed a budget of 1M OP to support Proposed Missions in Season 4. Any budget that is not allocated to Missions under this Intent will be returned to the Governance Fund. This Season 4 proposal is eligible for voting in Special Voting Cycle #12a: [https://gov.optimism.io/t/collective-intents/5874#intent-1-progress-towards-technical-decentralization-2](https://gov.optimism.io/t/collective-intents/5874#intent-1-progress-towards-technical-decentralization-2)
+94832299,0,5,64930538748268257621925093712454552173772860987977453334165023026835711650357,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],94832299,94896723,"# Protocol Delegation Program Renewal \n In Season 3, the Protocol Delegation Program was piloted as a way to enable protocols, some of our most important stakeholders, to participate in governance. The Protocol Delegation Program temporarily delegates up to 5M OP from the Governance Fund to value-aligned protocols based on pre-defined criteria. This program was designed to last two Seasons in total, and this proposal would continue the program for duration of the final Season (Season 4.) After Season 4, particpating protocols will need to reaffirm their commitment to Optimism governance via their own treasuries. This Season 4 proposal is eligible for voting in Special Voting Cycle #12a: [https://gov.optimism.io/t/protocol-delegation-program-renewal/5883](https://gov.optimism.io/t/protocol-delegation-program-renewal/5883)"
+99582724,0,1,80982553847843251343725022866904947381762263529096361834044805234222094077710,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],99582724,99647148,"# Inflation Adjustment Proposal
+Inflation of the OP token is set to 2% per year by default. This inflation parameter can be adjusted by governance. This proposal would reduce inflation in Year 2 to 0%.
+
+This Season 4 proposal is eligible for voting in Special Voting Cycle #12b: [https://gov.optimism.io/t/draft-inflation-adjustment-proposal-to-0/5936](https://gov.optimism.io/t/draft-inflation-adjustment-proposal-to-0/5936)."
+99582724,0,2,29831001453379581627736734765818959389842109811221412662144194715522205098015,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],99582724,99647148,"# Treasury Appropriation (Foundation Year 2 Budget Approval)
+The Optimism Foundation future OP operating budget is subject to governance approval. The Foundation was allocated a Year 1 budget in the founding documents of the Optimism Collective. It has to date used 5.21% of this Year 1 budget. ****Therefore, the Foundation does not need to request a budget for Year 2, but is symbolically requesting an additional 1 OP for its Year 2 (2023-2024) operating budget.
+
+This Season 4 proposal is eligible for voting in Special Voting Cycle #12b: [https://gov.optimism.io/t/treasury-appropriation-proposal-foundation-year-2-budget-draft/5979](https://gov.optimism.io/t/treasury-appropriation-proposal-foundation-year-2-budget-draft/5979)"
+107746734,11,27,46755965320953291432113738397437466520155684451527981335363452666080752126186,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],107746734,108351534,"# Intent 2 Budget Proposal 2
+The Grants Council manages Intent #2: Innovate on Novel Applications. The original Council Intent Budget was approved at the start of Season 4. [https://gov.optimism.io/t/draft-season-4-council-intent-budget-proposal/5925](https://gov.optimism.io/t/draft-season-4-council-intent-budget-proposal/5925) 
+
+This proposal requests the remaining budgets approved for Intent 1, Intent 3, and Intent 4 be allocated to Intent 2 as a budget increase rather than returned to the Governance Fund for the remainder of the Season. 
+
+This proposal is eligible for voting in Voting Cycle 14 : [https://gov.optimism.io/t/final-intent-2-budget-proposal-2/6559](https://gov.optimism.io/t/final-intent-2-budget-proposal-2/6559)"
+110769479,11,51,25353629475948605098820168047140307200589226219380649297323431722674892706917,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],110769479,111331289,"#  Code of Conduct Violation: Carlos Melgar
+All active delegates, badgeholders, Citizens, and grant recipients (""Optimists"") are bound by the [Code of Conduct](https://gov.optimism.io/t/code-of-conduct/5751). Severe code of conduct violations are subject to a three month suspension and are decided via Token House vote.
+
+This Code of Conduct Suspension Proposal is eligible for voting in Voting Cycle #16a: <https://gov.optimism.io/t/code-of-conduct-violation-carlos-melgar/6882/9>
+"
+110769479,11,52,27439950952007920118525230291344523079212068327713298769307857575418374325849,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],110769479,111331289,"# Security Council: Vote #1
+This proposal requires a vote to approve Phase 0's addition of the Security Council as a signer on a 2/2 multisig that controls protocol upgrades for OP Mainnet. This does not require any protocol changes, but as this represents a fundamental change to OP Mainnet's security model, it should be approved by the Token House. This is one of three votes required to fully implement the Security Council as outlined here: <https://gov.optimism.io/t/intro-to-optimisms-security-council/6885>
+
+
+This vote requires a 76% approval threshold. The value displayed by the frontend may differ.
+
+This proposal is eligible for Special Voting Cycle #16a: <https://gov.optimism.io/t/security-council-vote-1-change-to-security-model/6886>
+"
+110769479,11,53,26993004599223263087505603454119723751877285713239446072681254755783718227511,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],110769479,111331289,"# Code of Conduct Council Budget
+Season 5 will further decentralize the Foundation's role in processing violations of the Code of Conduct and remove enforcement responsibility from Token House delegates. Accordingly, the Foundation will authorize a Token House Code of Conduct Council, according to the [Council Framework](https://gov.optimism.io/t/council-framework-and-renewal/5884). The Council will be comprised of five members and a Council Lead. The Foundation proposes an initial budget of 3,000 OP per Code of Conduct Council member, for a total of 18,000 OP to be dispersed out of the Governance Fund at the end of Season 5.
+
+This proposal is eligible for Special Voting Cycle #16a: <https://gov.optimism.io/t/code-of-conduct-councils/6888>
+"
+110769479,11,54,47864371633107534187617995773541299064963460661119440983190542488743950169122,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],110769479,111331289,"# Grants Council Operating Budget
+The Grants Council plays an important role in the Collective and is assumed to persist unless a Council Dissolution Proposal is passed. 
+
+The Token House must vote on a Council Operating Budget, thereby renewing the Council for another Season and electing the proposal author as Council Lead. Delegates are effectively electing the Council Lead that has authored an approved budget. 
+
+The sole proposed Grants Council Operating Budget is proposed by Lund Ventures (Dane Lund) with a proposed operating budget of 440k OP: <https://gov.optimism.io/t/draft-season-5-grants-council-operating-budget/6941>
+
+This proposal is eligible for Special Voting Cycle #16a: <https://gov.optimism.io/t/grants-council-operating-budget-template/6891>
+"
+110769479,11,55,95102633290576253416299445955061077431090693890673037767791097228222587378331,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],110769479,111331289,"# Ratify Developer Advisory Board Members
+The initial Developer Advisory Board will be comprised of seven members, one of which will be a non-voting member of OP Labs engineering, and a DAB Lead. The Lead will manage general coordination and operations and will be a non-voting member. If approved, the Foundation will appoint the below members:
+
+-   Board Lead: [Brock](https://twitter.com/brockjelmore)
+
+-   Board Member: [Philogy ](https://twitter.com/real_philogy)
+
+-   Board Member (forfeiting compensation): [Noah](https://twitter.com/NoahCitron)
+
+-   Board Member: [Zach](https://twitter.com/zachobront)
+
+-   Board Member: [Roman](https://twitter.com/r_krasiuk)
+
+-   Board Member: [Jepsen ](https://twitter.com/0xjepsen)
+
+-   OP Labs Representative (non-voting): [Kelvin](https://twitter.com/kelvinfichter)
+
+All members will be subject to the [Code of Conduct](https://gov.optimism.io/t/code-of-conduct/5751).
+
+This proposal is eligible for Special Voting Cycle #16a: <https://gov.optimism.io/t/developer-advisory-board/6892>
+"
+110769479,11,56,67269789039629895178640755758170247888863792004069768037736283616310331965838,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],110769479,111331289,"# Developer Advisory Board Budget
+Given the need for Optimism governance to make good technical decisions, the Foundation is proposing the establishment of a Developer Advisory Board to assess Missions and grant milestones under Intent #1. The Foundation proposes an initial budget of 12,500 OP per Advisory Board Member (excluding the OP Labs representative and a DAB member who will forego their tokens) and 20,000 OP for the Advisory Board Lead, for a total budget of 70,000 OP to be dispersed out of the Governance Fund at the end of Season 5.
+
+
+This proposal is eligible for Special Voting Cycle #16a: <https://gov.optimism.io/t/developer-advisory-board/6892>
+"
+110769479,11,57,22387138384033903985192420283570655912990907953544385753324581204637906644383,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],110769479,111331289,"# Anticapture Commission
+Season 5 introduces an Anticapture Commission, comprised of the highest impact delegates. The Anticapture Commission will have a mandate to represent the interests of individual delegates as a key stakeholder group, and to prevent capture of the Token House by any one stakeholder group. If approved by the Token House, the Anticapture Commission would be delegated 10M OP from the Governance Fund in Season 5 and 6.
+
+This proposal is eligible for Special Voting Cycle #16a: <https://gov.optimism.io/t/anticapture-commission/6889>
+"
+111677655,2,14,112047914448178129124907599845371359974256142096707624346739203514792263033877,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],111677655,112239855,"# Ratification of Law of Chains
+The Law of Chains is an open neutrality framework that establishes certain protections for participants in the Superchain ecosystem. Its purpose is to promote core principles of user protection, decentralization and economic autonomy as foundations for the developing Superchain. The Token House will ratify this foundational governing document.
+
+This proposal is eligible for Special Voting Cycle #16b:
+<https://gov.optimism.io/t/ratification-law-of-chains/7049>
+"
+111677655,2,17,23645858735980247449510302520189443998369792603230659191221949690963680987113,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],111677655,112239855,"# Chain Delegation Program
+The Chain Delegation Program would temporarily delegate a portion of idle OP from the Governance Fund to value-aligned OP Chains. If this proposal is approved by the Token House, a total of 10M OP would be reserved for delegation across as many as 10 OP Chains. Delegations will be made throughout Season 5 and 6, as Chains qualify.
+
+This proposal is eligible for Special Voting Cycle #16b: 
+<https://gov.optimism.io/t/chain-delegation-program/6896>
+"
+111677655,2,20,11595556248137084019024264942104169821784001997050285438055123196153848845549,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],111677655,112239855,"# Season 5 Intent Budgets
+The Intents for Season 5 and their budgets proposed by the Grants Council Lead are:
+
+-   Intent #1: Progress Towards Technical Decentralization
+    -   Proposed budget: 1.33M OP
+
+-   Intent #2: Grow the Superchain
+    -   Proposed budget: 4M OP
+
+-   Intent #3: Improve the Consumer Experience
+    -   Proposed budget: 1.33M OP
+
+-   Intent #4: Improve Governance Accessibility
+    -   Proposed budget: 1.33M OP
+
+-   Unallocated Budget: 1M reserved for general allocation
+
+Total Intents Budget: up to 9M OP
+
+Any budget that is not allocated under these Intent will be returned to the Governance Fund.
+
+This proposal is eligible for Special Voting Cycle #16b:
+<https://gov.optimism.io/t/season-5-intents-budget-proposal/7040>
+"
+112583246,1,1,85591583404433237270543189567126336043697987369929953414380041066767718361144,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],112583246,113145746,"# Ratify Security Council Members
+If approved, the below members, appointed by the Optimism Foundation, will serve an initial term on the Optimism Security Council:
+
+Cohort A (12 month initial term)
+Kris Kaczor (Phoenix Labs)
+Layne Haber (Connext)
+Jon Charbonneau (DBA)
+Alisha.eth (Glowworm Foundation, former ENS)
+Mariano Conti (Independent, former MakerDAO)
+Martin Tellechea (The Graph Foundation)
+Yoseph Ayele (Borderless Africa)
+Cohort B (18 month initial term)
+OP Labs PBC
+Yoav Weiss (Ethereum Foundation)
+Test in Prod
+Kain Warwick (Synthetix)
+Coinbase Technologies, Inc. (Base)
+Elena Nadolinkski (Ironfish)
+L2Beat
+Alejandro Santander (Independent, former Synthetix)
+
+A Council Lead will be appointed by the Foundation at a later date. 
+
+This proposal is eligible for Special Voting Cycle #16c
+https://gov.optimism.io/t/security-council-vote-2-initial-member-ratification/7118"
+112583326,4,14,20327152654308054166942093105443920402082671769027198649343468266910325783863,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000],112583326,113145826,"# Upgrade #2: Canyon Protocol Upgrade
+This proposal outlines the Optimism Collective’s first network upgrade after Bedrock, titled Canyon. The Canyon upgrade contains the Shapella network upgrade from Ethereum, a change to reduce the volatility of the basefee, and several minor bug fixes. This upgrade maintains EVM equivalence and includes several OP Stack specific improvements.
+
+Canyon is code complete in the optimism monorepo at commit 6cce3728b7bed5e36234aeba3b773e0f97867be3 and op-geth at commit ed8e9f54ed0a5069e77ea34895ff12a9ac4ca17f
+If this vote passes, Canyon will activate on op-mainnet, base-mainnet, pgn-mainnet, & zora-mainnet on Thu Jan 11 17:00:01 UTC 2024 (Unix Time 1704992401) barring a critical security issue.
+
+This vote requires a 76% approval threshold. The value displayed by the frontend may differ.
+
+This proposal is eligible for Special Voting Cycle #16c: 
+https://gov.optimism.io/t/draft-upgrade-proposal-2-canyon-network-upgrade/7088"
