@@ -395,42 +395,42 @@ class Proposals(DataProduct):
         del event['signature']
         del event['sighash']
 
-        # try:
-        if 'ProposalCreated' == signature[:LCREATED]:
-            proposal = decode_create_event(event)
+        try:
+            if 'ProposalCreated' == signature[:LCREATED]:
+                proposal = decode_create_event(event)
 
-            proposal_data = proposal.create_event.get('proposal_data', None)
+                proposal_data = proposal.create_event.get('proposal_data', None)
 
-            if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1:
-                raise ToDo("Old Govenors are using newer PTCs, and so using gov version here doesn't work perfectly for this check.  So the first one that upgrades, is going to trip this reminder.  Plus, PTC upgrades happen without changing gov versions Eg. Optimism.")
-                proposal.resolve_voting_module_name(self.modules)
-            elif self.gov_spec['name'] == 'agora':
-                # Older PTC Contracts didn't fully describe themselves, so we 
-                # this is a hack.
-                proposal.reverse_engineer_module_name(signature, proposal_data)
-            else:
-                proposal.set_voting_module_name('standard')
+                if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1:
+                    raise ToDo("Old Govenors are using newer PTCs, and so using gov version here doesn't work perfectly for this check.  So the first one that upgrades, is going to trip this reminder.  Plus, PTC upgrades happen without changing gov versions Eg. Optimism.")
+                    proposal.resolve_voting_module_name(self.modules)
+                elif self.gov_spec['name'] == 'agora':
+                    # Older PTC Contracts didn't fully describe themselves, so we 
+                    # this is a hack.
+                    proposal.reverse_engineer_module_name(signature, proposal_data)
+                else:
+                    proposal.set_voting_module_name('standard')
 
-            if self.gov_spec['name'] == 'agora':
-                
-                voting_module_name = proposal.voting_module_name # standard / approval / optimistic
+                if self.gov_spec['name'] == 'agora':
+                    
+                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
 
-                if voting_module_name in ('approval', 'optimistic'):
-                    proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)                
-                
-            self.proposals[proposal_id] = proposal
+                    if voting_module_name in ('approval', 'optimistic'):
+                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)                
+                    
+                self.proposals[proposal_id] = proposal
 
-        elif 'ProposalQueued' == signature[:LQUEUED]:
-            self.proposals[proposal_id].queue(event)
-        
-        elif 'ProposalExecuted' == signature[:LEXECUTED]:
-            self.proposals[proposal_id].execute(event)
+            elif 'ProposalQueued' == signature[:LQUEUED]:
+                self.proposals[proposal_id].queue(event)
+            
+            elif 'ProposalExecuted' == signature[:LEXECUTED]:
+                self.proposals[proposal_id].execute(event)
 
-        elif 'ProposalCanceled' == signature[:LCANCELED]:
-            self.proposals[proposal_id].cancel(event)
+            elif 'ProposalCanceled' == signature[:LCANCELED]:
+                self.proposals[proposal_id].cancel(event)
 
-        # except KeyError as e:
-        #     print(f"E248250323 - Problem with the following proposal_id {proposal_id} and the {signature} event: {e}")
+        except KeyError as e:
+            print(f"E248250323 - Problem with the following proposal_id {proposal_id} and the {signature} event: {e}")
     
     def unfiltered(self, head=-1):
         for proposal in reversed(self.proposals.values()):
