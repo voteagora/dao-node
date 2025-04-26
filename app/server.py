@@ -197,7 +197,7 @@ class EventFeed:
                     self.block = max(self.block, event['block_number'])
                     yield event
 
-                logr.info(f"{emoji} Done reading {cnt} {self.signature} events as ofDaoNode block {self.block}")
+                logr.info(f"{emoji} Done reading {cnt} {self.signature} events as block {self.block}")
 
     async def realtime_async_read(self):
 
