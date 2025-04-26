@@ -7,6 +7,9 @@ from .utils import camel_to_snake
 
 from .signatures import *
 
+class ToDo(NotImplementedError):
+    pass
+
 class DataProduct(ABC):
 
     @abstractmethod
@@ -178,6 +181,21 @@ LQUEUED = len('ProposalQueued')
 LEXECUTED = len('ProposalExecuted')
 LCANCELED = len('ProposalCanceled')
 
+def reverse_engineer_module(signature, proposal_data):
+
+    if signature in (PROPOSAL_CREATED_3, PROPOSAL_CREATED_4):
+        crit = '00000000000000000000000000000000000000000000000000000000000000c'
+        if proposal_data.startswith(crit):
+            return 'approval'
+        else:
+            return 'optimistic'
+
+    elif signature in (PROPOSAL_CREATED_1, PROPOSAL_CREATED_2):
+        return 'standard'
+    else:
+        raise Exception(f"Unrecognized signature '{signature}'")
+
+
 def decode_proposal_calldata(calldata: str, abi_types):
     """
     Decode Ethereum calldata using provided ABI types
@@ -288,11 +306,16 @@ class Proposal:
         return out
 
     def set_voting_module_name(self, name):
+        self.voting_module_name = name
         self.create_event['voting_module_name'] = name
         
     def resolve_voting_module_name(self, modules):
-        self.voting_module_name = modules.get(self.voting_module_address, "standard")
-        self.create_event['voting_module_name'] = self.voting_module_name
+        voting_module_name = modules.get(self.voting_module_address, "standard")
+        self.set_voting_module_name(voting_module_name)
+    
+    def reverse_engineer_module_name(self, signature, proposal_data):
+        voting_module_name = reverse_engineer_module(signature, proposal_data)
+        self.set_voting_module_name(voting_module_name)
 
     @property
     def voting_module_address(self):
@@ -375,18 +398,25 @@ class Proposals(DataProduct):
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
                 proposal = decode_create_event(event)
-                
-                if self.gov_spec['name'] == 'agora':
+
+                proposal_data = proposal.create_event.get('proposal_data', None)
+
+                if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1:
+                    raise ToDo("Old Govenors are using newer PTCs, and so using gov version here doesn't work perfectly for this check.  So the first one that upgrades, is going to trip this reminder.  Plus, PTC upgrades happen without changing gov versions Eg. Optimism.")
                     proposal.resolve_voting_module_name(self.modules)
-
-                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
-
-                    if voting_module_name in ('approval','optimistic'):
-                        proposal_data = proposal.create_event['proposal_data']
-                    
-                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)
+                elif self.gov_spec['name'] == 'agora':
+                    # Older PTC Contracts didn't fully describe themselves, so we 
+                    # this is a hack.
+                    proposal.reverse_engineer_module_name(signature, proposal_data)
                 else:
                     proposal.set_voting_module_name('standard')
+
+                if self.gov_spec['name'] == 'agora':
+                    
+                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
+
+                    if voting_module_name in ('approval', 'optimistic'):
+                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)                
                     
                 self.proposals[proposal_id] = proposal
 
