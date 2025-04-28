@@ -375,7 +375,7 @@ async def balances(request, addr):
     str, 
     location="query", 
     required=False, 
-    default="relevant",
+    default="all",
     description="Flag to filter the list of proposals, down to only the ones which are relevant."
 )
 @openapi.parameter(
@@ -391,7 +391,7 @@ async def proposals(request):
     return await proposals_handler(app, request)
 
 async def proposals_handler(app, request):
-    proposal_set = request.args.get("set", "relevant").lower()
+    proposal_set = request.args.get("set", "all").lower()
     sort_key = request.args.get("sort", "").lower()
 
 
