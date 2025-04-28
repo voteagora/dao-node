@@ -17,7 +17,35 @@ from .utils import camel_to_snake
 
 csv.field_size_limit(sys.maxsize)
 
-DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
+def resolve_block_count_span(chain_id=None):
+
+    target = 2000
+
+    if chain_id is None:
+        default_block_span = target
+    elif chain_id in (1, 11155111): # Ethereum, Sepolia
+        default_block_span = target
+    elif chain_id in (10, 7560, 8453): # Optimism, Cyber, Base
+        default_block_span = target * 6
+    elif chain_id in (534352,): # Scroll
+        default_block_span = target * 4
+    elif chain_id in (901, 957): # Derive & it's Testnet
+        default_block_span = target * 6
+    elif chain_id in (59144, 59141): # Linea, Linea Sepolia
+        default_block_span = int(target * 4.76)
+    elif chain_id in (42161,): # Arbitrium One (ie XAI)
+        default_block_span = target * 48
+    else:
+        default_block_span = target
+
+    try:
+        override = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN'))
+        assert override > 0
+    except:
+        override = None
+    
+    return override or default_block_span
+
 
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
 
@@ -159,10 +187,14 @@ class JsonRpcHistHttpClient:
 
         latest_block = w3.eth.block_number
 
+        chain_id = w3.eth.chain_id
+
         print(f"Searching for a block ~4 days ago from block {latest_block}")
 
+        step = resolve_block_count_span(chain_id)
+
         # Step backwards to find the block
-        for i in range(latest_block, 0, -1 * DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN):
+        for i in range(latest_block, 0, -1 * step):
 
             block = w3.eth.get_block(i)
             block_time = datetime.utcfromtimestamp(block.timestamp)
@@ -229,7 +261,10 @@ class JsonRpcHistHttpClient:
         # TODO make sure inclusivivity is handled properly.    
         start_block = after
         end_block = w3.eth.block_number
-        step = DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN 
+
+        chain_id = w3.eth.chain_id
+
+        step = resolve_block_count_span(chain_id) 
 
         cs_address = Web3.to_checksum_address(address)
 
