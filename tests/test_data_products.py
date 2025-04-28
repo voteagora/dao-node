@@ -70,6 +70,11 @@ def test_Delegations_with_vote_events():
     for event in delegation_events:
         delegations.handle(event)
 
+    assert delegations.delegator['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
+    
+    # Create a Votes data product to test vote tracking
+    votes = Votes(governor_spec={'name': 'compound'})
+    
     vote_events = [
         {'block_number': 100000000, 'transaction_index': 5, 'log_index': 10, 'voter': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'proposal_id': '42', 'support': 1, 'votes': 100, 'reason': '', 'signature': 'VoteCast(address,uint256,uint8,uint256,string)', 'sighash': '8bd10c2c5c6c2693aef5a24259d241d27c33b5c753d92f752137b77ba70c198a'},
         {'block_number': 100500000, 'transaction_index': 3, 'log_index': 7, 'voter': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'proposal_id': '43', 'support': 0, 'votes': 100, 'reason': '', 'signature': 'VoteCast(address,uint256,uint8,uint256,string)', 'sighash': '8bd10c2c5c6c2693aef5a24259d241d27c33b5c753d92f752137b77ba70c198a'},
@@ -78,14 +83,12 @@ def test_Delegations_with_vote_events():
     ]
 
     for event in vote_events:
-        delegations.handle(event)
-
-    assert delegations.delegator['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
+        votes.handle(event)
     
-    assert delegations.latest_vote_block['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == 100500000
-    assert delegations.latest_vote_block['0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5'] == 100300000
-    
-    assert delegations.latest_vote_block['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'] == 0
+    # Test the get_last_vote_block method
+    assert votes.get_last_vote_block('0xded7e867cc42114f1cffa1c5572f591e8711771d') == 100500000
+    assert votes.get_last_vote_block('0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5') == 100300000
+    assert votes.get_last_vote_block('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0') == 0
     
     # Out of order vote event
     earlier_vote_event = {
@@ -101,9 +104,10 @@ def test_Delegations_with_vote_events():
         'sighash': '8bd10c2c5c6c2693aef5a24259d241d27c33b5c753d92f752137b77ba70c198a'
     }
     
-    delegations.handle(earlier_vote_event)
+    votes.handle(earlier_vote_event)
     
-    assert delegations.latest_vote_block['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == 100500000
+    # Last vote block should still be the highest block number
+    assert votes.get_last_vote_block('0xded7e867cc42114f1cffa1c5572f591e8711771d') == 100500000
 
 ####################################
 #

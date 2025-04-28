@@ -502,6 +502,12 @@ class Votes(DataProduct):
 
         self.proposal_vote_record[proposal_id].append(event_cp)
 
+    def get_last_vote_block(self, addr):
+        votes_for_addr = self.voter_history.get(addr.lower(), [])
+        if not votes_for_addr:
+            return 0
+        return max(vote['block_number'] for vote in votes_for_addr)
+
 class ParticipationModel:
     """
     This participation model looks at the 10 most recent completed non-cancelled votes

@@ -579,8 +579,8 @@ async def delegates_handler(app, request):
     elif sort_by_dc:
         out = list(app.ctx.delegations.delegatee_cnt.items())
     elif sort_by_lvb:
-        # Create a list of (address, last_vote_block) tuples
-        out = [(addr, app.ctx.delegations.latest_vote_block.get(addr, 0)) 
+        # Create a list of (address, last_vote_block) tuples using Votes data product
+        out = [(addr, app.ctx.votes.get_last_vote_block(addr)) 
                for addr in set(app.ctx.delegations.delegatee_vp.keys())]
     else:
         # Default to VP if sort_by is not recognized
@@ -614,43 +614,43 @@ async def delegates_handler(app, request):
     if sort_by_vp:
         if add_delegator_count and add_participation_rate and add_last_vote_block:
             out = [{'addr': obj[0], 'voting_power': str(obj[1]), 'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0]), 'last_vote_block': app.ctx.delegations.latest_vote_block.get(obj[0], 0)} for obj in out]
+                   'participation': pm.calculate(obj[0]), 'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
         elif add_delegator_count and add_participation_rate:
             out = [{'addr': obj[0], 'voting_power': str(obj[1]), 'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
                    'participation': pm.calculate(obj[0])} for obj in out]
         elif add_delegator_count and add_last_vote_block:
             out = [{'addr': obj[0], 'voting_power': str(obj[1]), 'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]],
-                   'last_vote_block': app.ctx.delegations.latest_vote_block.get(obj[0], 0)} for obj in out]
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
         elif add_participation_rate and add_last_vote_block:
             out = [{'addr': obj[0], 'voting_power': str(obj[1]), 'participation': pm.calculate(obj[0]),
-                   'last_vote_block': app.ctx.delegations.latest_vote_block.get(obj[0], 0)} for obj in out]
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
         elif add_delegator_count:
             out = [{'addr': obj[0], 'voting_power': str(obj[1]), 'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
         elif add_participation_rate:
             out = [{'addr': obj[0], 'voting_power': str(obj[1]), 'participation': pm.calculate(obj[0])} for obj in out]
         elif add_last_vote_block:
-            out = [{'addr': obj[0], 'voting_power': str(obj[1]), 'last_vote_block': app.ctx.delegations.latest_vote_block.get(obj[0], 0)} for obj in out]
+            out = [{'addr': obj[0], 'voting_power': str(obj[1]), 'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
         else:
             out = [{'addr': obj[0], 'voting_power': str(obj[1])} for obj in out]
     elif sort_by_dc:
         if add_voting_power and add_participation_rate and add_last_vote_block:
             out = [{'addr': obj[0], 'from_cnt': obj[1], 'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'participation': pm.calculate(obj[0]), 'last_vote_block': app.ctx.delegations.latest_vote_block.get(obj[0], 0)} for obj in out]
+                   'participation': pm.calculate(obj[0]), 'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
         elif add_voting_power and add_participation_rate:
             out = [{'addr': obj[0], 'from_cnt': obj[1], 'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
                    'participation': pm.calculate(obj[0])} for obj in out]
         elif add_voting_power and add_last_vote_block:
             out = [{'addr': obj[0], 'from_cnt': obj[1], 'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]),
-                   'last_vote_block': app.ctx.delegations.latest_vote_block.get(obj[0], 0)} for obj in out]
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
         elif add_participation_rate and add_last_vote_block:
             out = [{'addr': obj[0], 'from_cnt': obj[1], 'participation': pm.calculate(obj[0]),
-                   'last_vote_block': app.ctx.delegations.latest_vote_block.get(obj[0], 0)} for obj in out]
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
         elif add_voting_power:
             out = [{'addr': obj[0], 'from_cnt': obj[1], 'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]])} for obj in out]
         elif add_participation_rate:
             out = [{'addr': obj[0], 'from_cnt': obj[1], 'participation': pm.calculate(obj[0])} for obj in out]
         elif add_last_vote_block:
-            out = [{'addr': obj[0], 'from_cnt': obj[1], 'last_vote_block': app.ctx.delegations.latest_vote_block.get(obj[0], 0)} for obj in out]
+            out = [{'addr': obj[0], 'from_cnt': obj[1], 'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
         else:
             out = [{'addr': obj[0], 'from_cnt': obj[1]} for obj in out]
     elif sort_by_lvb:
@@ -835,9 +835,9 @@ async def bootstrap_event_feeds(app, loop):
 
     ERC20 = public_config['token_spec']['name'] == 'erc20'
 
-    if ERC20:
-        balances = Balances(token_spec=public_config['token_spec'])
-        app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
+    # if ERC20:
+    #     balances = Balances(token_spec=public_config['token_spec'])
+    #     app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
@@ -885,8 +885,6 @@ async def bootstrap_event_feeds(app, loop):
     votes = Votes(governor_spec=public_config['governor_spec'])
     for VOTE_EVENT in VOTE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
-        # Also register vote events to be handled by the delegations handler
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, delegations)
 
     #################################################################################
     # 🎪 🍔 Instantiate an "Event Feed" for every network, contract, and relevant 
