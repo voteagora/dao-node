@@ -183,13 +183,14 @@ class JsonRpcHistHttpClient:
             raise Exception(f"Could not connect to {self.url}")
 
         now = datetime.utcnow()
-        target_date = now - timedelta(days=4)
+        days_back = 1 # TODO: Change back to 4, after we get infra stable.
+        target_date = now - timedelta(days=days_back)
 
         latest_block = w3.eth.block_number
 
         chain_id = w3.eth.chain_id
 
-        print(f"Searching for a block ~4 days ago from block {latest_block}")
+        print(f"Searching for a block ~{days_back} days ago from block {latest_block}")
 
         step = resolve_block_count_span(chain_id)
 
@@ -202,13 +203,13 @@ class JsonRpcHistHttpClient:
             # print(f"Block {block.number}: {block_time.isoformat()} UTC")
 
             if block_time < target_date:
-                logr.info(f"Found block from 4+ days ago: {block.number} @ {block_time.isoformat()} UTC")
+                logr.info(f"Found block from ~{days_back} days ago: {block.number} @ {block_time.isoformat()} UTC")
 
                 self.fallback_block[signature] = block.number 
 
                 return block.number
         else:
-            logr.info("No block older than 4 days found.")
+            logr.info(f"No block older than {days_back} days found.")
             return 0
 
     def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi):
