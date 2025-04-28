@@ -160,6 +160,14 @@ def test_Proposals_op_proposal_module_names(op_governor_abis):
     assert results['standard'] == 73
     assert results['approval'] == 51
     assert results['optimistic'] == 3
+
+    from sanic.response import json
+
+    # This confirms that the objects can be serialized in a response.
+    # The biggest risk is in decoding data incorrectly, and it getting
+    # left as bytes.
+    for proposal in proposals.proposals:
+        json(proposal)
     
 
 def test_Votes_one_op_approval_from_csv(op_governor_abis):
