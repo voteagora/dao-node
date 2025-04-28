@@ -25,10 +25,10 @@ def resolve_block_count_span(chain_id=None):
         default_block_span = target
     elif chain_id in (1, 11155111): # Ethereum, Sepolia
         default_block_span = target
-    elif chain_id in (10, 7560, 8453): # Optimism, Cyber, Base
+    elif chain_id in (10, 8453): # Optimism, Base
         default_block_span = target * 6
-    elif chain_id in (7560,):
-        default_block_span = 10_000
+    elif chain_id in (7560,): # Cyber
+        default_block_span = 10_000 
     elif chain_id in (534352,): # Scroll
         default_block_span = target * 4
     elif chain_id in (901, 957): # Derive & it's Testnet
