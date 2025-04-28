@@ -248,26 +248,31 @@ def decode_proposal_data(proposal_type, proposal_data):
 
     if proposal_type == 'standard':
         return None
-    
-    if proposal_type == 'approval':
-        abi = ["(uint256,address[],uint256[],bytes[],string)[]", "(uint8,uint8,address,uint128,uint128)"]
-        abi2 = ["(address[],uint256[],bytes[],string)[]",        "(uint8,uint8,address,uint128,uint128)"] # OP/alligator only? Only for 0xe1a17f4770769f9d77ef56dd3b92500df161f3a1704ab99aec8ccf8653cae400l
-    elif proposal_type == 'optimistic':
-        abi = ["(uint248,bool)"]
-    else:
-        raise Exception("Unknown Proposal Type: {}".format(proposal_type))
 
     if proposal_data[:2] == '0x':
         proposal_data = proposal_data[2:]
     proposal_data = bytes.fromhex(proposal_data)
 
-    try:
-        result = decode_abi(abi, proposal_data)
-    except:
-        result = decode_abi(abi2, proposal_data)
-        result = bytes_to_hex(result)
+    if proposal_type == 'optimistic':
+        abi = ["(uint248,bool)"]
+        decoded = decode_abi(abi, proposal_data)
+        return bytes_to_hex(decoded)
+    
+    if proposal_type == 'approval':
+        abi = ["(uint256,address[],uint256[],bytes[],string)[]", "(uint8,uint8,address,uint128,uint128)"]
+        abi2 = ["(address[],uint256[],bytes[],string)[]",        "(uint8,uint8,address,uint128,uint128)"] # OP/alligator only? Only for 0xe1a17f4770769f9d77ef56dd3b92500df161f3a1704ab99aec8ccf8653cae400l
 
-    return result
+        try:
+            decoded = decode_abi(abi, proposal_data)
+        except Exception as err:
+            decoded = decode_abi(abi2, proposal_data)
+
+        decoded = bytes_to_hex(decoded)
+        
+        return decoded
+
+    raise Exception("Unknown Proposal Type: {}".format(proposal_type))
+
 
 class Proposal:
     def __init__(self, create_event):
