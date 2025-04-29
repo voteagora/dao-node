@@ -441,6 +441,8 @@ async def proposal(request, proposal_id:str):
 async def proposal_handler(app, request, proposal_id):
     proposal = app.ctx.proposals.proposals[proposal_id].to_dict()
 
+    proposal = copy(proposal)
+
     totals = app.ctx.votes.proposal_aggregations[proposal_id].totals()
     proposal['totals'] = totals
 
