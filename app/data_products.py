@@ -1,6 +1,10 @@
 from copy import copy
 from collections import defaultdict
 from abc import ABC, abstractmethod
+import asyncio
+import time
+from hexbytes import HexBytes
+from eth_abi import decode
 
 from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
@@ -130,6 +134,11 @@ class Delegations(DataProduct):
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
+        
+        # Cache for recalculated voting power
+        self.cached_vp = defaultdict(int)
+        self.last_vp_calculation = 0
+        self.vp_calculation_running = False
 
     def handle(self, event):
 
@@ -175,6 +184,123 @@ class Delegations(DataProduct):
 
             self.delegatee_vp_history[delegatee].append((block_number, new_votes))
 
+    async def start_vp_recalculation_task(self, app):
+        """Start a background task to recalculate voting power periodically"""
+        self.stop_recalculation = False
+        
+        async def recalculation_task():
+            while not self.stop_recalculation:
+                try:
+                    if not self.vp_calculation_running:
+                        self.vp_calculation_running = True
+                        # Run CPU-intensive work in a thread pool
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, self._non_async_recalculate_voting_power)
+                        self.vp_calculation_running = False
+                    await asyncio.sleep(60)  # Recalculate every 60 seconds
+                except Exception as e:
+                    print(f"Error in voting power recalculation: {e}")
+                    self.vp_calculation_running = False
+                    await asyncio.sleep(5)  # Wait a bit before retrying
+        
+        app.add_task(recalculation_task())
+    
+    def stop_vp_recalculation_task(self):
+        self.stop_recalculation = True
+    
+    def _non_async_recalculate_voting_power(self):
+        try:
+            start_time = time.time()
+            print(f"Starting voting power recalculation at {start_time}")
+            
+            self.cached_vp = defaultdict(int)
+            
+            for delegatee, delegators in self.delegatee_list.items():
+                current_vp = self.delegatee_vp.get(delegatee, 0)
+                
+                self.cached_vp[delegatee] = current_vp
+                
+                # Calculate 7-day change in voting power
+                seven_day_ago_vp = self._get_voting_power_days_ago(delegatee, 7)
+                vp_change = current_vp - seven_day_ago_vp
+                
+                if not hasattr(self, 'vp_change_7d'):
+                    self.vp_change_7d = defaultdict(int)
+                
+                self.vp_change_7d[delegatee] = vp_change
+            
+            self.last_vp_calculation = time.time()
+            calculation_time = time.time() - start_time
+            
+            # Print out a sample of the 7-day changes (top 5 increases and decreases)
+            if hasattr(self, 'vp_change_7d') and self.vp_change_7d:
+                # Sort by absolute change value (descending)
+                sorted_changes = sorted(
+                    self.vp_change_7d.items(), 
+                    key=lambda x: abs(x[1]), 
+                    reverse=True
+                )
+                
+                # Debugging
+                sample_size = min(5, len(sorted_changes))
+                top_changes = sorted_changes[:sample_size]
+                
+                print(f"\n===== Top {sample_size} Voting Power Changes (7d) =====")
+                for delegatee, change in top_changes:
+                    current = self.delegatee_vp.get(delegatee, 0)
+                    previous = current - change
+                    percent_change = (change / previous * 100) if previous != 0 else float('inf')
+                    
+                    print(f"Delegatee: {delegatee}")
+                    print(f"  Current VP: {current}")
+                    print(f"  7d ago VP: {previous}")
+                    print(f"  Change: {change:+} ({percent_change:+.2f}%)")
+                print("=============================================\n")
+            
+            print(f"Voting power recalculation completed in {calculation_time:.2f} seconds")
+        except Exception as e:
+            print(f"Error during voting power recalculation: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _get_voting_power_days_ago(self, delegatee, days):
+        seconds_ago = days * 24 * 60 * 60
+        
+        vp_history = self.delegatee_vp_history.get(delegatee, [])
+        if not vp_history:
+            return 0
+        
+        SECONDS_PER_BLOCK = 12
+        
+        sorted_history = sorted(vp_history, key=lambda x: x[0])
+        
+        current_time = time.time()
+        current_block = sorted_history[-1][0] if sorted_history else 0
+        
+        if len(sorted_history) >= 2:
+            first_block = sorted_history[0][0]
+            last_block = sorted_history[-1][0]
+            if last_block > first_block:
+                blocks_elapsed = last_block - first_block
+                estimated_seconds_per_block = (current_time - self.last_vp_calculation) / blocks_elapsed
+                if estimated_seconds_per_block > 0:
+                    SECONDS_PER_BLOCK = estimated_seconds_per_block
+        
+        # Estimate the block number from N days ago
+        estimated_blocks_ago = int(seconds_ago / SECONDS_PER_BLOCK)
+        target_block = max(0, current_block - estimated_blocks_ago)
+        
+        for block_num, vp in reversed(sorted_history):
+            if block_num <= target_block:
+                return vp
+        
+        # Return earliest known VP if no block found before target
+        return sorted_history[0][1] if sorted_history else 0
+
+    def get_vp_change_7d(self, delegatee):
+        if not hasattr(self, 'vp_change_7d'):
+            return 0
+        return self.vp_change_7d.get(delegatee.lower(), 0)
 
 LCREATED = len('ProposalCreated')
 LQUEUED = len('ProposalQueued')
