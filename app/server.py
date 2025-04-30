@@ -607,6 +607,10 @@ async def delegates_handler(app, request):
                    'vp_change_7d': str(app.ctx.delegations.get_vp_change_7d(obj[0]))} for obj in out]
         elif add_delegator_count and add_participation_rate:
             out = [{'addr' : obj[0], 'voting_power' : str(obj[1]), 'from_cnt' : app.ctx.delegations.delegatee_cnt[obj[0]], 'participation' : pm.calculate(obj[0])} for obj in out]
+        elif add_delegator_count and add_vp_change:
+            out = [{'addr': obj[0], 'voting_power': str(obj[1]), 
+                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]],
+                   'vp_change_7d': str(app.ctx.delegations.get_vp_change_7d(obj[0]))} for obj in out]
         elif add_delegator_count:
             out = [{'addr' : obj[0], 'voting_power' : str(obj[1]), 'from_cnt' : app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
         elif add_vp_change:
@@ -615,12 +619,28 @@ async def delegates_handler(app, request):
         else:
             out = [{'addr' : obj[0], 'voting_power' : str(obj[1])} for obj in out]
     else: # sort_by_from_cnt
-        if add_voting_power and add_participation_rate:
+        if add_voting_power and add_participation_rate and add_vp_change:
+            out = [{'addr': obj[0], 'from_cnt': obj[1], 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
+                   'participation': pm.calculate(obj[0]),
+                   'vp_change_7d': str(app.ctx.delegations.get_vp_change_7d(obj[0]))} for obj in out]
+        elif add_voting_power and add_participation_rate:
             out = [{'addr' : obj[0], 'from_cnt' : obj[1], 'voting_power' : str(app.ctx.delegations.delegatee_vp[obj[0]]), 'participation' : pm.calculate(obj[0])} for obj in out]
+        elif add_voting_power and add_vp_change:
+            out = [{'addr': obj[0], 'from_cnt': obj[1], 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]),
+                   'vp_change_7d': str(app.ctx.delegations.get_vp_change_7d(obj[0]))} for obj in out]
         elif add_voting_power:
             out = [{'addr' : obj[0], 'from_cnt' : obj[1], 'voting_power' : str(app.ctx.delegations.delegatee_vp[obj[0]])} for obj in out]
+        elif add_participation_rate and add_vp_change:
+            out = [{'addr': obj[0], 'from_cnt': obj[1], 
+                   'participation': pm.calculate(obj[0]),
+                   'vp_change_7d': str(app.ctx.delegations.get_vp_change_7d(obj[0]))} for obj in out]
         elif add_participation_rate:
             out = [{'addr' : obj[0], 'from_cnt' : obj[1], 'participation' : pm.calculate(obj[0])} for obj in out]
+        elif add_vp_change:
+            out = [{'addr': obj[0], 'from_cnt': obj[1],
+                   'vp_change_7d': str(app.ctx.delegations.get_vp_change_7d(obj[0]))} for obj in out]
         else:
             out = [{'addr' : obj[0], 'from_cnt' : obj[1]} for obj in out]
 
@@ -783,7 +803,7 @@ async def bootstrap_event_feeds(app, loop):
     #     balances = Balances(token_spec=public_config['token_spec'])
     #     app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
-    delegations = Delegations()
+    delegations = Delegations(client=rpcc)
     app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
 
     if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):

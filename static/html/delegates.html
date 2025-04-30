@@ -34,11 +34,22 @@
 
     <div class="container mt-4">
         <h2>Delegates</h2>
+        <div class="mb-3">
+            <label for="sortSelect" class="form-label">Sort by:</label>
+            <select id="sortSelect" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                <option value="voting_power:desc">Voting Power (High to Low)</option>
+                <option value="vp_change_7d:desc" selected>7d Change (High to Low)</option>
+                <option value="vp_change_7d:asc">7d Change (Low to High)</option>
+                <option value="from_cnt:desc">Delegations (High to Low)</option>
+                <option value="participation:desc">Participation (High to Low)</option>
+            </select>
+        </div>
         <table class="table" id="delegatesTable">
             <thead>
                 <tr>
                     <th>Address</th>
                     <th>Voting Power</th>
+                    <th>7d Change</th>
                     <th>Delegations</th>
                     <th>Participation</th>
                 </tr>
@@ -63,6 +74,21 @@
         function formatParticipation(participation) {
             return `${(participation * 100).toFixed(1)}%`;
         }
+        
+        function formatVPChange(change) {
+            if (!change) return 'N/A';
+            
+            const changeValue = BigInt(change);
+            const formattedValue = (changeValue / BigInt(10 ** 18)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+            
+            if (changeValue > 0) {
+                return `<span class="text-success">+${formattedValue}</span>`;
+            } else if (changeValue < 0) {
+                return `<span class="text-danger">${formattedValue}</span>`;
+            } else {
+                return `<span>${formattedValue}</span>`;
+            }
+        }
 
         function updateLoadTime(response) {
             const timing = response.headers.get('server-timing');
@@ -82,7 +108,7 @@
         async function fetchDelegates() {
             try {
                 const startTime = performance.now();
-                const response = await fetch('/v1/delegates');
+                const response = await fetch(`/v1/delegates?include=DC,PR,VPC`);
                 const endTime = performance.now();
                 const clientDuration = endTime - startTime;
                 
@@ -103,6 +129,7 @@
                     row.innerHTML = `
                         <td>${delegate.addr}</td>
                         <td>${formatVotingPower(delegate.voting_power)}</td>
+                        <td>${formatVPChange(delegate.vp_change_7d)}</td>
                         <td>${delegate.from_cnt}</td>
                         <td>${formatParticipation(delegate.participation)}</td>
                     `;
@@ -112,13 +139,19 @@
                 console.error('Error fetching delegates:', error);
                 document.querySelector('#delegatesTable tbody').innerHTML = `
                     <tr>
-                        <td colspan="4" class="text-center text-danger">
+                        <td colspan="5" class="text-center text-danger">
                             Error loading delegates: ${error.message}
                         </td>
                     </tr>
                 `;
             }
         }
+
+        // Set up event listener for sort select
+        document.addEventListener('DOMContentLoaded', function() {
+            const sortSelect = document.getElementById('sortSelect');
+            sortSelect.addEventListener('change', fetchDelegates);
+        });
 
         // Initial load
         fetchDelegates();
