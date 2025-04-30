@@ -1,6 +1,7 @@
 from copy import copy
 from collections import defaultdict
 from abc import ABC, abstractmethod
+import json
 
 from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
@@ -137,25 +138,11 @@ class Delegations(DataProduct):
         if not array_str or array_str == '[]':
             return []
             
-        # Remove outer brackets
-        array_str = array_str.strip('[]')
-        if not array_str:
+        try:
+            delegates = json.loads(array_str)
+            return [[addr.lower(), int(amount)] for addr, amount in delegates]
+        except (json.JSONDecodeError, ValueError):
             return []
-            
-        parsed_array = []
-        # Split by '],[' to get individual tuples
-        tuples = array_str.split('],[')
-        for tuple_str in tuples:
-            # Clean up the tuple string
-            tuple_str = tuple_str.strip('[]')
-            if tuple_str:
-                # Split by comma, but only split on the first comma
-                parts = tuple_str.split(',', 1)
-                if len(parts) == 2:
-                    addr = parts[0].strip().strip('"')
-                    amount = parts[1].strip()
-                    parsed_array.append([addr, int(amount)])
-        return parsed_array
 
     def handle(self, event):
 
