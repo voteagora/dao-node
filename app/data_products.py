@@ -185,6 +185,8 @@ class Delegations(DataProduct):
                     if delegator in self.delegatee_list[old_delegate]:
                         self.delegatee_list[old_delegate].remove(delegator)
                         self.delegatee_cnt[old_delegate] = len(self.delegatee_list[old_delegate])
+                        if not self.delegatee_list[old_delegate]:
+                            del self.delegatee_list[old_delegate]
                     self.delegation_amounts[old_delegate].pop(delegator, None)
                     
                     # Update voting power

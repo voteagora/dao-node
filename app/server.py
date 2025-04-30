@@ -621,19 +621,14 @@ async def delegates_handler(app, request):
 
 ############################################################################################################################################################
 
-@app.route('/v1/delegate/<addr>')
-@openapi.tag("Delegation State")
-@openapi.summary("Information about a specific delegate")
-@measure
-async def delegate(request, addr):
+async def delegate_handler(app, request, addr):
     from_list = []
     for delegator in app.ctx.delegations.delegatee_list[addr]:
         balance = str(app.ctx.balances.balance_of(delegator))
-        # Check if this is a partial delegation
         if addr in app.ctx.delegations.delegation_amounts and delegator in app.ctx.delegations.delegation_amounts[addr]:
             amount = app.ctx.delegations.delegation_amounts[addr][delegator]
         else:
-            amount = 10000  # Full delegation
+            amount = 10000
         from_list.append({
             'address': delegator,
             'balance': balance,
@@ -642,9 +637,14 @@ async def delegate(request, addr):
 
     return json({'delegate' : 
                 {'addr' : addr,
-                'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
-                'from_list' : from_list,
-                'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
+                 'from_list' : from_list}})
+
+@app.route('/v1/delegate/<addr>')
+@openapi.tag("Delegation State")
+@openapi.summary("Information about a specific delegate")
+@measure
+async def delegate(request, addr):
+    return await delegate_handler(app, request, addr)
 
 @app.route('/v1/delegate_vp/<addr>/<block_number>')
 @openapi.tag("Delegation State")
