@@ -367,6 +367,17 @@ def decode_create_event(event) -> Proposal:
     
     return Proposal(event)
 
+class SnapshotProposals(DataProduct):
+    def __init__(self, ):
+        self.proposals = {}
+
+    def handle(self, event):
+
+        obj = event['object']
+
+        obj['start_block'] = obj['snapshot']
+
+        self.proposals[obj['id']] = obj
 
 class Proposals(DataProduct):
 

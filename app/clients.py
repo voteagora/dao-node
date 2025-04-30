@@ -12,6 +12,7 @@ from eth_abi.abi import decode as decode_abi
 from web3 import Web3, AsyncWeb3, WebSocketProvider
 from web3.middleware import ExtraDataToPOAMiddleware
 from sanic.log import logger as logr, error_logger as errlogr
+import requests as r
 
 from .utils import camel_to_snake
 
@@ -140,6 +141,99 @@ class CSVClient:
                 if DEBUG and (cnt == 1000000):
                     break
 
+class SnapshotHistHttpClient:
+    timeliness = 'polling'
+
+    def __init__(self, url="https://hub.snapshot.org/graphql"):
+        self.url = url
+        self.page_size = 1000
+
+    def is_valid(self):
+        resp = r.post(self.url)
+        return True
+
+    def get_votes(self, on_or_after):
+
+        QUERY = """
+                {
+                items: votes(where: {space : "%s", created_gte : %s}, orderBy: "created", orderDirection: asc, first: %s) {
+                    id
+                    ipfs
+                    voter
+                    created
+                    proposal {
+                      id
+                      choices
+                    }
+                    choice
+                    metadata
+                    reason
+                    app
+                    vp
+                    vp_by_strategy
+                    vp_state
+                }
+                }
+                """ % (self.space, on_or_after, self.page_size)
+
+        resp = r.post(self.url, json={'query': QUERY})
+
+        payload = resp.json()['data']['items']
+
+        return payload
+
+    def get_proposals(self, space):
+
+        QUERY = """
+                    query {
+                        items: proposals(
+                        where: {space: "%s", flagged: false}
+                        orderBy: "created"
+                        orderDirection: asc,
+                        first: 1000
+                        ) {
+                        id
+                        author
+                        body
+                        choices
+                        created
+                        end
+                        link
+                        network
+                        scores
+                        scores_state
+                        scores_total
+                        scores_updated
+                        snapshot
+                        start
+                        state
+                        title
+                        type
+                        votes
+                        }
+                    }
+                    """ % space
+
+        resp = r.post(self.url, json={'query': QUERY})
+
+        payload = resp.json()['data']['items']
+
+        return payload
+
+    async def read(self, space, topic):
+        # space - ens.eth, uniswapgovernance.eth
+
+        if topic == 'proposals':
+            # this request takes 146ms on Jeff's local
+            objects = self.get_proposals(space)
+        elif topic == 'votes':
+            raise NotImplementedError("!")
+            objects = self.get_votes()
+        
+        for obj in objects:
+            yield {'space': space,
+                   'topic': topic, 
+                   'object': obj}
 
 class JsonRpcHistHttpClient:
     timeliness = 'archive'

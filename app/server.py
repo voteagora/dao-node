@@ -25,8 +25,8 @@ from sanic.blueprints import Blueprint
 from sanic.log import logger as logr
 
 from .middleware import start_timer, add_server_timing_header, measure
-from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
-from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
+from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient, SnapshotHistHttpClient
+from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel, SnapshotProposals
 from .signatures import *
 from . import __version__
 from .logsetup import get_logger 
@@ -164,8 +164,8 @@ class ClientSequencer:
 
     def get_async_iterator(self):
         return self 
-    
-class EventFeed:
+
+class BlockchainEventFeed:
     def __init__(self, chain_id, address, signature, abis, client_sequencer):
         self.chain_id = chain_id
         self.address = address
@@ -211,13 +211,10 @@ class EventFeed:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
-
                 async for event in reader:
-
                     self.block = max(self.block, event['block_number'])
-
                     yield event
-
+                    
     async def boot(self, app):
         
         cnt = 0
@@ -260,6 +257,40 @@ class EventFeed:
             # sig = f"{self.chain_id}.{self.address}.{self.signature}"
             # await app.dispatch("data.model." + sig, context=event)
 
+class SnapshotEventFeed(BlockchainEventFeed):
+    def __init__(self, space, topic, client_sequencer):
+        self.space = space
+        self.topic = topic
+        self.cs = client_sequencer
+
+    def archive_read(self):
+        return []
+
+    async def boot(self, app):
+        return 
+
+    async def realtime_async_read(self):
+        
+        async for client in self.cs.get_async_iterator():
+
+            if client.timeliness == 'polling':
+
+                while True:
+
+                    # Note that this is not asynchronous.
+                    reader = client.read(self.space, self.topic)
+                    async for event in reader:
+                        yield event
+
+                    async await asyncio.sleep(120)
+
+    async def run(self, app):
+
+        data_product_dispatchers = app.ctx.dps[f"snapshot:{self.space}:{self.topic}"]
+
+        async for event in self.realtime_async_read():
+            for data_product_dispatcher in data_product_dispatchers:
+                data_product_dispatcher.handle(event)
 
 class DataProductContext:
     def __init__(self):
@@ -282,10 +313,12 @@ class DataProductContext:
 
     def register(self, chain_id_contract_signature, data_product):
 
-        _, contract, signature = chain_id_contract_signature.split(".")
-
-        self.event_feed_meta[contract].append(signature)
-
+        if chain_id_contract_signature.startswith("snapshot"):
+            _, space, topic = chain_id_contract_signature.split(":")
+            self.event_feed_meta["snapshot:" + space].append(topic)
+        else:
+            _, contract, signature = chain_id_contract_signature.split(".")
+            self.event_feed_meta["contract:" + contract].append(signature)
         self.dps[chain_id_contract_signature].append(data_product)
 
         setattr(self, data_product.name, data_product)
@@ -394,7 +427,6 @@ async def proposals_handler(app, request):
     proposal_set = request.args.get("set", "all").lower()
     sort_key = request.args.get("sort", "").lower()
 
-
     if proposal_set == 'relevant':
         res = app.ctx.proposals.relevant()
     else:
@@ -407,10 +439,22 @@ async def proposals_handler(app, request):
         proposal['totals'] = totals
         proposals.append(proposal)
     
+    # This sort takes ENS 14/1000th of a milisecond on local.
     if sort_key:
         proposals.sort(key=lambda x: x[sort_key], reverse=True)
 
-    return json({'proposals' : proposals})
+    out = {'proposals' : proposals}
+
+    if hasattr(app.ctx, 'snapshot_proposals'):
+        out['snapshot_proposals'] = list(app.ctx.snapshot_proposals.proposals.values())
+
+        if sort_key: # This basically means if you have ENS proposals turned on, the only
+                     # thing we can sort on, is `start_block`, so this design is kindof dumb.
+
+                     # Maybe it's best for proposals, if the client just sorts however it wants.
+            proposals.sort(key=lambda x: x[sort_key], reverse=True)
+  
+    return json(out)
 
 ##################################################################################################################################################
 
@@ -730,8 +774,12 @@ async def bootstrap_event_feeds(app, loop):
     if jwsc.is_valid():
        clients.append(jwsc)
 
+    shhc = SnapshotHistHttpClient()
+    if shhc.is_valid():
+        clients.append(shhc)
+
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
-    dcqs = ClientSequencer(clients) 
+    dcqs = ClientSequencer(clients)
 
     #################################################################################
     # 👀 🕹️ ABI Setup - Load the ABIs relevant for the DAO.  
@@ -815,6 +863,10 @@ async def bootstrap_event_feeds(app, loop):
     for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
 
+    snapshot_proposals = SnapshotProposals()
+    space = 'ens.eth'
+    app.ctx.register(f'snapshot:{space}:proposals', snapshot_proposals)
+
     VOTE_EVENTS = [VOTE_CAST_1]    
     if not (public_config['governor_spec']['name'] in ('compound', 'ENSGovernor')):
         VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
@@ -831,18 +883,30 @@ async def bootstrap_event_feeds(app, loop):
     #       the data product registration step.  
 
     for address, signatures in app.ctx.event_feed_meta.items():
+
+        source, pointer = address.split(":")
+
         for signature in signatures:
-            ev = EventFeed(chain_id, address, signature, abis, dcqs)
+            if source == 'snapshot':
+                ev = SnapshotEventFeed(space=pointer, 
+                                       topic=signature, 
+                                       client_sequencer=dcqs)
+            elif source == 'contract':
+                ev = BlockchainEventFeed(chain_id=chain_id, 
+                                          address=pointer, 
+                                          signature=signature, 
+                                          abis=abis, 
+                                          client_sequencer=dcqs)
             app.ctx.add_event_feed(ev)
             app.add_task(ev.boot(app))
 
 @app.after_server_start
-async def subscribe_event_fees(app, loop):
+async def subscribe_event_feeds(app, loop):
 
     logr.info("Adding signal handler for each event feed.")
     for ev in app.ctx.event_feeds:
-        logr.info(f"Invoking ev.run(app) for {ev.signature}")
         app.add_task(ev.run(app))
+    logr.info("Done adding signal handlers for each event feed.")
 
 ##################################
 #
