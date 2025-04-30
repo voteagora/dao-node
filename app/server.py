@@ -1,24 +1,20 @@
 from dotenv import load_dotenv
+from pyenvdiff import Environment
 
 load_dotenv()
 
-import csv, time, pdb, os
+from importlib.metadata import version as importlib_version
+this_env = Environment()
+
+import csv, time, pdb, os, logging
 import datetime as dt
 import asyncio
-import psycopg2 
-import psycopg2.extras
 from collections import defaultdict
 from pathlib import Path
 from bisect import bisect_left
 
 import yaml
-from web3 import AsyncWeb3, Web3
-from web3.providers.persistent import (
-    AsyncIPCProvider,
-    WebSocketProvider,
-)
 from google.cloud import storage
-import websocket
 from copy import copy
 
 from sanic_ext import openapi
@@ -26,12 +22,18 @@ from sanic.worker.manager import WorkerManager
 from sanic import Sanic
 from sanic.response import text, html, json
 from sanic.blueprints import Blueprint
+from sanic.log import logger as logr
 
 from .middleware import start_timer, add_server_timing_header, measure
 from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
 from .signatures import *
 from . import __version__
+from .logsetup import get_logger 
+
+import random
+
+glogr = get_logger('global')
 
 ######################################################################
 #
@@ -51,6 +53,9 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
     
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
+GIT_COMMIT_SHA = os.getenv('GIT_COMMIT_SHA', 'n/a')
+glogr.info(f"GIT_COMMIT_SHA={GIT_COMMIT_SHA}")
+
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
 
 def secret_text(t, n):
@@ -60,6 +65,7 @@ def secret_text(t, n):
         return t[:n] + "***..."
 
 DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', None)
+glogr.info(f"{DAO_NODE_ARCHIVE_NODE_HTTP=}")
 if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     # This pattern enables a deployer to put either the base URL in plane text or the full URL in
@@ -71,14 +77,12 @@ if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     if 'alchemy.com' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('ALCHEMY_API_KEY', '') 
-        print(f"Using alchemy for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
+        glogr.info(f"Using alchemy for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
 
     if 'quiknode.pro' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('QUICKNODE_API_KEY', '')
-        print(f"Using quiknode.pro for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
+        glogr.info(f"Using quiknode.pro for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
     
-
-DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
 
 DAO_NODE_REALTIME_NODE_WS = os.getenv('DAO_NODE_REALTIME_NODE_WS', None)
 if DAO_NODE_REALTIME_NODE_WS:
@@ -92,11 +96,11 @@ if DAO_NODE_REALTIME_NODE_WS:
 
     if 'alchemy.com' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('ALCHEMY_API_KEY', '')
-        print(f"Using alchemy for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
+        glogr.info(f"Using alchemy for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
     
     if 'quiknode.pro' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
-        print(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
+        glogr.info(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
 
 
 try:
@@ -104,14 +108,14 @@ try:
     with open(AGORA_CONFIG_FILE, 'r') as f:
         config = yaml.safe_load(f)
     
-    print(config)
+    glogr.info(config)
     public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
     deployment = config['deployments'][CONTRACT_DEPLOYMENT]
     del config['deployments']
     public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id'] if k in deployment}
 except:
-    print("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
+    glogr.info("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
     config = {
         'friendly_short_name': 'Unknown',
         'deployments': {}
@@ -169,26 +173,42 @@ class EventFeed:
         self.abis = abis
         self.cs = client_sequencer
         self.block = 0
-    
+        self.booting = True
+
+
     def archive_read(self):
 
-        for client in self.cs:
+        for i, client in enumerate(self.cs):
 
             if client.timeliness == 'archive':
 
+                if i > 0:
+                    self.block = max(self.block, client.get_fallback_block(self.signature))
+
+                emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
+
+                logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client)} from block {self.block}")
+
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
+                cnt = 0
                 for event in reader:
-
+                    cnt += 1
                     self.block = max(self.block, event['block_number'])
-
                     yield event
+
+                logr.info(f"{emoji} Done reading {cnt} {self.signature} events as block {self.block}")
 
     async def realtime_async_read(self):
 
         async for client in self.cs.get_async_iterator():
 
             if client.timeliness == 'realtime':
+
+                logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
+
+                if self.block is None:
+                    raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
@@ -204,7 +224,7 @@ class EventFeed:
 
         start = dt.datetime.now()
 
-        print(f"Loading {self.chain_id}.{self.address}.{self.signature}", flush=True)
+        logr.info(f"Loading {self.chain_id}.{self.address}.{self.signature}")
 
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
@@ -214,13 +234,15 @@ class EventFeed:
                 data_product_dispatcher.handle(event)
 
             if (cnt % 1_000_000) == 0:
-                print(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}", flush=True)
+                logr.info(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}")
         
         end = dt.datetime.now()
-
-        print(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.", flush=True)
         
         await asyncio.sleep(.01)
+
+        self.booting = False
+
+        logr.info(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.")
 
         return 
     
@@ -248,7 +270,7 @@ class DataProductContext:
     
     def handle_dispatch(self, chain_id_contract_signature, context):
 
-        print(f"Handle Dispatch Called : {chain_id_contract_signature}")
+        logr.info(f"Handle Dispatch Called : {chain_id_contract_signature}")
 
         data_product_dispatchers = self.dps[chain_id_contract_signature]
 
@@ -309,7 +331,7 @@ async def proposal_ui(request):
 # 
 # @app.signal("data.model.<chain_id_contract_signature>")
 # async def log_event_signal_handler(chain_id_contract_signature, **context):
-#     print(f"Handling: {chain_id_contract_signature}")
+#     logr.info(f"Handling: {chain_id_contract_signature}")
 #     app.ctx.handle_dispatch(chain_id_contract_signature, context)
 
 ######################################################################
@@ -353,7 +375,7 @@ async def balances(request, addr):
     str, 
     location="query", 
     required=False, 
-    default="relevant",
+    default="all",
     description="Flag to filter the list of proposals, down to only the ones which are relevant."
 )
 @openapi.parameter(
@@ -369,7 +391,7 @@ async def proposals(request):
     return await proposals_handler(app, request)
 
 async def proposals_handler(app, request):
-    proposal_set = request.args.get("set", "relevant").lower()
+    proposal_set = request.args.get("set", "all").lower()
     sort_key = request.args.get("sort", "").lower()
 
 
@@ -419,6 +441,8 @@ async def proposal(request, proposal_id:str):
 async def proposal_handler(app, request, proposal_id):
     proposal = app.ctx.proposals.proposals[proposal_id].to_dict()
 
+    proposal = copy(proposal)
+
     totals = app.ctx.votes.proposal_aggregations[proposal_id].totals()
     proposal['totals'] = totals
 
@@ -436,18 +460,6 @@ async def proposal_types(request):
 
 async def proposal_types_handler(app, request):
 	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
-
-
-@app.route('/v1/scopes')
-@openapi.tag("Scope State")
-@openapi.summary("Get all scopes")
-@measure
-async def scopes(request):
-    return await scopes_handler(app, request)
-
-async def scopes_handler(app, request):
-    return json({'scopes': app.ctx.proposal_types.get_all_live_scopes()})
-
 
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
@@ -566,9 +578,9 @@ async def delegates_handler(app, request):
         out = list(app.ctx.delegations.delegatee_cnt.items())
 
     # TODO This should not be necessary.  The data model should prune zeros.
-    print(f"Number of records: {len(out)}")
+    logr.info(f"Number of records: {len(out)}")
     out = [obj for obj in out if obj[1] > 0]
-    print(f"Number of records (excluding zeros): {len(out)}")
+    logr.info(f"Number of records (excluding zeros): {len(out)}")
 
     out.sort(key=lambda x: x[1], reverse = reverse)    
 
@@ -721,13 +733,13 @@ async def bootstrap_event_feeds(app, loop):
     if csvc.is_valid():
         clients.append(csvc)
     
-    # rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-    # if rpcc.is_valid():
-    #    clients.append(rpcc)
+    rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
+    if rpcc.is_valid():
+       clients.append(rpcc)
 
-    # jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
-    # if jwsc.is_valid():
-    #    clients.append(jwsc)
+    jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
+    if jwsc.is_valid():
+       clients.append(jwsc)
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
@@ -737,26 +749,21 @@ async def bootstrap_event_feeds(app, loop):
 
     # Get a full picture of all available contracts relevant for this DAO.
     chain_id = int(deployment['chain_id'])
+    AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
 
     abi_list = []
 
     token_addr = deployment['token']['address'].lower()
-    print(f"Using {token_addr=}", flush=True)
+    logr.info(f"Using {token_addr=}")
     token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
     abi_list.append(token_abi)
 
-    AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
-
-    modules = {}
-    if AGORA_GOV:
-        modules = {m['address'].lower() : m['name'] for m in deployment['gov'].get('modules', [])}
-
     gov_addr = deployment['gov']['address'].lower()
-    print(f"Using {gov_addr=}", flush=True)
+    logr.info(f"Using {gov_addr=}")
 
     GOV_ABI_OVERRIDE_URL = os.getenv('GOV_ABI_OVERRIDE_URL', None)
     if GOV_ABI_OVERRIDE_URL:
-        print("Overriding Gov ABI")
+        logr.info("Overriding Gov ABI")
         gov_abi = ABI.from_url('gov', GOV_ABI_OVERRIDE_URL)
     else:
         gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
@@ -764,7 +771,7 @@ async def bootstrap_event_feeds(app, loop):
 
     if 'ptc' in deployment:
         ptc_addr = deployment['ptc']['address'].lower()
-        print(f"Using {ptc_addr=}", flush=True)
+        logr.info(f"Using {ptc_addr=}")
         ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
         abi_list.append(ptc_abi)
 
@@ -803,7 +810,7 @@ async def bootstrap_event_feeds(app, loop):
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
 
-    proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
+    proposals = Proposals(governor_spec=public_config['governor_spec'])
 
     gov_spec_name = public_config['governor_spec']['name']
     if gov_spec_name in ('compound', 'ENSGovernor'):
@@ -843,10 +850,10 @@ async def bootstrap_event_feeds(app, loop):
 @app.after_server_start
 async def subscribe_event_fees(app, loop):
 
-    print("Adding signal handler for each event feed.")
+    logr.info("Adding signal handler for each event feed.")
     for ev in app.ctx.event_feeds:
+        logr.info(f"Invoking ev.run(app) for {ev.signature}")
         app.add_task(ev.run(app))
-
 
 ##################################
 #
@@ -861,6 +868,7 @@ from sanic import response
 @openapi.tag("Checks")
 @openapi.summary("Server health check")
 async def health_check(request):
+
     # Get list of files
     try:
         files = os.listdir(DAO_NODE_DATA_PATH)
@@ -880,7 +888,9 @@ async def health_check(request):
         "ip_address": ip_address,
         "config" : public_config,
         "deployment": public_deployment,
-        "version": __version__
+        "version": __version__,
+        "gitsha": GIT_COMMIT_SHA,
+        "env": {'PipDistributions' : {mod : importlib_version(mod) for mod in ['websockets', 'web3', 'sanic', 'sanic-ext', 'abifsm']}}
     })
 
 @app.get("/config")
