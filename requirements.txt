@@ -13,13 +13,13 @@ sanic
 sanic-routing
 ujson
 uvloop
-websockets
 google-cloud-storage
 abifsm @ git+https://github.com/voteagora/abifsm@master
 PyYAML
 argh
 web3
-psycopg2-binary
+websockets>=14.2
 websocket-client
 sanic-ext
 python-dotenv
+pyenvdiff
