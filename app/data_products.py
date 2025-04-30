@@ -5,10 +5,9 @@ import asyncio
 import time
 from hexbytes import HexBytes
 from eth_abi import decode
-from web3 import Web3
 
 from eth_abi.abi import decode as decode_abi
-from .utils import camel_to_snake
+from .utils import camel_to_snake, get_block_time_by_chain_id
 
 from .signatures import *
 
@@ -123,7 +122,7 @@ class ProposalTypes(DataProduct):
 
 
 class Delegations(DataProduct):
-    def __init__(self, client):
+    def __init__(self, client, chain_id):
         self.delegator = defaultdict(None) # owner, doing the delegation
         
         # Data about the delegatee (ie, the delegate's influence)
@@ -143,6 +142,7 @@ class Delegations(DataProduct):
         
         # Store the client for blockchain access
         self.client = client
+        self.chain_id = chain_id
 
     def handle(self, event):
 
@@ -214,20 +214,10 @@ class Delegations(DataProduct):
     
     def _non_async_recalculate_voting_power(self):
         try:
-            start_time = time.time()
-            print(f"Starting voting power recalculation at {start_time}")
-            
             self.cached_vp = defaultdict(int)
-            
-            # Debug info
-            total_delegates = len(self.delegatee_list)
-            delegates_with_history = sum(1 for d in self.delegatee_list if self.delegatee_vp_history.get(d))
-            print(f"Total delegates: {total_delegates}")
-            print(f"Delegates with history: {delegates_with_history}")
             
             # Get the latest block number once for all calculations
             latest_block = self._get_latest_block()
-            print(f"Using latest block number: {latest_block} for all VP calculations")
             
             for delegatee, delegators in self.delegatee_list.items():
                 current_vp = self.delegatee_vp.get(delegatee, 0)
@@ -244,37 +234,7 @@ class Delegations(DataProduct):
                 self.vp_change_7d[delegatee] = vp_change
                 
             self.last_vp_calculation = time.time()
-            calculation_time = time.time() - start_time
             
-            # Print out a sample of the 7-day changes (top 5 increases and decreases)
-            if hasattr(self, 'vp_change_7d') and self.vp_change_7d:
-                # Count non-zero changes
-                non_zero_changes = sum(1 for change in self.vp_change_7d.values() if change != 0)
-                print(f"Delegates with non-zero 7-day VP changes: {non_zero_changes} out of {len(self.vp_change_7d)}")
-                
-                # Sort by absolute change value (descending)
-                sorted_changes = sorted(
-                    self.vp_change_7d.items(), 
-                    key=lambda x: abs(x[1]), 
-                    reverse=True
-                )
-                
-                # Debugging
-                sample_size = min(5, len(sorted_changes))
-                top_changes = sorted_changes[:sample_size]
-                
-                print(f"\n===== Top {sample_size} Voting Power Changes (7d) =====")
-                for delegatee, change in top_changes:
-                    current = self.delegatee_vp.get(delegatee, 0)
-                    previous = current - change
-                    
-                    print(f"Delegatee: {delegatee}")
-                    print(f"  Current VP: {current}")
-                    print(f"  7d ago VP: {previous}")
-                    print(f"  Change: {change:+}")
-                print("=============================================\n")
-            
-            print(f"Voting power recalculation completed in {calculation_time:.2f} seconds")
         except Exception as e:
             print(f"Error during voting power recalculation: {e}")
             import traceback
@@ -294,31 +254,13 @@ class Delegations(DataProduct):
         if not vp_history:
             return 0
         
-        # Average block time in seconds (can be adjusted based on the chain)
-        AVG_BLOCK_TIME = 2  # ~12 seconds per block for Ethereum
+        BLOCK_TIME = get_block_time_by_chain_id(self.chain_id)
         
-        # Sort history by block number (ascending)
         sorted_history = sorted(vp_history, key=lambda x: x[0])
         
-        # Estimate the block number from N days ago using the provided latest block
-        blocks_ago = int(seconds_ago / AVG_BLOCK_TIME)
+        blocks_ago = int(seconds_ago / BLOCK_TIME)
         target_block = max(0, latest_block - blocks_ago)
-        
-        # List of sample delegates to debug
-        sample_delegates = [
-            '0x06ad892ce23c136bbda3a821570343a2af3e2914'
-        ]
-        
-        # Debug for sample delegates
-        if delegatee.lower() in [d.lower() for d in sample_delegates]:
-            print(f"\nDebug for delegate {delegatee}:")
-            print(f"  Latest block: {latest_block}")
-            print(f"  Target block (7 days ago): {target_block}")
-            print(f"  History entries: {len(sorted_history)}")
-            print(f"  First history entry: Block {sorted_history[0][0]}, VP: {sorted_history[0][1]}")
-            print(f"  Last history entry: Block {sorted_history[-1][0]}, VP: {sorted_history[-1][1]}")
-        
-        # Find the closest entry before or at the target block
+
         closest_entry = None
         for block_num, vp in sorted_history:
             if block_num <= target_block:
@@ -326,21 +268,10 @@ class Delegations(DataProduct):
             else:
                 break
         
-        # If we found an entry, return its VP
         if closest_entry:
-            if delegatee.lower() in [d.lower() for d in sample_delegates]:
-                print(f"  Found closest entry: Block: {closest_entry[0]}, VP: {closest_entry[1]}")
-                print(f"  Block difference from target: {target_block - closest_entry[0]}")
-                print(f"  Block difference from latest: {latest_block - closest_entry[0]}")
             return closest_entry[1]
         
-        # If we didn't find any entry before the target block,
-        # return the earliest known VP
         if sorted_history:
-            if delegatee.lower() in [d.lower() for d in sample_delegates]:
-                print(f"  No entry before target block, using earliest: Block: {sorted_history[0][0]}, VP: {sorted_history[0][1]}")
-                print(f"  Block difference from target: {sorted_history[0][0] - target_block}")
-                print(f"  Block difference from latest: {latest_block - sorted_history[0][0]}")
             return sorted_history[0][1]
         
         return 0

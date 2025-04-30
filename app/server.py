@@ -803,7 +803,7 @@ async def bootstrap_event_feeds(app, loop):
     #     balances = Balances(token_spec=public_config['token_spec'])
     #     app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
-    delegations = Delegations(client=rpcc)
+    delegations = Delegations(client=rpcc, chain_id=public_deployment['chain_id'])
     app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
 
     if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):
