@@ -34,16 +34,6 @@
 
     <div class="container mt-4">
         <h2>Delegates</h2>
-        <div class="mb-3">
-            <label for="sortSelect" class="form-label">Sort by:</label>
-            <select id="sortSelect" class="form-select form-select-sm" style="width: auto; display: inline-block;">
-                <option value="voting_power:desc">Voting Power (High to Low)</option>
-                <option value="vp_change_7d:desc" selected>7d Change (High to Low)</option>
-                <option value="vp_change_7d:asc">7d Change (Low to High)</option>
-                <option value="from_cnt:desc">Delegations (High to Low)</option>
-                <option value="participation:desc">Participation (High to Low)</option>
-            </select>
-        </div>
         <table class="table" id="delegatesTable">
             <thead>
                 <tr>
@@ -146,12 +136,6 @@
                 `;
             }
         }
-
-        // Set up event listener for sort select
-        document.addEventListener('DOMContentLoaded', function() {
-            const sortSelect = document.getElementById('sortSelect');
-            sortSelect.addEventListener('change', fetchDelegates);
-        });
 
         // Initial load
         fetchDelegates();

@@ -988,10 +988,8 @@ It is not a replacement for JSON-RPC provider, in the sense that contract-calls 
 
 @app.after_server_stop
 async def cleanup_tasks(app, loop):
-    """Clean up any background tasks when the server stops"""
     glogr.info("Stopping background tasks...")
     
-    # Stop the voting power recalculation task
     if hasattr(app.ctx, 'delegations'):
         app.ctx.delegations.stop_vp_recalculation_task()
         glogr.info("Voting power recalculation task stopped")

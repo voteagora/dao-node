@@ -189,7 +189,6 @@ class Delegations(DataProduct):
             self.delegatee_vp_history[delegatee].append((block_number, new_votes))
 
     async def start_vp_recalculation_task(self, app):
-        """Start a background task to recalculate voting power periodically"""
         self.stop_recalculation = False
         
         async def recalculation_task():
@@ -216,15 +215,13 @@ class Delegations(DataProduct):
         try:
             self.cached_vp = defaultdict(int)
             
-            # Get the latest block number once for all calculations
             latest_block = self._get_latest_block()
             
-            for delegatee, delegators in self.delegatee_list.items():
+            for delegatee in self.delegatee_list.keys():
                 current_vp = self.delegatee_vp.get(delegatee, 0)
                 
                 self.cached_vp[delegatee] = current_vp
                 
-                # Calculate 7-day change in voting power
                 seven_day_ago_vp = self._get_voting_power_days_ago(delegatee, 7, latest_block)
                 vp_change = current_vp - seven_day_ago_vp
                 
