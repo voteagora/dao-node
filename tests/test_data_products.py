@@ -6,6 +6,9 @@ import os
 from collections import Counter
 from abifsm import ABI, ABISet
 from app.signatures import *
+import asyncio
+from unittest.mock import MagicMock
+import time
 
 ####################################
 #
@@ -39,7 +42,7 @@ def test_Balances_from_dict():
 
 def test_Delegations_from_dict():
 
-    delegations = Delegations()
+    delegations = Delegations(client=None, chain_id=1)
 
     data = [
             {'block_number': 79335962, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
@@ -149,6 +152,99 @@ def test_Delegations_with_vote_events():
     
     # Last vote block should still be the highest block number
     assert votes.get_last_vote_block('0xded7e867cc42114f1cffa1c5572f591e8711771d') == 100500000
+def test_Delegations_vp_recalculation():
+    delegations = Delegations(client=None, chain_id=1)
+    
+    data = [
+        {'block_number': 79335962, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+        {'block_number': 92356698, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'to_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+    ]
+    
+    for record in data:
+        delegations.handle(record)
+    
+    delegatee = '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5'
+    delegations.delegatee_vp[delegatee] = 1000000
+    delegations.delegatee_vp_history[delegatee].append((79335962, 1000000))
+    
+    mock_app = MagicMock()
+    mock_app.add_task = MagicMock()
+    
+    async def test_start_task():
+        await delegations.start_vp_recalculation_task(mock_app)
+        
+        mock_app.add_task.assert_called_once()
+        
+        delegations._non_async_recalculate_voting_power()
+        
+        assert delegations.cached_vp[delegatee] == 1000000
+        
+        assert hasattr(delegations, 'vp_change_7d')
+        
+        change = delegations.get_vp_change_7d(delegatee)
+        assert change == 0  # Should be 0 since we only have one data point
+        
+        delegations.stop_vp_recalculation_task()
+    
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(test_start_task())
+
+def test_Delegations_vp_recalculation_with_changes():
+    delegations = Delegations(client=None, chain_id=1)
+    
+    data = [
+        # First delegatee - will have increasing VP
+        {'block_number': 79335962, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+        {'block_number': 92356698, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'to_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+        
+        # Second delegatee - will have decreasing VP
+        {'block_number': 79335963, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xabc7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x65536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+    ]
+    
+    for record in data:
+        delegations.handle(record)
+    
+    current_block = 17000000
+    
+    ten_days_ago_block = current_block - 50000  # ~12 sec blocks, ~7200 blocks per day
+    five_days_ago_block = current_block - 25000
+    
+    # Add delegatee with INCREASING voting power
+    increasing_delegatee = '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5'
+    delegations.delegatee_vp[increasing_delegatee] = 1000000
+    delegations.delegatee_vp_history[increasing_delegatee] = [
+        (ten_days_ago_block, 800000),
+        (five_days_ago_block, 900000),
+        (current_block, 1000000)
+    ]
+    
+    # Add delegatee with DECREASING voting power
+    decreasing_delegatee = '0x65536cf4f01c2bfa528f5c74ddc1232db3af3ee5'
+    delegations.delegatee_vp[decreasing_delegatee] = 1000000
+    delegations.delegatee_vp_history[decreasing_delegatee] = [
+        (ten_days_ago_block, 1200000),
+        (five_days_ago_block, 1100000),
+        (current_block, 1000000)
+    ]
+    
+    mock_app = MagicMock()
+    mock_app.add_task = MagicMock()
+    
+    delegations.start_vp_recalculation_task(mock_app)
+    
+    delegations._non_async_recalculate_voting_power()
+    
+    change = delegations.get_vp_change_7d(increasing_delegatee)
+    
+    assert change > 0
+    assert change == 200000
+    
+    change = delegations.get_vp_change_7d(decreasing_delegatee)
+    
+    assert change < 0
+    assert change == -200000
+    
+    delegations.stop_vp_recalculation_task()
 
 ####################################
 #

@@ -102,7 +102,7 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
                 '0x4444': 4000,
                 '0x5555': 5000,
             }
-            
+
             self.delegatee_cnt = {
                 '0x1111': 5,
                 '0x2222': 10,
@@ -110,11 +110,11 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
                 '0x4444': 20,
                 '0x5555': 25,
             }
-    
+
     class MockProposals:
         def completed(self, head=10):
             return []
-    
+
     class MockVotes:
         def __init__(self):
             self.voter_history = {
@@ -124,22 +124,22 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
                 '0x5555': [{'block_number': 500}],
                 # 0x3333 has no voting history
             }
-        
+
         def get_last_vote_block(self, addr):
             votes = self.voter_history.get(addr, [])
             if not votes:
                 return 0
             return max(vote['block_number'] for vote in votes)
-    
+
     app.ctx.delegations = MockDelegations()
     app.ctx.proposals = MockProposals()
     app.ctx.votes = MockVotes()
-    
+
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&include=VP,DC')
-    
+
     assert resp.status == 200
     delegates = resp.json['delegates']
-    
+
     assert delegates[0]['addr'] == '0x5555'
     assert delegates[0]['last_vote_block'] == 500
     assert delegates[1]['addr'] == '0x4444'
@@ -150,15 +150,15 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     assert delegates[3]['last_vote_block'] == 100
     assert delegates[4]['addr'] == '0x3333'
     assert delegates[4]['last_vote_block'] == 0
-    
+
     assert 'voting_power' in delegates[0]
     assert 'from_cnt' in delegates[0]
-    
+
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&reverse=false&include=VP,DC')
-    
+
     assert resp.status == 200
     delegates = resp.json['delegates']
-    
+
     assert delegates[0]['addr'] == '0x3333'
     assert delegates[0]['last_vote_block'] == 0
     assert delegates[1]['addr'] == '0x1111'
@@ -169,24 +169,83 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     assert delegates[3]['last_vote_block'] == 400
     assert delegates[4]['addr'] == '0x5555'
     assert delegates[4]['last_vote_block'] == 500
-    
+
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&include=VP,DC')
-    
+
     assert resp.status == 200
     delegates = resp.json['delegates']
-    
+
     assert len(delegates) == 2
     assert delegates[0]['addr'] == '0x5555'
     assert delegates[1]['addr'] == '0x4444'
-    
+
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&offset=2&include=VP,DC')
-    
+
     assert resp.status == 200
     delegates = resp.json['delegates']
-    
+
     assert len(delegates) == 2
     assert delegates[0]['addr'] == '0x2222'
     assert delegates[1]['addr'] == '0x1111'
+
+@pytest.mark.asyncio
+async def test_delegates_endpoint_with_vp_change(app, test_client):
+    delegations = Delegations(client=Mock(), chain_id=1)
+
+    delegatee1 = "0x1111111111111111111111111111111111111111"
+    delegatee2 = "0x2222222222222222222222222222222222222222"
+
+    delegations.delegatee_list[delegatee1] = ["0xdelegator1", "0xdelegator2"]
+    delegations.delegatee_list[delegatee2] = ["0xdelegator3"]
+    delegations.delegatee_cnt[delegatee1] = 2
+    delegations.delegatee_cnt[delegatee2] = 1
+
+    delegations.delegatee_vp[delegatee1] = 1000000
+    delegations.delegatee_vp[delegatee2] = 500000
+
+    current_block = 15000000
+    seven_days_ago_block = 14900000  # Approximate blocks for 7 days
+
+    delegations.delegatee_vp_history[delegatee1] = [
+        (seven_days_ago_block, 800000),
+        (current_block, 1000000)
+    ]
+
+    delegations.delegatee_vp_history[delegatee2] = [
+        (seven_days_ago_block, 600000),
+        (current_block, 500000)
+    ]
+
+    delegations.vp_change_7d = {
+        delegatee1: 200000,
+        delegatee2: -100000
+    }
+
+    delegations._get_latest_block = Mock(return_value=current_block)
+
+    app.ctx.delegations = delegations
+
+    app.ctx.proposals = Proposals(governor_spec={'name': 'compound'})
+    app.ctx.votes = Votes(governor_spec={'name': 'compound'})
+
+    req, resp = await test_client.get('/v1/delegates?include=VP,VPC')
+
+    assert resp.status == 200
+    delegates = resp.json['delegates']
+
+    assert len(delegates) == 2
+
+    delegatee1_data = next((d for d in delegates if d['addr'] == delegatee1), None)
+    delegatee2_data = next((d for d in delegates if d['addr'] == delegatee2), None)
+
+    assert delegatee1_data is not None
+    assert delegatee2_data is not None
+
+    assert 'vp_change_7d' in delegatee1_data
+    assert 'vp_change_7d' in delegatee2_data
+    assert delegatee1_data['vp_change_7d'] == '200000'
+    assert delegatee2_data['vp_change_7d'] == '-100000'
+
 
 async def test_delegates_endpoint_sort_by_oldest(app):
     

@@ -1,9 +1,13 @@
 from copy import copy
 from collections import defaultdict
 from abc import ABC, abstractmethod
+import asyncio
+import time
+from hexbytes import HexBytes
+from eth_abi import decode
 
 from eth_abi.abi import decode as decode_abi
-from .utils import camel_to_snake
+from .utils import camel_to_snake, get_block_time_by_chain_id
 
 from .signatures import *
 
@@ -118,7 +122,7 @@ class ProposalTypes(DataProduct):
 
 
 class Delegations(DataProduct):
-    def __init__(self):
+    def __init__(self, client, chain_id):
         self.delegator = defaultdict(None) # owner, doing the delegation
         
         # Data about the delegatee (ie, the delegate's influence)
@@ -137,6 +141,14 @@ class Delegations(DataProduct):
 
         # Track the latest vote block number for each voter
         self.latest_vote_block = defaultdict(int)
+        # Cache for recalculated voting power
+        self.cached_vp = defaultdict(int)
+        self.last_vp_calculation = 0
+        self.vp_calculation_running = False
+        
+        # Store the client for blockchain access
+        self.client = client
+        self.chain_id = chain_id
 
     def handle(self, event):
 
@@ -211,6 +223,95 @@ class Delegations(DataProduct):
         delegate_address = delegate_address.lower()
         return self.delegatee_latest_event.get(delegate_address)
 
+    async def start_vp_recalculation_task(self, app):
+        self.stop_recalculation = False
+        
+        async def recalculation_task():
+            while not self.stop_recalculation:
+                try:
+                    if not self.vp_calculation_running:
+                        self.vp_calculation_running = True
+                        # Run CPU-intensive work in a thread pool
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(None, self._non_async_recalculate_voting_power)
+                        self.vp_calculation_running = False
+                    await asyncio.sleep(60)  # Recalculate every 60 seconds
+                except Exception as e:
+                    print(f"Error in voting power recalculation: {e}")
+                    self.vp_calculation_running = False
+                    await asyncio.sleep(5)  # Wait a bit before retrying
+        
+        app.add_task(recalculation_task())
+    
+    def stop_vp_recalculation_task(self):
+        self.stop_recalculation = True
+    
+    def _non_async_recalculate_voting_power(self):
+        try:
+            self.cached_vp = defaultdict(int)
+            
+            latest_block = self._get_latest_block()
+            
+            for delegatee in self.delegatee_list.keys():
+                current_vp = self.delegatee_vp.get(delegatee, 0)
+                
+                self.cached_vp[delegatee] = current_vp
+                
+                seven_day_ago_vp = self._get_voting_power_days_ago(delegatee, 7, latest_block)
+                vp_change = current_vp - seven_day_ago_vp
+                
+                if not hasattr(self, 'vp_change_7d'):
+                    self.vp_change_7d = defaultdict(int)
+                
+                self.vp_change_7d[delegatee] = vp_change
+                
+            self.last_vp_calculation = time.time()
+            
+        except Exception as e:
+            print(f"Error during voting power recalculation: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _get_latest_block(self):
+        try:
+            return self.client.get_latest_block()
+        except Exception as e:
+            print(f"Error getting latest block: {e}")
+            return 0
+
+    def _get_voting_power_days_ago(self, delegatee, days, latest_block):
+        seconds_ago = days * 24 * 60 * 60
+        
+        vp_history = self.delegatee_vp_history.get(delegatee, [])
+        if not vp_history:
+            return 0
+        
+        BLOCK_TIME = get_block_time_by_chain_id(self.chain_id)
+        
+        sorted_history = sorted(vp_history, key=lambda x: x[0])
+        
+        blocks_ago = int(seconds_ago / BLOCK_TIME)
+        target_block = max(0, latest_block - blocks_ago)
+
+        closest_entry = None
+        for block_num, vp in sorted_history:
+            if block_num <= target_block:
+                closest_entry = (block_num, vp)
+            else:
+                break
+        
+        if closest_entry:
+            return closest_entry[1]
+        
+        if sorted_history:
+            return sorted_history[0][1]
+        
+        return 0
+
+    def get_vp_change_7d(self, delegatee):
+        if not hasattr(self, 'vp_change_7d'):
+            return 0
+        return self.vp_change_7d.get(delegatee.lower(), 0)
 
 LCREATED = len('ProposalCreated')
 LQUEUED = len('ProposalQueued')
