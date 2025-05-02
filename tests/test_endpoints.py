@@ -258,7 +258,7 @@ async def test_delegates_endpoint_sort_by_oldest(app):
         "include": "VP,DC"
     }
     
-    delegations = Delegations()
+    delegations = Delegations(client=Mock(), chain_id=1)
     
     delegations.delegatee_oldest_event = {
         "0x1111111111111111111111111111111111111111": {"block_number": 100, "delegator": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "from_delegate": "0x0000000000000000000000000000000000000000"},
@@ -305,7 +305,7 @@ async def test_delegates_endpoint_sort_by_latest(app):
         "include": "VP,DC,OL"
     }
     
-    delegations = Delegations()
+    delegations = Delegations(client=Mock(), chain_id=1)
     
     delegations.delegatee_latest_event = {
         "0x1111111111111111111111111111111111111111": {"block_number": 1000, "delegator": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "from_delegate": "0x0000000000000000000000000000000000000000"},
