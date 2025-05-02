@@ -627,22 +627,17 @@ async def delegates_handler(app, request):
 @measure
 async def delegate(request, addr):
 
-    from_list = [(a, str(app.ctx.balances.balance_of(a))) for a in app.ctx.delegations.delegatee_list[addr]]
     from_list_with_info = []
-    for delegator, balance in from_list:
-        # Find the most recent delegation info for this delegator
-        delegator_info = next((info for info in app.ctx.delegations.delegatee_info[addr] if info[0] == delegator), None)
-        if delegator_info:
-            _, block_number, transaction_index = delegator_info
-            from_list_with_info.append((delegator, balance, block_number, transaction_index))
-        else:
-            from_list_with_info.append((delegator, balance, None, None))
+    for pos, delegator in enumerate(app.ctx.delegations.delegatee_list[addr]):
+        _, bn, tid = app.ctx.delegations.delegatee_info[addr][pos]
+        balance = str(app.ctx.balances.balance_of(delegator))
+        row = {'delegator' : delegator, 'balance' : balance, 'bn' : bn, 'tid' : tid}
+        from_list_with_info.append(row)
 
     return json({'delegate' : 
                 {'addr' : addr,
                 'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
-                'from_list' : [{'delegator': d, 'balance': b, 'block_number': bn, 'transaction_index': ti} 
-                              for d, b, bn, ti in from_list_with_info],
+                'from_list' : from_list_with_info,
                 'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
 
 @app.route('/v1/delegate_vp/<addr>/<block_number>')
