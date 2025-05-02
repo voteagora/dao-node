@@ -627,12 +627,17 @@ async def delegates_handler(app, request):
 @measure
 async def delegate(request, addr):
 
-    from_list = [(a, str(app.ctx.balances.balance_of(a))) for a in app.ctx.delegations.delegatee_list[addr]]
+    from_list_with_info = []
+    for pos, delegator in enumerate(app.ctx.delegations.delegatee_list[addr]):
+        _, bn, tid = app.ctx.delegations.delegatee_info[addr][pos]
+        balance = str(app.ctx.balances.balance_of(delegator))
+        row = {'delegator' : delegator, 'balance' : balance, 'bn' : bn, 'tid' : tid}
+        from_list_with_info.append(row)
 
     return json({'delegate' : 
                 {'addr' : addr,
                 'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
-                'from_list' : from_list,
+                'from_list' : from_list_with_info,
                 'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
 
 @app.route('/v1/delegate_vp/<addr>/<block_number>')
