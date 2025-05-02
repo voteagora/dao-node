@@ -130,6 +130,10 @@ class Delegations(DataProduct):
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
+        
+        # Track the oldest and latest delegation events for each delegate
+        self.delegatee_oldest_event = defaultdict(dict)
+        self.delegatee_latest_event = defaultdict(dict)
 
     def handle(self, event):
 
@@ -146,6 +150,19 @@ class Delegations(DataProduct):
             self.delegator[delegator] = to_delegate
 
             self.delegatee_list[to_delegate].append(delegator)
+            
+            if not self.delegatee_oldest_event.get(to_delegate):
+                self.delegatee_oldest_event[to_delegate] = {
+                    'block_number': block_number,
+                    'delegator': delegator,
+                    'from_delegate': from_delegate,
+                }
+            
+            self.delegatee_latest_event[to_delegate] = {
+                'block_number': block_number,
+                'delegator': delegator,
+                'from_delegate': from_delegate,
+            }
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
@@ -174,6 +191,22 @@ class Delegations(DataProduct):
             block_number = int(event['block_number'])
 
             self.delegatee_vp_history[delegatee].append((block_number, new_votes))
+
+    def get_oldest_delegation_event(self, delegate_address):
+        """
+        Returns the oldest delegation event for a given delegate address.
+        Returns None if no delegation events exist for this delegate.
+        """
+        delegate_address = delegate_address.lower()
+        return self.delegatee_oldest_event.get(delegate_address)
+
+    def get_latest_delegation_event(self, delegate_address):
+        """
+        Returns the latest delegation event for a given delegate address.
+        Returns None if no delegation events exist for this delegate.
+        """
+        delegate_address = delegate_address.lower()
+        return self.delegatee_latest_event.get(delegate_address)
 
 
 LCREATED = len('ProposalCreated')
