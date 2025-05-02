@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from sanic import Sanic
 from sanic.response import json
-from app.server import proposals_handler, proposal_types_handler, delegates_handler
+from app.server import proposals_handler, proposal_types_handler, delegates_handler, ParticipationModel
 from app.data_products import Proposals, Votes, ProposalTypes, Delegations
 from app.clients import CSVClient
 from app.signatures import *
@@ -23,7 +23,7 @@ def app():
     @app.route('/v1/delegates')
     async def delegates(request):
         return await delegates_handler(app, request)
-    
+
     return app
 
 @pytest.fixture
@@ -90,6 +90,103 @@ async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
     proposal_type_id = '1'
     assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
 
+@pytest.mark.asyncio
+async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
+    class MockDelegations:
+        def __init__(self):
+            # Sample delegate data
+            self.delegatee_vp = {
+                '0x1111': 1000,
+                '0x2222': 2000,
+                '0x3333': 3000,
+                '0x4444': 4000,
+                '0x5555': 5000,
+            }
+            
+            self.delegatee_cnt = {
+                '0x1111': 5,
+                '0x2222': 10,
+                '0x3333': 15,
+                '0x4444': 20,
+                '0x5555': 25,
+            }
+    
+    class MockProposals:
+        def completed(self, head=10):
+            return []
+    
+    class MockVotes:
+        def __init__(self):
+            self.voter_history = {
+                '0x1111': [{'block_number': 100}],
+                '0x2222': [{'block_number': 200}],
+                '0x4444': [{'block_number': 400}],
+                '0x5555': [{'block_number': 500}],
+                # 0x3333 has no voting history
+            }
+        
+        def get_last_vote_block(self, addr):
+            votes = self.voter_history.get(addr, [])
+            if not votes:
+                return 0
+            return max(vote['block_number'] for vote in votes)
+    
+    app.ctx.delegations = MockDelegations()
+    app.ctx.proposals = MockProposals()
+    app.ctx.votes = MockVotes()
+    
+    req, resp = await test_client.get('/v1/delegates?sort_by=LVB&include=VP,DC')
+    
+    assert resp.status == 200
+    delegates = resp.json['delegates']
+    
+    assert delegates[0]['addr'] == '0x5555'
+    assert delegates[0]['last_vote_block'] == 500
+    assert delegates[1]['addr'] == '0x4444'
+    assert delegates[1]['last_vote_block'] == 400
+    assert delegates[2]['addr'] == '0x2222'
+    assert delegates[2]['last_vote_block'] == 200
+    assert delegates[3]['addr'] == '0x1111'
+    assert delegates[3]['last_vote_block'] == 100
+    assert delegates[4]['addr'] == '0x3333'
+    assert delegates[4]['last_vote_block'] == 0
+    
+    assert 'voting_power' in delegates[0]
+    assert 'from_cnt' in delegates[0]
+    
+    req, resp = await test_client.get('/v1/delegates?sort_by=LVB&reverse=false&include=VP,DC')
+    
+    assert resp.status == 200
+    delegates = resp.json['delegates']
+    
+    assert delegates[0]['addr'] == '0x3333'
+    assert delegates[0]['last_vote_block'] == 0
+    assert delegates[1]['addr'] == '0x1111'
+    assert delegates[1]['last_vote_block'] == 100
+    assert delegates[2]['addr'] == '0x2222'
+    assert delegates[2]['last_vote_block'] == 200
+    assert delegates[3]['addr'] == '0x4444'
+    assert delegates[3]['last_vote_block'] == 400
+    assert delegates[4]['addr'] == '0x5555'
+    assert delegates[4]['last_vote_block'] == 500
+    
+    req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&include=VP,DC')
+    
+    assert resp.status == 200
+    delegates = resp.json['delegates']
+    
+    assert len(delegates) == 2
+    assert delegates[0]['addr'] == '0x5555'
+    assert delegates[1]['addr'] == '0x4444'
+    
+    req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&offset=2&include=VP,DC')
+    
+    assert resp.status == 200
+    delegates = resp.json['delegates']
+    
+    assert len(delegates) == 2
+    assert delegates[0]['addr'] == '0x2222'
+    assert delegates[1]['addr'] == '0x1111'
 
 async def test_delegates_endpoint_sort_by_oldest(app):
     

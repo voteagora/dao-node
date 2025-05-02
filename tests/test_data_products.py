@@ -99,6 +99,57 @@ def test_Delegations_last_event():
     assert delegations.get_latest_delegation_event('0x1111111111111111111111111111111111111111') is None
     assert delegations.get_oldest_delegation_event('0x1111111111111111111111111111111111111111') is None
 
+def test_Delegations_with_vote_events():
+    
+    delegations = Delegations()
+
+    delegation_events = [
+        {'block_number': 79335962, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+        {'block_number': 92356698, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'to_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+    ]
+
+    for event in delegation_events:
+        delegations.handle(event)
+
+    assert delegations.delegator['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
+    
+    # Create a Votes data product to test vote tracking
+    votes = Votes(governor_spec={'name': 'compound'})
+    
+    vote_events = [
+        {'block_number': 100000000, 'transaction_index': 5, 'log_index': 10, 'voter': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'proposal_id': '42', 'support': 1, 'votes': 100, 'reason': '', 'signature': 'VoteCast(address,uint256,uint8,uint256,string)', 'sighash': '8bd10c2c5c6c2693aef5a24259d241d27c33b5c753d92f752137b77ba70c198a'},
+        {'block_number': 100500000, 'transaction_index': 3, 'log_index': 7, 'voter': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'proposal_id': '43', 'support': 0, 'votes': 100, 'reason': '', 'signature': 'VoteCast(address,uint256,uint8,uint256,string)', 'sighash': '8bd10c2c5c6c2693aef5a24259d241d27c33b5c753d92f752137b77ba70c198a'},
+        {'block_number': 100200000, 'transaction_index': 2, 'log_index': 5, 'voter': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'proposal_id': '42', 'support': 1, 'votes': 200, 'reason': '', 'signature': 'VoteCast(address,uint256,uint8,uint256,string)', 'sighash': '8bd10c2c5c6c2693aef5a24259d241d27c33b5c753d92f752137b77ba70c198a'},
+        {'block_number': 100300000, 'transaction_index': 1, 'log_index': 3, 'voter': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'proposal_id': '43', 'support': 0, 'votes': 200, 'params': '', 'signature': 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)', 'sighash': '8c587a7e1b8e1d28b2139c4e9c8a2b7ded5f0b53bc3bf92266f609f7df943628'},
+    ]
+
+    for event in vote_events:
+        votes.handle(event)
+    
+    # Test the get_last_vote_block method
+    assert votes.get_last_vote_block('0xded7e867cc42114f1cffa1c5572f591e8711771d') == 100500000
+    assert votes.get_last_vote_block('0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5') == 100300000
+    assert votes.get_last_vote_block('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0') == 0
+    
+    # Out of order vote event
+    earlier_vote_event = {
+        'block_number': 99000000, 
+        'transaction_index': 1, 
+        'log_index': 3, 
+        'voter': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 
+        'proposal_id': '41', 
+        'support': 1, 
+        'votes': 100, 
+        'reason': '', 
+        'signature': 'VoteCast(address,uint256,uint8,uint256,string)', 
+        'sighash': '8bd10c2c5c6c2693aef5a24259d241d27c33b5c753d92f752137b77ba70c198a'
+    }
+    
+    votes.handle(earlier_vote_event)
+    
+    # Last vote block should still be the highest block number
+    assert votes.get_last_vote_block('0xded7e867cc42114f1cffa1c5572f591e8711771d') == 100500000
+
 ####################################
 #
 #  Test basic business logic of the data products, in the context of a specific Client and production like data.

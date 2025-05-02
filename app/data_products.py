@@ -135,6 +135,9 @@ class Delegations(DataProduct):
         self.delegatee_oldest_event = defaultdict(dict)
         self.delegatee_latest_event = defaultdict(dict)
 
+        # Track the latest vote block number for each voter
+        self.latest_vote_block = defaultdict(int)
+
     def handle(self, event):
 
         signature = event['signature']
@@ -561,6 +564,12 @@ class Votes(DataProduct):
         del event_cp['proposal_id']
 
         self.proposal_vote_record[proposal_id].append(event_cp)
+
+    def get_last_vote_block(self, addr):
+        votes_for_addr = self.voter_history.get(addr.lower(), [])
+        if not votes_for_addr:
+            return 0
+        return max(vote['block_number'] for vote in votes_for_addr)
 
 class ParticipationModel:
     """
