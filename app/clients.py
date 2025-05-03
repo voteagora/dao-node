@@ -172,6 +172,14 @@ class JsonRpcHistHttpClient:
         
         return ans
     
+    def get_latest_block(self):
+        w3 = self.connect()
+        
+        if not w3.is_connected():
+            raise Exception(f"Could not connect to {self.url}")
+            
+        return w3.eth.block_number
+    
     def get_fallback_block(self, signature):
 
         cur_fallback = self.fallback_block.get(signature, None)
