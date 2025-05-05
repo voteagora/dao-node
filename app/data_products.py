@@ -211,10 +211,7 @@ class Delegations(DataProduct):
                     
                     # Update voting power
                     self.delegatee_vp[old_delegate] -= amount
-                    self.delegatee_vp_history[old_delegate].append({
-                        'block_number': bn,
-                        'voting_power': self.delegatee_vp[old_delegate]
-                    })
+                    self.delegatee_vp_history[old_delegate].append((bn, self.delegatee_vp[old_delegate]))
 
             # Handle new delegations addition
             for new_delegation in new_delegatees:
@@ -233,10 +230,7 @@ class Delegations(DataProduct):
                 
                 # Update voting power
                 self.delegatee_vp[new_delegate] += amount
-                self.delegatee_vp_history[new_delegate].append({
-                    'block_number': bn,
-                    'voting_power': self.delegatee_vp[new_delegate]
-                })
+                self.delegatee_vp_history[new_delegate].append((bn, self.delegatee_vp[new_delegate]))
 
         elif signature == DELEGATE_VOTES_CHANGE:
 
