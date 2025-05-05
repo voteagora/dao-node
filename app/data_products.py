@@ -533,6 +533,7 @@ class Votes(DataProduct):
 
         del event_cp['sighash']
         del event_cp['signature']
+        event_cp['proposal_id'] = str(event_cp['proposal_id'])
 
         self.voter_history[event['voter']].append(event_cp)
 

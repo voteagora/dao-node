@@ -640,6 +640,16 @@ async def delegate(request, addr):
                 'from_list' : from_list_with_info,
                 'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
 
+@app.route('/v1/delegate/<addr>/voting_history')
+@openapi.tag("Delegate Participation")
+@openapi.summary("Information about a specific delegate's voting history")
+@measure
+async def delegate_voting_history(request, addr):
+    voting_history = app.ctx.votes.voter_history[addr]
+
+    return json({'voting_history' : voting_history})
+
+
 @app.route('/v1/delegate_vp/<addr>/<block_number>')
 @openapi.tag("Delegation State")
 @openapi.summary("Voting power at a block for one delegate.")
