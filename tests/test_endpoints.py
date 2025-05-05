@@ -117,7 +117,7 @@ async def test_delegate_endpoint(app, test_client, scroll_token_abi):
     data = resp.json
     assert data['delegate']['addr'] == '0xabcdef1234567890123456789012345678901234'
     assert len(data['delegate']['from_list']) == 1
-    assert data['delegate']['from_list'][0]['address'] == '0x1234567890123456789012345678901234567890'
+    assert data['delegate']['from_list'][0]['delegator'] == '0x1234567890123456789012345678901234567890'
     assert data['delegate']['from_list'][0]['balance'] == '1000000000000000000'
     assert data['delegate']['from_list'][0]['percentage'] == 10000
 

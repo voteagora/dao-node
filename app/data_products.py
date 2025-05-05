@@ -194,11 +194,19 @@ class Delegations(DataProduct):
                 amount = old_delegation[1]
 
                 if old_delegate in self.delegatee_list:
-                    if delegator in self.delegatee_list[old_delegate]:
-                        self.delegatee_list[old_delegate].remove(delegator)
+                    idx_to_remove = -1
+                    for i, d in enumerate(self.delegatee_list[old_delegate]):
+                        if d == delegator:
+                            idx_to_remove = i
+                            break
+                        
+                    if idx_to_remove != -1:
+                        del self.delegatee_list[old_delegate][idx_to_remove]
+                        del self.delegatee_info[old_delegate][idx_to_remove] 
                         self.delegatee_cnt[old_delegate] = len(self.delegatee_list[old_delegate])
                         if not self.delegatee_list[old_delegate]:
                             del self.delegatee_list[old_delegate]
+                            del self.delegatee_info[old_delegate]
                     self.delegation_amounts[old_delegate].pop(delegator, None)
                     
                     # Update voting power
@@ -215,8 +223,11 @@ class Delegations(DataProduct):
                 
                 if new_delegate not in self.delegatee_list:
                     self.delegatee_list[new_delegate] = []
+                    self.delegatee_info[new_delegate] = []
+
                 if delegator not in self.delegatee_list[new_delegate]:
                     self.delegatee_list[new_delegate].append(delegator)
+                    self.delegatee_info[new_delegate].append((delegator, bn, tid))
                     self.delegatee_cnt[new_delegate] = len(self.delegatee_list[new_delegate])
                 self.delegation_amounts[new_delegate][delegator] = amount
                 

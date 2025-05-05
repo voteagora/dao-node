@@ -64,6 +64,7 @@ def test_Delegations_partial_delegations():
 
     event = {
         'block_number': 123456,
+        'transaction_index': 0,
         'delegator': '0x1234567890123456789012345678901234567890',
         'old_delegatees': '[]',
         'new_delegatees': '[["0xabcdef1234567890123456789012345678901234", 5000], ["0x9876543210987654321098765432109876543210", 7500]]',
@@ -79,6 +80,7 @@ def test_Delegations_partial_delegations():
 
     event = {
         'block_number': 123457,
+        'transaction_index': 0,
         'delegator': '0x1234567890123456789012345678901234567890',
         'old_delegatees': '[["0xabcdef1234567890123456789012345678901234", 5000], ["0x9876543210987654321098765432109876543210", 7500]]',
         'new_delegatees': '[["0xabcdef1234567890123456789012345678901234", 10000]]',
