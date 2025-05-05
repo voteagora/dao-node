@@ -622,22 +622,22 @@ async def delegates_handler(app, request):
 ############################################################################################################################################################
 
 async def delegate_handler(app, request, addr):
-    from_list = []
-    for delegator in app.ctx.delegations.delegatee_list[addr]:
+    from_list_with_info = []
+    for pos, delegator in enumerate(app.ctx.delegations.delegatee_list[addr]):
+        _, bn, tid = app.ctx.delegations.delegatee_info[addr][pos]
         balance = str(app.ctx.balances.balance_of(delegator))
         if addr in app.ctx.delegations.delegation_amounts and delegator in app.ctx.delegations.delegation_amounts[addr]:
             amount = app.ctx.delegations.delegation_amounts[addr][delegator]
         else:
             amount = 10000
-        from_list.append({
-            'address': delegator,
-            'balance': balance,
-            'percentage': amount
-        })
+        row = {'delegator' : delegator, 'balance' : balance, 'percentage' : amount, 'bn' : bn, 'tid' : tid}
+        from_list_with_info.append(row)
 
     return json({'delegate' : 
                 {'addr' : addr,
-                 'from_list' : from_list}})
+                'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
+                'from_list' : from_list_with_info,
+                'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
 
 @app.route('/v1/delegate/<addr>')
 @openapi.tag("Delegation State")

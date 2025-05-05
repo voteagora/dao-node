@@ -125,6 +125,7 @@ class Delegations(DataProduct):
         # Data about the delegatee (ie, the delegate's influence)
         self.delegatee_list = defaultdict(list) #  list of delegators
         self.delegatee_cnt = defaultdict(int) #  dele
+        self.delegatee_info = defaultdict(list) # list of (delegator, block_number, transaction_index) tuples
         
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
         self.delegation_amounts = defaultdict(dict)
@@ -147,7 +148,8 @@ class Delegations(DataProduct):
     def handle(self, event):
 
         signature = event['signature']
-        block_number = event['block_number']
+        bn = event['block_number']
+        tid = event['transaction_index']
 
         if signature == DELEGATE_CHANGED_1:
 
@@ -159,10 +161,20 @@ class Delegations(DataProduct):
             self.delegator[delegator] = to_delegate
 
             self.delegatee_list[to_delegate].append(delegator)
+            self.delegatee_info[to_delegate].append((delegator, bn, tid))
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
-                    self.delegatee_list[from_delegate].remove(delegator)
+                    idx_to_remove = -1
+                    for i, d in enumerate(self.delegatee_list[from_delegate]):
+                        if d == delegator:
+                            idx_to_remove = i
+                            break
+                    
+                    if idx_to_remove != -1:
+                        del self.delegatee_list[from_delegate][idx_to_remove]
+                        del self.delegatee_info[from_delegate][idx_to_remove]
+
                     self.delegatee_cnt[from_delegate] = len(self.delegatee_list[from_delegate])
                 except ValueError as e:
                     print(f"E109250323 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
@@ -192,7 +204,7 @@ class Delegations(DataProduct):
                     # Update voting power
                     self.delegatee_vp[old_delegate] -= amount
                     self.delegatee_vp_history[old_delegate].append({
-                        'block_number': block_number,
+                        'block_number': bn,
                         'voting_power': self.delegatee_vp[old_delegate]
                     })
 
@@ -211,7 +223,7 @@ class Delegations(DataProduct):
                 # Update voting power
                 self.delegatee_vp[new_delegate] += amount
                 self.delegatee_vp_history[new_delegate].append({
-                    'block_number': block_number,
+                    'block_number': bn,
                     'voting_power': self.delegatee_vp[new_delegate]
                 })
 
@@ -230,9 +242,9 @@ class Delegations(DataProduct):
             self.voting_power += (new_votes - previous_votes)
             self.delegatee_vp[delegatee] = new_votes
 
-            block_number = int(event['block_number'])
+            bn = int(event['block_number'])
 
-            self.delegatee_vp_history[delegatee].append((block_number, new_votes))
+            self.delegatee_vp_history[delegatee].append((bn, new_votes))
 
 
 LCREATED = len('ProposalCreated')
