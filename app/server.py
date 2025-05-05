@@ -194,7 +194,7 @@ class EventFeed:
                 cnt = 0
                 for event in reader:
                     cnt += 1
-                    self.block = max(self.block, event['block_number'])
+                    self.block = max(self.block, int(event['block_number']))
                     yield event
 
                 logr.info(f"{emoji} Done reading {cnt} {self.signature} events as block {self.block}")
@@ -214,7 +214,7 @@ class EventFeed:
 
                 async for event in reader:
 
-                    self.block = max(self.block, event['block_number'])
+                    self.block = max(self.block, int(event['block_number']))
 
                     yield event
 
@@ -629,9 +629,9 @@ async def delegate(request, addr):
 
     from_list_with_info = []
     for pos, delegator in enumerate(app.ctx.delegations.delegatee_list[addr]):
-        _, bn, tid = app.ctx.delegations.delegatee_info[addr][pos]
+        _, block_number, transaction_index = app.ctx.delegations.delegatee_info[addr][pos]
         balance = str(app.ctx.balances.balance_of(delegator))
-        row = {'delegator' : delegator, 'balance' : balance, 'bn' : bn, 'tid' : tid}
+        row = {'delegator' : delegator, 'balance' : balance, 'bn' : block_number, 'tid' : transaction_index}
         from_list_with_info.append(row)
 
     return json({'delegate' : 
@@ -661,13 +661,13 @@ Add transaction index and log-index awareness.
 
 """)
 @measure
-async def delegate_vp(request, addr : str, block_number : int):
+async def delegate_vp(request, addr : str, block_number : str):
     return await delegate_vp_handler(app, request, addr, block_number)
 
 async def delegate_vp_handler(app, request, addr, block_number):
 
     vp_history = [(0, 0)] + app.ctx.delegations.delegatee_vp_history[addr]
-    index = bisect_left(vp_history, (block_number,)) - 1
+    index = bisect_left(vp_history, (int(block_number),)) - 1
 
     index = max(index, 0)
 
