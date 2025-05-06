@@ -1,35 +1,39 @@
 from dotenv import load_dotenv
+from pyenvdiff import Environment
 
 load_dotenv()
 
-import csv, time, pdb, os
+from importlib.metadata import version as importlib_version
+this_env = Environment()
+
+import csv, time, pdb, os, logging
 import datetime as dt
 import asyncio
-import psycopg2 
-import psycopg2.extras
 from collections import defaultdict
 from pathlib import Path
 from bisect import bisect_left
 
 import yaml
-from web3 import AsyncWeb3, Web3
-from web3.providers.persistent import (
-    AsyncIPCProvider,
-    WebSocketProvider,
-)
 from google.cloud import storage
-import websocket
+from copy import copy
 
 from sanic_ext import openapi
 from sanic.worker.manager import WorkerManager
 from sanic import Sanic
 from sanic.response import text, html, json
 from sanic.blueprints import Blueprint
+from sanic.log import logger as logr
 
 from .middleware import start_timer, add_server_timing_header, measure
 from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
-from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel, Scopes
+from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
+from .signatures import *
 from . import __version__
+from .logsetup import get_logger 
+
+import random
+
+glogr = get_logger('global')
 
 ######################################################################
 #
@@ -49,6 +53,9 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
     
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
+GIT_COMMIT_SHA = os.getenv('GIT_COMMIT_SHA', 'n/a')
+glogr.info(f"GIT_COMMIT_SHA={GIT_COMMIT_SHA}")
+
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
 
 def secret_text(t, n):
@@ -58,6 +65,7 @@ def secret_text(t, n):
         return t[:n] + "***..."
 
 DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', None)
+glogr.info(f"{DAO_NODE_ARCHIVE_NODE_HTTP=}")
 if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     # This pattern enables a deployer to put either the base URL in plane text or the full URL in
@@ -69,14 +77,12 @@ if DAO_NODE_ARCHIVE_NODE_HTTP:
 
     if 'alchemy.com' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('ALCHEMY_API_KEY', '') 
-        print(f"Using alchemy for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
+        glogr.info(f"Using alchemy for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
 
     if 'quiknode.pro' in DAO_NODE_ARCHIVE_NODE_HTTP:
         ARCHIVE_NODE_HTTP_URL = ARCHIVE_NODE_HTTP_URL + os.getenv('QUICKNODE_API_KEY', '')
-        print(f"Using quiknode.pro for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
+        glogr.info(f"Using quiknode.pro for Archive: {secret_text(ARCHIVE_NODE_HTTP_URL, 6)}")
     
-
-DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
 
 DAO_NODE_REALTIME_NODE_WS = os.getenv('DAO_NODE_REALTIME_NODE_WS', None)
 if DAO_NODE_REALTIME_NODE_WS:
@@ -90,11 +96,11 @@ if DAO_NODE_REALTIME_NODE_WS:
 
     if 'alchemy.com' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('ALCHEMY_API_KEY', '')
-        print(f"Using alchemy for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
+        glogr.info(f"Using alchemy for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
     
     if 'quiknode.pro' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
-        print(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
+        glogr.info(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
 
 
 try:
@@ -102,14 +108,14 @@ try:
     with open(AGORA_CONFIG_FILE, 'r') as f:
         config = yaml.safe_load(f)
     
-    print(config)
+    glogr.info(config)
     public_config = {k : config[k] for k in ['governor_spec', 'token_spec']}
 
     deployment = config['deployments'][CONTRACT_DEPLOYMENT]
     del config['deployments']
     public_deployment = {k : deployment[k] for k in ['gov', 'ptc', 'token','chain_id'] if k in deployment}
 except:
-    print("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
+    glogr.info("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
     config = {
         'friendly_short_name': 'Unknown',
         'deployments': {}
@@ -167,26 +173,42 @@ class EventFeed:
         self.abis = abis
         self.cs = client_sequencer
         self.block = 0
-    
+        self.booting = True
+
+
     def archive_read(self):
 
-        for client in self.cs:
+        for i, client in enumerate(self.cs):
 
             if client.timeliness == 'archive':
 
+                if i > 0:
+                    self.block = max(self.block, client.get_fallback_block(self.signature))
+
+                emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
+
+                logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client)} from block {self.block}")
+
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
+                cnt = 0
                 for event in reader:
-
+                    cnt += 1
                     self.block = max(self.block, event['block_number'])
-
                     yield event
+
+                logr.info(f"{emoji} Done reading {cnt} {self.signature} events as block {self.block}")
 
     async def realtime_async_read(self):
 
         async for client in self.cs.get_async_iterator():
 
             if client.timeliness == 'realtime':
+
+                logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
+
+                if self.block is None:
+                    raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
                 reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
@@ -202,7 +224,7 @@ class EventFeed:
 
         start = dt.datetime.now()
 
-        print(f"Loading {self.chain_id}.{self.address}.{self.signature}", flush=True)
+        logr.info(f"Loading {self.chain_id}.{self.address}.{self.signature}")
 
         data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
 
@@ -212,13 +234,15 @@ class EventFeed:
                 data_product_dispatcher.handle(event)
 
             if (cnt % 1_000_000) == 0:
-                print(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}", flush=True)
+                logr.info(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}")
         
         end = dt.datetime.now()
-
-        print(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.", flush=True)
         
         await asyncio.sleep(.01)
+
+        self.booting = False
+
+        logr.info(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.")
 
         return 
     
@@ -242,10 +266,11 @@ class DataProductContext:
 
         self.dps = defaultdict(list)
         self.event_feeds = []
+        self.event_feed_meta = defaultdict(list)
     
     def handle_dispatch(self, chain_id_contract_signature, context):
 
-        print(f"Handle Dispatch Called : {chain_id_contract_signature}")
+        logr.info(f"Handle Dispatch Called : {chain_id_contract_signature}")
 
         data_product_dispatchers = self.dps[chain_id_contract_signature]
 
@@ -255,8 +280,13 @@ class DataProductContext:
         for data_product in self.dps[chain_id_contract_signature]:
             data_product.handle(context)
 
-    def register(self, signature, data_product):
-        self.dps[signature].append(data_product)
+    def register(self, chain_id_contract_signature, data_product):
+
+        _, contract, signature = chain_id_contract_signature.split(".")
+
+        self.event_feed_meta[contract].append(signature)
+
+        self.dps[chain_id_contract_signature].append(data_product)
 
         setattr(self, data_product.name, data_product)
 
@@ -301,7 +331,7 @@ async def proposal_ui(request):
 # 
 # @app.signal("data.model.<chain_id_contract_signature>")
 # async def log_event_signal_handler(chain_id_contract_signature, **context):
-#     print(f"Handling: {chain_id_contract_signature}")
+#     logr.info(f"Handling: {chain_id_contract_signature}")
 #     app.ctx.handle_dispatch(chain_id_contract_signature, context)
 
 ######################################################################
@@ -345,7 +375,7 @@ async def balances(request, addr):
     str, 
     location="query", 
     required=False, 
-    default="relevant",
+    default="all",
     description="Flag to filter the list of proposals, down to only the ones which are relevant."
 )
 @openapi.parameter(
@@ -361,7 +391,7 @@ async def proposals(request):
     return await proposals_handler(app, request)
 
 async def proposals_handler(app, request):
-    proposal_set = request.args.get("set", "relevant").lower()
+    proposal_set = request.args.get("set", "all").lower()
     sort_key = request.args.get("sort", "").lower()
 
 
@@ -411,6 +441,8 @@ async def proposal(request, proposal_id:str):
 async def proposal_handler(app, request, proposal_id):
     proposal = app.ctx.proposals.proposals[proposal_id].to_dict()
 
+    proposal = copy(proposal)
+
     totals = app.ctx.votes.proposal_aggregations[proposal_id].totals()
     proposal['totals'] = totals
 
@@ -424,33 +456,10 @@ async def proposal_handler(app, request, proposal_id):
 @openapi.summary("Latest information all proposal types")
 @measure
 async def proposal_types(request):
+    return await proposal_types_handler(app, request)
+
+async def proposal_types_handler(app, request):
 	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
-
-
-@app.route('/v1/proposal_type/<proposal_type_id>')
-@openapi.tag("Proposal State")
-@openapi.summary("Latest information about a specific proposal type")
-@measure
-async def proposal_type(request, proposal_type_id: int):
-	return json({'proposal_type' : app.ctx.proposal_types.proposal_types[proposal_type_id],
-                 'id' : proposal_type_id})
-
-@app.route('/v1/scopes')
-@openapi.tag("Scope State")
-@openapi.summary("Get all scopes")
-@measure
-async def scopes(request):
-    return json({'scopes': app.ctx.scopes.get_all_scopes()})
-
-@app.route('/v1/scope/<scope_key>')
-@openapi.tag("Scope State")
-@openapi.summary("Get a specific scope")
-@measure
-async def scope(request, scope_key: str):
-    scope = app.ctx.scopes.get_scope(scope_key)
-    if not scope:
-        return json({'error': 'Scope not found'}, status=404)
-    return json({'scope': scope})
 
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
@@ -577,9 +586,9 @@ async def delegates_handler(app, request):
         out = list(app.ctx.delegations.delegatee_cnt.items())
 
     # TODO This should not be necessary.  The data model should prune zeros.
-    print(f"Number of records: {len(out)}")
+    logr.info(f"Number of records: {len(out)}")
     out = [obj for obj in out if obj[1] > 0]
-    print(f"Number of records (excluding zeros): {len(out)}")
+    logr.info(f"Number of records (excluding zeros): {len(out)}")
 
     out.sort(key=lambda x: x[1], reverse = reverse)    
 
@@ -671,13 +680,28 @@ async def delegates_handler(app, request):
 @measure
 async def delegate(request, addr):
 
-    from_list = [(a, str(app.ctx.balances.balance_of(a))) for a in app.ctx.delegations.delegatee_list[addr]]
+    from_list_with_info = []
+    for pos, delegator in enumerate(app.ctx.delegations.delegatee_list[addr]):
+        _, bn, tid = app.ctx.delegations.delegatee_info[addr][pos]
+        balance = str(app.ctx.balances.balance_of(delegator))
+        row = {'delegator' : delegator, 'balance' : balance, 'bn' : bn, 'tid' : tid}
+        from_list_with_info.append(row)
 
     return json({'delegate' : 
                 {'addr' : addr,
                 'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
-                'from_list' : from_list,
+                'from_list' : from_list_with_info,
                 'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
+
+@app.route('/v1/delegate/<addr>/voting_history')
+@openapi.tag("Delegate Participation")
+@openapi.summary("Information about a specific delegate's voting history")
+@measure
+async def delegate_voting_history(request, addr):
+    voting_history = app.ctx.votes.voter_history[addr]
+
+    return json({'voting_history' : voting_history})
+
 
 @app.route('/v1/delegate_vp/<addr>/<block_number>')
 @openapi.tag("Delegation State")
@@ -750,61 +774,53 @@ async def voting_power(request):
 
 #################################################################################
 #
-# Event registration
+# ⏫ 🌎 BOOT SEQUENCE
 #
 ################################################################################
-
 
 @app.before_server_start(priority=0)
 async def bootstrap_event_feeds(app, loop):
 
+    #################################################################################
+    # ⚡️ 📀 Client Setup
+
     clients = []
 
-    # gcsc = GCSClient('gs://eth-event-feed')
-    
     csvc = CSVClient(DAO_NODE_DATA_PATH)
     if csvc.is_valid():
         clients.append(csvc)
     
-    # sqlc = PostGresClient('postgres://postgres:...:5432/prod')
+    rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
+    if rpcc.is_valid():
+       clients.append(rpcc)
 
-    # rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-    # if rpcc.is_valid():
-    #    clients.append(rpcc)
+    jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
+    if jwsc.is_valid():
+       clients.append(jwsc)
 
-    # jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
-    # if jwsc.is_valid():
-    #    clients.append(jwsc)
-
-
-    ##########################
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
 
-    ##########################
-    # Get a full picture of all available contracts relevant for this app.
+    #################################################################################
+    # 👀 🕹️ ABI Setup - Load the ABIs relevant for the DAO.  
 
+    # Get a full picture of all available contracts relevant for this DAO.
     chain_id = int(deployment['chain_id'])
+    AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
 
     abi_list = []
 
     token_addr = deployment['token']['address'].lower()
-    print(f"Using {token_addr=}", flush=True)
+    logr.info(f"Using {token_addr=}")
     token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
     abi_list.append(token_abi)
 
-    AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
-
-    modules = {}
-    if AGORA_GOV:
-        modules = {m['address'].lower() : m['name'] for m in deployment['gov'].get('modules', [])}
-
     gov_addr = deployment['gov']['address'].lower()
-    print(f"Using {gov_addr=}", flush=True)
+    logr.info(f"Using {gov_addr=}")
 
     GOV_ABI_OVERRIDE_URL = os.getenv('GOV_ABI_OVERRIDE_URL', None)
     if GOV_ABI_OVERRIDE_URL:
-        print("Overriding Gov ABI")
+        logr.info("Overriding Gov ABI")
         gov_abi = ABI.from_url('gov', GOV_ABI_OVERRIDE_URL)
     else:
         gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
@@ -812,67 +828,51 @@ async def bootstrap_event_feeds(app, loop):
 
     if 'ptc' in deployment:
         ptc_addr = deployment['ptc']['address'].lower()
-        print(f"Using {ptc_addr=}", flush=True)
+        logr.info(f"Using {ptc_addr=}")
         ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
-
-        proposal_type_set_signature = None
-
-        for fragment in ptc_abi.fragments:
-            if fragment.type == 'event':
-                if fragment.signature.startswith("ProposalTypeSet"):
-                    proposal_type_set_signature = fragment.signature
-
-        assert proposal_type_set_signature in ('ProposalTypeSet(uint8,uint16,uint16,string)', 
-                                               'ProposalTypeSet(uint256,uint16,uint16,string)', 
-                                               'ProposalTypeSet(uint8,uint16,uint16,string,string)',
-                                               'ProposalTypeSet(uint8,uint16,uint16,string,string,address)'), f"found {proposal_type_set_signature}"
         abi_list.append(ptc_abi)
-    
+
     abis = ABISet('daonode', abi_list)
 
-
-    ##########################
-    # Instantiate a "Data Product", that would need to be maintained given one or more events.
+    #################################################################################
+    # 🎪 🧠 Instantiate "Data Products".  These are the singletons that store data 
+    #      in RAM, that need to be maintained for every event.
 
     ERC20 = public_config['token_spec']['name'] == 'erc20'
 
     if ERC20:
         balances = Balances(token_spec=public_config['token_spec'])
-        app.ctx.register(f'{chain_id}.{token_addr}.Transfer(address,address,uint256)', balances)
+        app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     delegations = Delegations()
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateVotesChanged(address,uint256,uint256)', delegations)
-    app.ctx.register(f'{chain_id}.{token_addr}.DelegateChanged(address,address,address)', delegations)
+    app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
+
+    if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):
+        app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_2}', delegations)
+    else:
+        app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_1}', delegations)
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string)', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint256,uint16,uint16,string)', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string)', proposal_types)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ProposalTypeSet(uint8,uint16,uint16,string,string,address)', proposal_types)
 
-        # Register scope events
-        scopes = Scopes()
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeCreated(uint8,bytes24,bytes4,string)', scopes)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeDisabled(uint8,bytes24)', scopes)
-        app.ctx.register(f'{chain_id}.{ptc_addr}.ScopeDeleted(uint8,bytes24)', scopes)
+        PROP_TYPE_SET_SIGNATURE = None
 
-    proposals = Proposals(governor_spec=public_config['governor_spec'], modules=modules)
+        for prop_type_set_signature in [PROP_TYPE_SET_1, PROP_TYPE_SET_2, PROP_TYPE_SET_3, PROP_TYPE_SET_4]:
+            if abis.get_by_signature(prop_type_set_signature):
+                app.ctx.register(f'{chain_id}.{ptc_addr}.{prop_type_set_signature}', proposal_types)
+                PROP_TYPE_SET_SIGNATURE = prop_type_set_signature
+        
+        if AGORA_GOV and public_config['governor_spec']['version'] >= 1.1:
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
 
-    PROPOSAL_CREATED_1 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)'
-    PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string,uint8)'
-
-    PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
-    PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
-
-    PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
-    PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
-    PROPOSAL_EXECUTED = 'ProposalExecuted(uint256)'
+    proposals = Proposals(governor_spec=public_config['governor_spec'])
 
     gov_spec_name = public_config['governor_spec']['name']
-    if gov_spec_name == 'compound':
+    if gov_spec_name in ('compound', 'ENSGovernor'):
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
-    elif gov_spec_name == 'agora' and public_config['governor_spec'] == 0.1:
+    elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 0.1:
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
     elif gov_spec_name == 'agora':
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_4]
@@ -883,66 +883,34 @@ async def bootstrap_event_feeds(app, loop):
     for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
 
-
-    VOTE_CAST_1 = 'VoteCast(address,uint256,uint8,uint256,string)'
-    VOTE_CAST_WITH_PARAMS_1 = 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)'
-
     VOTE_EVENTS = [VOTE_CAST_1]    
-    if public_config['governor_spec']['name'] != 'compound':
+    if not (public_config['governor_spec']['name'] in ('compound', 'ENSGovernor')):
         VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
 
     votes = Votes(governor_spec=public_config['governor_spec'])
     for VOTE_EVENT in VOTE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
 
-    ##########################
-    # Instatiate an "EventFeed", for every...
-    #   - network, contract, and relevant event signature.
-    #   - a fully-qualified ABI for all contracts in use globally across the app.
-    #   - an ordered list of clients where we should pull history of, ideally starting with archive/bulk and ending with JSON-RPC
+    #################################################################################
+    # 🎪 🍔 Instantiate an "Event Feed" for every network, contract, and relevant 
+    #       event signature.  Then register each one with the client sequencer so it
+    #       can know to read in the past and subscribe to the future.
+    #       This has been automatically handled, by picking up metadata from
+    #       the data product registration step.  
 
-
-    if ERC20:
-        ev = EventFeed(chain_id, token_addr, 'Transfer(address,address,uint256)', abis, dcqs)
-        app.ctx.add_event_feed(ev)
-        app.add_task(ev.boot(app))
-
-    ev = EventFeed(chain_id, token_addr, 'DelegateVotesChanged(address,uint256,uint256)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
-
-    ev = EventFeed(chain_id, token_addr, 'DelegateChanged(address,address,address)', abis, dcqs)
-    app.ctx.add_event_feed(ev)
-    app.add_task(ev.boot(app))
-
-    if 'ptc' in deployment:
-        ev = EventFeed(chain_id, ptc_addr, proposal_type_set_signature, abis, dcqs)
-        app.ctx.add_event_feed(ev)
-        app.add_task(ev.boot(app))
-
-        # Add scope event feeds
-        scope_events = [
-            'ScopeCreated(uint8,bytes24,bytes4,string)',
-            'ScopeDisabled(uint8,bytes24)',
-            'ScopeDeleted(uint8,bytes24)'
-        ]
-        for signature in scope_events:
-            ev = EventFeed(chain_id, ptc_addr, signature, abis, dcqs)
+    for address, signatures in app.ctx.event_feed_meta.items():
+        for signature in signatures:
+            ev = EventFeed(chain_id, address, signature, abis, dcqs)
             app.ctx.add_event_feed(ev)
             app.add_task(ev.boot(app))
-
-    for signature in PROPOSAL_LIFECYCLE_EVENTS + VOTE_EVENTS:
-       ev = EventFeed(chain_id, gov_addr, signature, abis, dcqs)
-       app.ctx.add_event_feed(ev)
-       app.add_task(ev.boot(app))
 
 @app.after_server_start
 async def subscribe_event_fees(app, loop):
 
-    print("Adding signal handler for each event feed.")
+    logr.info("Adding signal handler for each event feed.")
     for ev in app.ctx.event_feeds:
+        logr.info(f"Invoking ev.run(app) for {ev.signature}")
         app.add_task(ev.run(app))
-
 
 ##################################
 #
@@ -957,6 +925,7 @@ from sanic import response
 @openapi.tag("Checks")
 @openapi.summary("Server health check")
 async def health_check(request):
+
     # Get list of files
     try:
         files = os.listdir(DAO_NODE_DATA_PATH)
@@ -976,7 +945,9 @@ async def health_check(request):
         "ip_address": ip_address,
         "config" : public_config,
         "deployment": public_deployment,
-        "version": __version__
+        "version": __version__,
+        "gitsha": GIT_COMMIT_SHA,
+        "env": {'PipDistributions' : {mod : importlib_version(mod) for mod in ['websockets', 'web3', 'sanic', 'sanic-ext', 'abifsm']}}
     })
 
 @app.get("/config")

@@ -1,9 +1,14 @@
+from copy import copy
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
 from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
-from copy import copy
+
+from .signatures import *
+
+class ToDo(NotImplementedError):
+    pass
 
 class DataProduct(ABC):
 
@@ -47,18 +52,57 @@ class Balances(DataProduct):
 
 class ProposalTypes(DataProduct):
     def __init__(self):
-        self.proposal_types = {}
+        self.proposal_types = defaultdict(dict)
         self.proposal_types_history = defaultdict(list)
 
     def handle(self, event):
 
-        proposal_type_info = {k : event[k] for k in ['quorum', 'approval_threshold', 'name']}
+        signature = event['signature']
 
         proposal_type_id = event['proposal_type_id']
 
-        self.proposal_types[proposal_type_id] = proposal_type_info
-        self.proposal_types_history[proposal_type_id].append(event)
-    
+        if 'ProposalTypeSet' in signature:
+            proposal_type_info = {k : event.get(k, None) for k in ['quorum', 'approval_threshold', 'name', 'module']}
+
+            self.proposal_types[proposal_type_id].update(**proposal_type_info)
+
+            if not 'scopes' in self.proposal_types[proposal_type_id].keys():
+                self.proposal_types[proposal_type_id]['scopes'] = []
+            self.proposal_types_history[proposal_type_id].append(event)
+
+        elif 'Scope' in signature:
+            
+            event = copy(event)
+            scope_key = event['scope_key']
+
+            del event['signature']
+            del event['sighash']
+
+            if 'Created' in signature:
+                del event['proposal_type_id']
+                event['status'] = 'created'
+                event['disabled_event'] = {}
+                event['deleted_event'] = {}
+                self.proposal_types[proposal_type_id]['scopes'].append(event)
+            elif 'Disabled' in signature:
+                # Will disable all scopes with the scope_key
+                for scope in self.proposal_types[proposal_type_id]['scopes']:
+                    if scope['scope_key'] == scope_key:
+                        scope['disabled_event'] = event
+                        scope['status'] = 'disabled'
+            elif 'Deleted' in signature:
+                # Will delete all scopes with the scope_key
+                for scope in self.proposal_types[proposal_type_id]['scopes']:
+                    if scope['scope_key'] == scope_key:
+                        scope['deleted_event'] = event
+                        scope['status'] = 'deleted'
+            else:
+                raise Exception(f"Event signature {signature} not handled.")
+        
+        else:
+            raise Exception(f"Event signature {signature} not handled.")
+
+
     def get_historic_proposal_type(self, proposal_type_id, block_number):
 
         proposal_type_history = self.proposal_types_history[proposal_type_id]
@@ -72,56 +116,6 @@ class ProposalTypes(DataProduct):
 
         return {k : pit_proposal_type[k] for k in ['quorum', 'approval_threshold', 'name']}
 
-class Scopes(DataProduct):
-    def __init__(self):
-        self.scopes = {}
-        self.scopes_history = defaultdict(list)
-        self.disabled_scopes = set()
-        self.deleted_scopes = set()
-
-    def handle(self, event):
-        signature = event['signature']
-        proposal_type_id = event['proposal_type_id']
-        scope_key = event['scope_key']
-
-        if signature == 'ScopeCreated(uint8,bytes24,bytes4,string)':
-            scope_info = {
-                'proposal_type_id': proposal_type_id,
-                'scope_key': scope_key,
-                'selector': event['selector'],
-                'description': event['description']
-            }
-            self.scopes[scope_key] = scope_info
-            self.scopes_history[scope_key].append(event)
-            # Remove from disabled/deleted sets if it was there
-            self.disabled_scopes.discard(scope_key)
-            self.deleted_scopes.discard(scope_key)
-
-        elif signature == 'ScopeDisabled(uint8,bytes24)':
-            self.disabled_scopes.add(scope_key)
-
-        elif signature == 'ScopeDeleted(uint8,bytes24)':
-            self.deleted_scopes.add(scope_key)
-            # Remove from disabled set if it was there
-            self.disabled_scopes.discard(scope_key)
-
-    def get_scope(self, scope_key):
-        if scope_key in self.deleted_scopes:
-            return None
-        scope = self.scopes.get(scope_key)
-        if not scope:
-            return None
-        return {
-            **scope,
-            'disabled': scope_key in self.disabled_scopes
-        }
-
-    def get_all_scopes(self):
-        return [
-            self.get_scope(scope_key)
-            for scope_key in self.scopes.keys()
-            if scope_key not in self.deleted_scopes
-        ]
 
 class Delegations(DataProduct):
     def __init__(self):
@@ -130,6 +124,7 @@ class Delegations(DataProduct):
         # Data about the delegatee (ie, the delegate's influence)
         self.delegatee_list = defaultdict(list) #  list of delegators
         self.delegatee_cnt = defaultdict(int) #  dele
+        self.delegatee_info = defaultdict(list) # list of (delegator, block_number, transaction_index) tuples
         
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
 
@@ -143,31 +138,43 @@ class Delegations(DataProduct):
 
     def handle(self, event):
         signature = event['signature']
-        block_number = event['block_number']
+        bn = event['block_number']
+        tid = event['transaction_index']
 
-        if signature == 'DelegateChanged(address,address,address)':
+        if signature == DELEGATE_CHANGED_1:
+
             delegator = event['delegator'].lower()
             to_delegate = event['to_delegate'].lower()
             from_delegate = event['from_delegate'].lower()
 
             self.delegator[delegator] = to_delegate
             self.delegatee_list[to_delegate].append(delegator)
-            
+
             if not to_delegate in self.delegatee_oldest:
                 self.delegatee_oldest[to_delegate] = block_number
             
             self.delegatee_latest[to_delegate] = block_number
+            self.delegatee_info[to_delegate].append((delegator, bn, tid))
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
-                    self.delegatee_list[from_delegate].remove(delegator)
+                    idx_to_remove = -1
+                    for i, d in enumerate(self.delegatee_list[from_delegate]):
+                        if d == delegator:
+                            idx_to_remove = i
+                            break
+                    
+                    if idx_to_remove != -1:
+                        del self.delegatee_list[from_delegate][idx_to_remove]
+                        del self.delegatee_info[from_delegate][idx_to_remove]
+
                     self.delegatee_cnt[from_delegate] = len(self.delegatee_list[from_delegate])
                 except ValueError as e:
                     print(f"E109250323 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
-        elif signature == 'DelegateVotesChanged(address,uint256,uint256)':
+        elif signature == DELEGATE_VOTES_CHANGE:
 
             delegatee = event['delegate'].lower()
 
@@ -182,15 +189,30 @@ class Delegations(DataProduct):
             self.voting_power += (new_votes - previous_votes)
             self.delegatee_vp[delegatee] = new_votes
 
-            block_number = int(event['block_number'])
+            bn = int(event['block_number'])
 
-            self.delegatee_vp_history[delegatee].append((block_number, new_votes))
+            self.delegatee_vp_history[delegatee].append((bn, new_votes))
 
 
 LCREATED = len('ProposalCreated')
 LQUEUED = len('ProposalQueued')
 LEXECUTED = len('ProposalExecuted')
 LCANCELED = len('ProposalCanceled')
+
+def reverse_engineer_module(signature, proposal_data):
+
+    if signature in (PROPOSAL_CREATED_3, PROPOSAL_CREATED_4):
+        crit = '00000000000000000000000000000000000000000000000000000000000000c'
+        if proposal_data.startswith(crit):
+            return 'approval'
+        else:
+            return 'optimistic'
+
+    elif signature in (PROPOSAL_CREATED_1, PROPOSAL_CREATED_2):
+        return 'standard'
+    else:
+        raise Exception(f"Unrecognized signature '{signature}'")
+
 
 def decode_proposal_calldata(calldata: str, abi_types):
     """
@@ -244,26 +266,31 @@ def decode_proposal_data(proposal_type, proposal_data):
 
     if proposal_type == 'standard':
         return None
-    
-    if proposal_type == 'approval':
-        abi = ["(uint256,address[],uint256[],bytes[],string)[]", "(uint8,uint8,address,uint128,uint128)"]
-        abi2 = ["(address[],uint256[],bytes[],string)[]",        "(uint8,uint8,address,uint128,uint128)"] # OP/alligator only? Only for 0xe1a17f4770769f9d77ef56dd3b92500df161f3a1704ab99aec8ccf8653cae400l
-    elif proposal_type == 'optimistic':
-        abi = ["(uint248,bool)"]
-    else:
-        raise Exception("Unknown Proposal Type: {}".format(proposal_type))
 
     if proposal_data[:2] == '0x':
         proposal_data = proposal_data[2:]
     proposal_data = bytes.fromhex(proposal_data)
 
-    try:
-        result = decode_abi(abi, proposal_data)
-    except:
-        result = decode_abi(abi2, proposal_data)
-        result = bytes_to_hex(result)
+    if proposal_type == 'optimistic':
+        abi = ["(uint248,bool)"]
+        decoded = decode_abi(abi, proposal_data)
+        return bytes_to_hex(decoded)
+    
+    if proposal_type == 'approval':
+        abi = ["(uint256,address[],uint256[],bytes[],string)[]", "(uint8,uint8,address,uint128,uint128)"]
+        abi2 = ["(address[],uint256[],bytes[],string)[]",        "(uint8,uint8,address,uint128,uint128)"] # OP/alligator only? Only for 0xe1a17f4770769f9d77ef56dd3b92500df161f3a1704ab99aec8ccf8653cae400l
 
-    return result
+        try:
+            decoded = decode_abi(abi, proposal_data)
+        except Exception as err:
+            decoded = decode_abi(abi2, proposal_data)
+
+        decoded = bytes_to_hex(decoded)
+        
+        return decoded
+
+    raise Exception("Unknown Proposal Type: {}".format(proposal_type))
+
 
 class Proposal:
     def __init__(self, create_event):
@@ -302,11 +329,16 @@ class Proposal:
         return out
 
     def set_voting_module_name(self, name):
+        self.voting_module_name = name
         self.create_event['voting_module_name'] = name
         
     def resolve_voting_module_name(self, modules):
-        self.voting_module_name = modules.get(self.voting_module_address, "standard")
-        self.create_event['voting_module_name'] = self.voting_module_name
+        voting_module_name = modules.get(self.voting_module_address, "standard")
+        self.set_voting_module_name(voting_module_name)
+    
+    def reverse_engineer_module_name(self, signature, proposal_data):
+        voting_module_name = reverse_engineer_module(signature, proposal_data)
+        self.set_voting_module_name(voting_module_name)
 
     @property
     def voting_module_address(self):
@@ -389,18 +421,25 @@ class Proposals(DataProduct):
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
                 proposal = decode_create_event(event)
-                
-                if self.gov_spec['name'] == 'agora':
+
+                proposal_data = proposal.create_event.get('proposal_data', None)
+
+                if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1:
+                    raise ToDo("Old Govenors are using newer PTCs, and so using gov version here doesn't work perfectly for this check.  So the first one that upgrades, is going to trip this reminder.  Plus, PTC upgrades happen without changing gov versions Eg. Optimism.")
                     proposal.resolve_voting_module_name(self.modules)
-
-                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
-
-                    if voting_module_name in ('approval','optimistic'):
-                        proposal_data = proposal.create_event['proposal_data']
-                    
-                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)
+                elif self.gov_spec['name'] == 'agora':
+                    # Older PTC Contracts didn't fully describe themselves, so we 
+                    # this is a hack.
+                    proposal.reverse_engineer_module_name(signature, proposal_data)
                 else:
                     proposal.set_voting_module_name('standard')
+
+                if self.gov_spec['name'] == 'agora':
+                    
+                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
+
+                    if voting_module_name in ('approval', 'optimistic'):
+                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)                
                     
                 self.proposals[proposal_id] = proposal
 
@@ -500,6 +539,7 @@ class Votes(DataProduct):
 
         del event_cp['sighash']
         del event_cp['signature']
+        event_cp['proposal_id'] = str(event_cp['proposal_id'])
 
         self.voter_history[event['voter']].append(event_cp)
 

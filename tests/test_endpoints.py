@@ -2,9 +2,10 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from sanic import Sanic
 from sanic.response import json
-from app.server import proposals_handler, delegates_handler
-from app.data_products import Proposals, Votes, Delegations
+from app.server import proposals_handler, delegates_handler, proposal_types_handler
+from app.data_products import Proposals, Votes, Delegations, ProposalTypes
 from app.clients import CSVClient
+from app.signatures import *
 import json
 
 @pytest.fixture
@@ -19,6 +20,11 @@ def app():
     async def delegates(request):
         return await delegates_handler(app, request)
     
+
+    @app.route('/v1/proposal_types')
+    async def proposal_types(request):
+        return await proposal_types_handler(app, request)
+
     return app
 
 @pytest.fixture
@@ -153,3 +159,31 @@ async def test_delegates_endpoint_sort_by_latest(app):
     assert delegates[2]["addr"] == "0x2222222222222222222222222222222222222222"  # Block 2000 (highest)
     assert delegates[2]["most_recent_block"] == 2000
 
+async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
+
+    pt = ProposalTypes()
+
+    csvc = CSVClient('tests/data/4000-pguild-ptc-w-scopes')
+    chain_id = 1115511
+
+    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', PROP_TYPE_SET_4, pguild_ptc_abi):
+        pt.handle(row)
+    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', SCOPE_CREATED, pguild_ptc_abi):
+        pt.handle(row)
+    
+    app.ctx.proposal_types = pt
+
+    req, resp = await test_client.get('/v1/proposal_types')
+    assert resp.status == 200
+    assert len(resp.json) == 1
+
+    expected_array_element = {'quorum': 0, 'approval_threshold': 0, 'name': 'Signal Votes', 'module': '0x4414d030cffec5edc011a27c653ce21704b12d85', 'scopes': []}   
+    proposal_type_id = '0' 
+    assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
+
+    expected_array_element = {'quorum': 0, 'approval_threshold': 5100, 'name': 'Distribute Splits', 'module': '0x0000000000000000000000000000000000000000', 'scopes': [{'scope_key': '02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537', 'block_number': 8118843, 'transaction_index': 66, 'log_index': 113, 'selector': '2d3f5537', 'description': 'Distribute splits contract', 'disabled_event': {}, 'deleted_event': {}, 'status': 'created'}]}
+    proposal_type_id = '1'
+    assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
+
+
+    

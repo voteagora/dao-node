@@ -1,9 +1,11 @@
 import pytest
-from app.data_products import Balances, Delegations, Proposals, Votes
+from app.data_products import Balances, Delegations, Proposals, Votes, ProposalTypes
 from app.clients import CSVClient
 import csv
 import os
+from collections import Counter
 from abifsm import ABI, ABISet
+from app.signatures import *
 
 ####################################
 #
@@ -170,6 +172,43 @@ def test_Proposals_one_op_approval_from_csv(op_governor_abis):
 
     assert first_proposal.create_event['decoded_proposal_data'] == (((0, (), (), (), 'World Foundation'), (0, (), (), (), 'Andrey Petrov'), (0, (), (), (), 'OP Labs'), (0, (), (), (), 'L2BEAT'), (0, (), (), (), 'Alchemy'), (0, (), (), (), 'Maggie Love'), (0, (), (), (), 'Gauntlet'), (0, (), (), (), 'Test in Prod'), (0, (), (), (), 'Yoav Weiss'), (0, (), (), (), 'ml_sudo'), (0, (), (), (), 'Kris Kaczor'), (0, (), (), (), 'Martin Tellechea'), (0, (), (), (), 'Ink'), (0, (), (), (), 'Coinbase'), (0, (), (), (), 'troy')), (15, 1, '0x0000000000000000000000000000000000000000', 6, 0))
 
+
+def test_Proposals_op_proposal_module_names(op_governor_abis):
+    
+    modules = {}
+    gov_spec = {'name': 'agora', 'version': 0.1}
+
+    proposals = Proposals(gov_spec, modules)
+        
+    csvc = CSVClient('tests/data/5000-all-optimism-proposalcreated-to-20250425')
+    chain_id = 10
+    
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_1, op_governor_abis):
+        proposals.handle(row)
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_2, op_governor_abis):
+        proposals.handle(row)
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_3, op_governor_abis):
+        proposals.handle(row)
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_4, op_governor_abis):
+        proposals.handle(row)
+
+    module_types = [p.voting_module_name for p in proposals.proposals.values()]
+
+    results = Counter(module_types)
+    
+    assert results['standard'] == 73
+    assert results['approval'] == 51
+    assert results['optimistic'] == 3
+
+    from sanic.response import json
+
+    # This confirms that the objects can be serialized in a response.
+    # The biggest risk is in decoding data incorrectly, and it getting
+    # left as bytes.
+    for proposal in proposals.proposals:
+        json(proposal)
+    
+
 def test_Votes_one_op_approval_from_csv(op_governor_abis):
     
     gov_spec = {'name': 'agora', 'version': 0.1}
@@ -192,3 +231,20 @@ def test_Votes_one_op_approval_from_csv(op_governor_abis):
 
     assert len(aggregations.result) == 16
 
+def test_ProposalTypes_proposal_type_set_with_one_scope_created(pguild_ptc_abi):
+
+    pt = ProposalTypes()
+
+    csvc = CSVClient('tests/data/4000-pguild-ptc-w-scopes')
+    chain_id = 1115511
+
+    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', PROP_TYPE_SET_4, pguild_ptc_abi):
+        pt.handle(row)
+    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', SCOPE_CREATED, pguild_ptc_abi):
+        pt.handle(row)
+    
+    assert len(pt.proposal_types) == 3
+    assert pt.proposal_types[2]['quorum'] == 3300
+    assert pt.proposal_types[2]['approval_threshold'] == 5100
+
+    assert pt.proposal_types[1]['scopes'][0]['description'] == 'Distribute splits contract'
