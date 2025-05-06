@@ -76,26 +76,31 @@ def test_Delegations_last_event():
     for record in data:
         delegations.handle(record)
 
-    latest_event = delegations.get_latest_delegation_event('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0')
+    latest_event = delegations.delegatee_latest.get('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0')
     
-    assert latest_event['block_number'] == 130000000
-    assert latest_event['delegator'] == '0xabc7e867cc42114f1cffa1c5572f591e8711123e'
-    assert latest_event['from_delegate'] == '0x0000000000000000000000000000000000000000'
+    # Unpack the tuple values
+    block_number, delegator, from_delegate = latest_event
+    assert block_number == 130000000
+    assert delegator == '0xabc7e867cc42114f1cffa1c5572f591e8711123e'
+    assert from_delegate == '0x0000000000000000000000000000000000000000'
     
-    oldest_event = delegations.get_oldest_delegation_event('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0')
-    assert oldest_event['block_number'] == 111126198
-    assert oldest_event['delegator'] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
+    oldest_event = delegations.delegatee_oldest.get('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0')
+    block_number, delegator, from_delegate = oldest_event
+    assert block_number == 111126198
+    assert delegator == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
     
-    latest_event = delegations.get_latest_delegation_event('0x3eee61b92c36e97be6319bf9096a1ac3c04a1466')
-    assert latest_event['block_number'] == 115988830
-    assert latest_event['delegator'] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
+    latest_event = delegations.delegatee_oldest.get('0x3eee61b92c36e97be6319bf9096a1ac3c04a1466')
+    block_number, delegator, from_delegate = latest_event
+    assert block_number == 115988830
+    assert delegator == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
     
-    oldest_event = delegations.get_oldest_delegation_event('0x3eee61b92c36e97be6319bf9096a1ac3c04a1466')
-    assert oldest_event['block_number'] == 115988830
-    assert oldest_event['delegator'] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
+    oldest_event = delegations.delegatee_oldest.get('0x3eee61b92c36e97be6319bf9096a1ac3c04a1466')
+    block_number, delegator, from_delegate = oldest_event
+    assert block_number == 115988830
+    assert delegator == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
     
-    assert delegations.get_latest_delegation_event('0x1111111111111111111111111111111111111111') is None
-    assert delegations.get_oldest_delegation_event('0x1111111111111111111111111111111111111111') is None
+    assert delegations.delegatee_oldest.get('0x1111111111111111111111111111111111111111') is None
+    assert delegations.delegatee_latest.get('0x1111111111111111111111111111111111111111') is None
 
 ####################################
 #
