@@ -127,9 +127,6 @@ class Delegations(DataProduct):
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
-        
-        # Track the latest vote block number for each voter
-        self.latest_vote_block = defaultdict(int)
 
     def handle(self, event):
 
@@ -174,12 +171,6 @@ class Delegations(DataProduct):
             block_number = int(event['block_number'])
 
             self.delegatee_vp_history[delegatee].append((block_number, new_votes))
-
-        # Handling for vote events
-        elif signature in [VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1]:
-            voter = event['voter'].lower()
-            if block_number > self.latest_vote_block[voter]:
-                self.latest_vote_block[voter] = block_number
 
 LCREATED = len('ProposalCreated')
 LQUEUED = len('ProposalQueued')
@@ -473,6 +464,8 @@ class Votes(DataProduct):
 
         self.voter_history = defaultdict(list)
         self.proposal_vote_record = defaultdict(list)
+        
+        self.latest_vote_block = defaultdict(int)
 
         if governor_spec['name'] == 'compound':
             self.proposal_id_field_name = 'id'
@@ -501,12 +494,11 @@ class Votes(DataProduct):
         del event_cp['proposal_id']
 
         self.proposal_vote_record[proposal_id].append(event_cp)
-
-    def get_last_vote_block(self, addr):
-        votes_for_addr = self.voter_history.get(addr.lower(), [])
-        if not votes_for_addr:
-            return 0
-        return max(vote['block_number'] for vote in votes_for_addr)
+        
+        voter = event['voter'].lower()
+        block_number = event['block_number']
+        if block_number > self.latest_vote_block[voter]:
+            self.latest_vote_block[voter] = block_number
 
 class ParticipationModel:
     """

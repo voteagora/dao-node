@@ -835,9 +835,9 @@ async def bootstrap_event_feeds(app, loop):
 
     ERC20 = public_config['token_spec']['name'] == 'erc20'
 
-    # if ERC20:
-    #     balances = Balances(token_spec=public_config['token_spec'])
-    #     app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
+    if ERC20:
+        balances = Balances(token_spec=public_config['token_spec'])
+        app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
