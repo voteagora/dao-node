@@ -154,9 +154,9 @@ class Delegations(DataProduct):
             self.delegatee_list[to_delegate].append(delegator)
             
             if not to_delegate in self.delegatee_oldest:
-                self.delegatee_oldest[to_delegate] = (block_number, delegator, from_delegate)
+                self.delegatee_oldest[to_delegate] = block_number
             
-            self.delegatee_latest[to_delegate] = (block_number, delegator, from_delegate)
+            self.delegatee_latest[to_delegate] = block_number
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
