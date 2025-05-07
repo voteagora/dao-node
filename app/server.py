@@ -136,6 +136,7 @@ class ClientSequencer:
         self.lock = asyncio.Lock()
     
     def __iter__(self):
+        self.pos = 0
         return self
 
     def __next__(self): 

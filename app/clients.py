@@ -35,7 +35,7 @@ def resolve_block_count_span(chain_id=None):
         default_block_span = target * 6
     elif chain_id in (59144, 59141): # Linea, Linea Sepolia
         default_block_span = int(target * 4.76)
-    elif chain_id in (42161,): # Arbitrium One (ie XAI)
+    elif chain_id in (42161, 421614): # Arbitrum One (ie XAI), Arbitrum Sepolia
         default_block_span = target * 48
     else:
         default_block_span = target
