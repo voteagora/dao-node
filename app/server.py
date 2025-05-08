@@ -178,27 +178,36 @@ class EventFeed:
 
 
     def archive_read(self):
+        previous_csv_client_failed_filenotfound = False 
 
         for i, client in enumerate(self.cs):
 
             if client.timeliness == 'archive':
 
-                if i > 0:
+                if i > 0 and not previous_csv_client_failed_filenotfound:
                     self.block = max(self.block, client.get_fallback_block(self.signature))
+                if previous_csv_client_failed_filenotfound:
+                    previous_csv_client_failed_filenotfound = False
 
                 emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
 
                 logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client)} from block {self.block}")
 
-                reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
+                try:
+                    reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
 
-                cnt = 0
-                for event in reader:
-                    cnt += 1
-                    self.block = max(self.block, event['block_number'])
-                    yield event
+                    cnt = 0
+                    for event in reader:
+                        cnt += 1
+                        self.block = max(self.block, event['block_number'])
+                        yield event
 
-                logr.info(f"{emoji} Done reading {cnt} {self.signature} events as block {self.block}")
+                    logr.info(f"{emoji} Done reading {cnt} {self.signature} events as block {self.block}")
+
+                except FileNotFoundError as e:
+                    logr.warn(f"{emoji} File not found for {self.signature} by {type(client).__name__}: {e}. Skipping to next client.")
+                    previous_csv_client_failed_filenotfound = isinstance(client, CSVClient)
+                    continue
 
     async def realtime_async_read(self):
 
@@ -742,9 +751,9 @@ async def bootstrap_event_feeds(app, loop):
     if rpcc.is_valid():
        clients.append(rpcc)
 
-    jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
-    if jwsc.is_valid():
-       clients.append(jwsc)
+    # jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
+    # if jwsc.is_valid():
+    #    clients.append(jwsc)
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
