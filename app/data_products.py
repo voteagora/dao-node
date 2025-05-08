@@ -133,6 +133,10 @@ class Delegations(DataProduct):
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
+        
+        # Track the oldest and latest delegation events for each delegate
+        self.delegatee_oldest = {}
+        self.delegatee_latest = {}
 
     def _parse_delegate_array(self, array_str):
         array_str = array_str.strip('"')
@@ -146,7 +150,6 @@ class Delegations(DataProduct):
             return []
 
     def handle(self, event):
-
         signature = event['signature']
         block_number = event['block_number']
         transaction_index = event['transaction_index']
@@ -154,13 +157,17 @@ class Delegations(DataProduct):
         if signature == DELEGATE_CHANGED_1:
 
             delegator = event['delegator'].lower()
-
             to_delegate = event['to_delegate'].lower()
             from_delegate = event['from_delegate'].lower()
 
             self.delegator[delegator] = to_delegate
-
             self.delegatee_list[to_delegate].append(delegator)
+
+            if not to_delegate in self.delegatee_oldest:
+                self.delegatee_oldest[to_delegate] = block_number
+            
+            self.delegatee_latest[to_delegate] = block_number
+
             self.delegatee_info[to_delegate].append((delegator, block_number, transaction_index))
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):

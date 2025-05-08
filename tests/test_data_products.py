@@ -59,6 +59,46 @@ def test_Delegations_from_dict():
     assert delegations.delegatee_cnt['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'] == 1
     assert delegations.delegatee_list['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'][0] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
 
+def test_Delegations_last_event():
+    delegations = Delegations()
+
+    data = [
+            {'block_number': 79335962, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 92356698, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'to_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 95086878, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'to_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 111126198, 'transaction_index': 6, 'log_index': 160, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 115182714, 'transaction_index': 8, 'log_index': 7, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 115988830, 'transaction_index': 13, 'log_index': 161, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'to_delegate': '0x3eee61b92c36e97be6319bf9096a1ac3c04a1466', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 123076144, 'transaction_index': 7, 'log_index': 29, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x3eee61b92c36e97be6319bf9096a1ac3c04a1466', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 126484128, 'transaction_index': 21, 'log_index': 79, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            # Add a new delegation event for a different delegator
+            {'block_number': 130000000, 'transaction_index': 5, 'log_index': 10, 'delegator': '0xabc7e867cc42114f1cffa1c5572f591e8711123e', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'}
+            ] 
+
+    for record in data:
+        delegations.handle(record)
+
+    latest_event = delegations.delegatee_latest.get('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0')
+    
+    # Unpack the tuple values
+    block_number = latest_event
+    assert block_number == 130000000
+    
+    oldest_event = delegations.delegatee_oldest.get('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0')
+    block_number = oldest_event
+    assert block_number == 111126198
+    
+    latest_event = delegations.delegatee_oldest.get('0x3eee61b92c36e97be6319bf9096a1ac3c04a1466')
+    block_number = latest_event
+    assert block_number == 115988830
+    
+    oldest_event = delegations.delegatee_oldest.get('0x3eee61b92c36e97be6319bf9096a1ac3c04a1466')
+    block_number = oldest_event
+    assert block_number == 115988830
+    
+    assert delegations.delegatee_oldest.get('0x1111111111111111111111111111111111111111') is None
+    assert delegations.delegatee_latest.get('0x1111111111111111111111111111111111111111') is None
+
 def test_Delegations_partial_delegations():
     delegations = Delegations()
 
@@ -92,6 +132,7 @@ def test_Delegations_partial_delegations():
     assert '0x9876543210987654321098765432109876543210' not in delegations.delegatee_list
     assert delegations.delegation_amounts['0xabcdef1234567890123456789012345678901234']['0x1234567890123456789012345678901234567890'] == 10000
     assert '0x1234567890123456789012345678901234567890' not in delegations.delegation_amounts['0x9876543210987654321098765432109876543210']
+
 
 ####################################
 #
