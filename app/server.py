@@ -199,7 +199,7 @@ class EventFeed:
                     cnt = 0
                     for event in reader:
                         cnt += 1
-                        self.block = max(self.block, event['block_number'])
+                        self.block = max(self.block, int(event['block_number']))
                         yield event
 
                     logr.info(f"{emoji} Done reading {cnt} {self.signature} events as block {self.block}")
@@ -224,7 +224,7 @@ class EventFeed:
 
                 async for event in reader:
 
-                    self.block = max(self.block, event['block_number'])
+                    self.block = max(self.block, int(event['block_number']))
 
                     yield event
 
@@ -631,17 +631,16 @@ async def delegates_handler(app, request):
 
 ############################################################################################################################################################
 
-@app.route('/v1/delegate/<addr>')
-@openapi.tag("Delegation State")
-@openapi.summary("Information about a specific delegate")
-@measure
-async def delegate(request, addr):
-
+async def delegate_handler(app, request, addr):
     from_list_with_info = []
     for pos, delegator in enumerate(app.ctx.delegations.delegatee_list[addr]):
-        _, bn, tid = app.ctx.delegations.delegatee_info[addr][pos]
+        _, block_number, transaction_index = app.ctx.delegations.delegatee_info[addr][pos]
         balance = str(app.ctx.balances.balance_of(delegator))
-        row = {'delegator' : delegator, 'balance' : balance, 'bn' : bn, 'tid' : tid}
+        if addr in app.ctx.delegations.delegation_amounts and delegator in app.ctx.delegations.delegation_amounts[addr]:
+            amount = app.ctx.delegations.delegation_amounts[addr][delegator]
+        else:
+            amount = 10000
+        row = {'delegator' : delegator, 'balance' : balance, 'percentage' : amount, 'bn' : block_number, 'tid' : transaction_index}
         from_list_with_info.append(row)
 
     return json({'delegate' : 
@@ -649,6 +648,13 @@ async def delegate(request, addr):
                 'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
                 'from_list' : from_list_with_info,
                 'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
+
+@app.route('/v1/delegate/<addr>')
+@openapi.tag("Delegation State")
+@openapi.summary("Information about a specific delegate")
+@measure
+async def delegate(request, addr):
+    return await delegate_handler(app, request, addr)
 
 @app.route('/v1/delegate/<addr>/voting_history')
 @openapi.tag("Delegate Participation")
@@ -681,13 +687,13 @@ Add transaction index and log-index awareness.
 
 """)
 @measure
-async def delegate_vp(request, addr : str, block_number : int):
+async def delegate_vp(request, addr : str, block_number : str):
     return await delegate_vp_handler(app, request, addr, block_number)
 
 async def delegate_vp_handler(app, request, addr, block_number):
 
     vp_history = [(0, 0)] + app.ctx.delegations.delegatee_vp_history[addr]
-    index = bisect_left(vp_history, (block_number,)) - 1
+    index = bisect_left(vp_history, (int(block_number),)) - 1
 
     index = max(index, 0)
 
