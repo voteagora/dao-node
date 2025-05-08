@@ -1,0 +1,513 @@
+block_number,transaction_index,log_index,proposal_id,proposer,targets,values,signatures,calldatas,start_block,end_block,description,proposal_type
+115003910,4,5,64861580915106728278960188313654044018229192803489945934331754023009986585740,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],115003910,115263110,"# Upgrade Proposal #3: Delta Network Upgrade 
+This upgrade (“Delta”) contains a single consensus-layer feature, Span Batches.
+
+The code for the Delta upgrade is ready in the following Optimism monorepo hash: 54a7dbf8aa9b982f9c6a54cbbe448be41c0b7bc7 
+
+Test in Prod proposes 00:00:00 Feb 22, 2024, UTC for the Delta hard fork time—1707922800 in Unix Timestamp. 
+
+This proposal is eligible for Voting Cycle #17: 
+<https://gov.optimism.io/t/ready-to-vote-upgrade-proposal-3-delta-network-upgrade/7310>",1
+115004104,8,10,10572947036210533292634221606922807092762967787561796032397523909369599512554,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],115004104,115263304,"# Proposal to Reclassify Grant Misusage Enforcement
+The Foundation proposes two changes to eliminate delegate responsibility for grant misusage enforcement. This proposal is based on strong feedback from delegates that they do not wish to vote on enforcement actions and instead transfers this responsibility to the elected Token House Code of Conduct Council. 
+
+This proposal is eligible for Voting Cycle #17: 
+<https://gov.optimism.io/t/proposal-to-reclassify-grant-misusage-enforcement/7384>",0
+115911475,9,84,91935073049343644222262531048391052556386406003169247850366587136711778004389,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],115911475,116170675,"# Protocol Upgrade #4
+This upgrade, proposed by OP Labs, introduces a new L1 contract, the SuperchainConfig, along with improvements to the existing pause mechanism.The proposed upgrade takes the current incident response mechanism a step further, introducing a Superchain-wide pause mechanism that can enhance protection across multiple fronts, including the L1CrossDomainMessenger and withdrawals for ERC-20 and ERC-721 tokens, which are additional security critical code paths that protect user assets.
+
+If this vote passes, the L1 contracts which support the OP Mainnet network will be upgraded to the versions of those contracts in the optimism repo at commit 856c08b (tagged as release candidate op-contracts/v1.2.0-rc.1).
+
+This proposal is eligible for Voting Cycle #18: 
+<https://gov.optimism.io/t/upgrade-Request-4/7534>",1
+115921332,10,37,110376471005925230990107796624328147348746431603727026291575353089698990280147,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],115921332,116180532,"# Protocol Upgrade #4
+This upgrade, proposed by OP Labs, introduces a new L1 contract, the SuperchainConfig, along with improvements to the existing pause mechanism.The proposed upgrade takes the current incident response mechanism a step further, introducing a Superchain-wide pause mechanism that can enhance protection across multiple fronts, including the L1CrossDomainMessenger and withdrawals for ERC-20 and ERC-721 tokens, which are additional security critical code paths that protect user assets.
+
+If this vote passes, the L1 contracts which support the OP Mainnet network will be upgraded to the versions of those contracts in the optimism repo at commit 856c08b (tagged as release candidate op-contracts/v1.2.0-rc.1).
+
+
+This proposal is eligible for Voting Cycle #18: 
+<https://gov.optimism.io/t/upgrade-Request-4/7534>",1
+116818399,13,190,62092202168195773894923954988192064013015536031851396683038331347078793897464,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],116818399,117077599,"# Protocol Upgrade #5: Ecotone Network Upgrade
+This is a proposal for the Ecotone network upgrade, which adopts EIP-4844 blobs for data availability and activates Dencun L1 extensions. The remaining changes in this upgrade bring the core improvements from the L1 Dencun hardfork into the OP stack, including new opcodes and the beacon root support. While blob data availability requires L1 Dencun activation, the Ecotone upgrade can be activated independently of it.
+
+If this vote passes, the Ecotone upgrade will be scheduled for execution on March 14th at 00:00:01 UTC. 
+
+The upgrade will occur automatically for nodes on a release which contains the baked in activation time. Ecotone is code complete in the optimism monorepo at commit f707883038d527cbf1e9f8ea513fe33255deadbc and op-geth at commit 0402d543c3d0cff3a3d344c0f4f83809edb44f10. 
+
+This proposal is eligible for Voting Cycle #19: 
+<https://gov.optimism.io/t/upgrade-proposal-5-ecotone-network-upgrade/7669>
+
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House. ",0
+116818650,11,272,27821243076957305012707713934587003414742773107891806047636636540352925014010,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],116818650,117077850,"# Protocol Upgrade #6: Multi-Chain Prep (MCP) L1
+Upgrade proposal: MCP - This protocol upgrade strengthens the security and upgradeability of the Superchain by enabling L1 contracts to be upgraded atomically across multiple chains in a single transaction. This upgrade also extends the SystemConfig to contain the addresses of the contracts in the network, allowing users to discover the system’s contract addresses programmatically.
+
+The upgrade is code complete as of commit [e6ef3a900c42c8722e72c2e2314027f85d12ced5](https://github.com/ethereum-optimism/optimism/commit/e6ef3a900c42c8722e72c2e2314027f85d12ced5) ([release](https://github.com/ethereum-optimism/optimism/releases/tag/op-contracts%2Fv1.3.0-rc.1) and [tag](https://github.com/ethereum-optimism/optimism/tree/op-contracts/v1.3.0-rc.1)) in the Optimism monorepo.
+
+This proposal is eligible for Voting Cycle #19: 
+<https://gov.optimism.io/t/upgrade-proposal-6-multi-chain-prep-mcp-l1/7677>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House. ",0
+116822360,9,37,95119698597711750186734377984697814101707190887694311194110013874163880701970,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],116822360,117081560,"# Protocol Upgrade #5: Ecotone Network Upgrade
+This is a proposal for the Ecotone network upgrade, which adopts EIP-4844 blobs for data availability and activates Dencun L1 extensions. The remaining changes in this upgrade bring the core improvements from the L1 Dencun hardfork into the OP stack, including new opcodes and the beacon root support. While blob data availability requires L1 Dencun activation, the Ecotone upgrade can be activated independently of it.
+
+If this vote passes, the Ecotone upgrade will be scheduled for execution on March 14th at 00:00:01 UTC. 
+
+The upgrade will occur automatically for nodes on a release which contains the baked in activation time. Ecotone is code complete in the optimism monorepo at commit f707883038d527cbf1e9f8ea513fe33255deadbc and op-geth at commit 0402d543c3d0cff3a3d344c0f4f83809edb44f10. 
+
+This proposal is eligible for Voting Cycle #19: 
+<https://gov.optimism.io/t/upgrade-proposal-5-ecotone-network-upgrade/7669>
+
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House. 
+",1
+116822360,9,40,47253113366919812831791422571513347073374828501432502648295761953879525315523,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],116822360,117081560,"# Protocol Upgrade #6: Multi-Chain Prep (MCP) L1
+Upgrade proposal: MCP - This protocol upgrade strengthens the security and upgradeability of the Superchain by enabling L1 contracts to be upgraded atomically across multiple chains in a single transaction. This upgrade also extends the SystemConfig to contain the addresses of the contracts in the network, allowing users to discover the system’s contract addresses programmatically.
+The upgrade is code complete as of commit [e6ef3a900c42c8722e72c2e2314027f85d12ced5](https://github.com/ethereum-optimism/optimism/commit/e6ef3a900c42c8722e72c2e2314027f85d12ced5) ([release](https://github.com/ethereum-optimism/optimism/releases/tag/op-contracts%2Fv1.3.0-rc.1) and [tag](https://github.com/ethereum-optimism/optimism/tree/op-contracts/v1.3.0-rc.1)) in the Optimism monorepo.
+
+This proposal is eligible for Voting Cycle #19: 
+<https://gov.optimism.io/t/upgrade-proposal-6-multi-chain-prep-mcp-l1/7677>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House. 
+",1
+118631417,9,52,43431989468661837394136288041284191617425689076936311610313173525570196928460,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],118631417,118890617,"# Governor Update #1: Improve advanced delegation voting 
+This update enables voters with advanced delegated voting power to cast their votes in a single transaction. This enhancement addresses user feedback on the advanced delegation feature, simplifying the voting process.
+
+If approved by governance, the Optimism Foundation admin will set the governor proxy to a new implementation deployed at 0x637DA4Eeac836188D8C46F63Cb2655f4d3C9F893.
+
+
+This proposal is eligible for Voting Cycle #21: 
+<https://gov.optimism.io/t/proposal-improve-advanced-delegation-voting/7932/1>
+",1
+118631502,9,53,71198450000124943585774001801721401846102684730841253382435346479356472263066,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],118631502,118890702,"# Season 5: Intents Budget Proposal #2 
+This proposal seeks to reallocate 1,040,000 OP from the Gov Fund to support Mission Requests with strong demand rather than returning that OP to the Gov Fund. 
+
+
+This proposal is eligible for Voting Cycle #21: 
+<https://gov.optimism.io/t/season-5-intents-budget-proposal-2/7937>
+",1
+118634705,11,27,79153197521552675573175103134699879266644135524341625272698131484806349525411,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],118634705,118893905,"# Season 5 : Intents Budget Proposal #2 
+This proposal seeks to reallocate 1,040,000 OP from the Gov Fund to support Mission Requests with strong demand rather than returning that OP to the Gov Fund. 
+
+
+This proposal is eligible for Voting Cycle #21: 
+<https://gov.optimism.io/t/season-5-intents-budget-proposal-2/7937>
+",0
+118635402,12,200,63758762292293008954414933414904836930778692439616923618399126968620365661274,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],118635402,118894602,"# Governor Upgrade #1: Improve advanced delegation voting 
+This update enables voters with advanced delegated voting power to cast their votes in a single transaction. This enhancement addresses user feedback on the advanced delegation feature, simplifying the voting process.
+
+If approved by governance, the Optimism Foundation admin will set the governor proxy to a new implementation deployed at 0x637DA4Eeac836188D8C46F63Cb2655f4d3C9F893.
+
+
+This proposal is eligible for Voting Cycle #21: 
+<https://gov.optimism.io/t/proposal-improve-advanced-delegation-voting/7932/1>
+",1
+120446190,7,48,72085170435228531173144599119267762084652443676555508407874836206178427511368,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120446190,120705390,"# Protocol Upgrade #7: Fault Proofs 
+This upgrade reduces trust assumptions for OP Mainnet users by enabling permissionless output proposals and a fault proof system, maintaining the guardian's override capability for security. Withdrawals will no longer rely on a privileged proposer, allowing the process to be completed without any privileged actions. Combined with Protocol Upgrade #8, we believe this satisfies the criteria to have OP Chains reach Stage 1 status.
+
+Associated contracts are tagged in the optimism repo at commit 547ea72d9849e13ce169fd31df0f9197651b3f86 (tagged as release candidate op-contracts/v1.4.0-rc.4).
+
+
+This proposal is eligible for Special Voting Cycle #23a: 
+<https://gov.optimism.io/t/upgrade-proposal-fault-proofs/8161>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.",1
+120446190,7,51,89250535338859095270968116984279971013811713632639468811376241520756760598962,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120446190,120705390,"# Protocol Upgrade #8: Changes for Stage 1 Decentralization 
+This protocol upgrade enhances security and decentralization by increasing the Security Council Safe’s signing threshold from 4 to 10 out of 13, reassigning the Guardian role to a new Guardian Safe controlled by the Security Council Safe, and appointing the Foundation as DeputyGuardian. It also reassigns the L2ProxyAdmin contract owner from the Foundation to the Security Council, ensuring the Security Council Safe has a blocking vote for L2 predeploy upgrades. Combined with Protocol Upgrade #7, we believe this satisfies the criteria to have OP Chains reach Stage 1 status.
+
+Associated contracts are tagged in the optimism repo at commit 9047beb (tagged as release candidate op-contracts/v1.5.0-rc.1).
+
+This proposal is eligible for Special Voting Cycle #23a: 
+<https://gov.optimism.io/t/upgrade-proposal-guardian-security-council-threshold-and-l2-proxyadmin-ownership-changes-for-stage-1-decentralization/8157>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.",1
+120446190,7,54,47257038716514883626179774712509684309799801257166588609178192779726195852111,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120446190,120705390,"# Governor Update Proposal #2: Improvements to advanced delegation allowance calculations 
+This proposal introduces improvements to the Alligator allowance storage system, enabling partial and sub-delegation for OP voters. This update ensures accurate voting power calculation, addressing issues found in advanced delegation.
+
+If approved by governance, the Optimism Foundation admin will set the new implementation of governor proxy at 0xcDF27F107725988f2261Ce2256bDfCdE8B382B10 to new implementation deployed at 0xb7b1c8d8cc590b91623f493af3ee8c0a0a282b74.
+
+This proposal is eligible for Special Voting Cycle #23a: 
+<https://gov.optimism.io/t/governor-update-proposal-2-improvements-to-advanced-delegation-allowance-calculations/8164>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.",1
+120446190,7,57,48952006694295023630523021651829097029643016152459002564988449560366891038844,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120446190,120705390,"# Season 6: Grants Council Operating Budget 
+The Grants Council plays an important role in the Collective and is assumed to persist each Season. The Token House may vote on a Council Operating Budget, thereby electing the proposal author as Council Lead. Delegates are effectively electing the Council Lead that has authored the approved budget.
+
+The sole proposed Grants Council Operating Budget is proposed by Gonna.eth with a proposed operating budget of 605k OP: <https://gov.optimism.io/t/season-6-grants-council-operating-budget/8171>
+
+This proposal is eligible for Special Voting Cycle #23a: <https://gov.optimism.io/t/season-6-grants-council-operating-budget/8082>",0
+120446190,7,60,105090569675606228680479820654354019470447822380910214626164858605991232311940,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120446190,120705390,"# Season 6: Code of Conduct Council Renewal 
+Please read Code of Conduct Rescoping #2 before voting on this proposal: https://gov.optimism.io/t/season-6-code-of-conduct-rescoping-2/8101
+
+The Token House experimented with a Code of Conduct Council in Season 5. It is now time for delegates to assess whether the Council should be renewed. 
+
+Delegates may choose to approve an operating budget for the Code of Conduct Council to oversee the Rules of Engagement in Season 6, effectively electing the proposal author as Council Lead. If delegates do not believe an elected Council is necessary to enforce the Rules of Engagement, they should not approve any operating budget for a Code of Conduct Council.
+
+In the event that no operating budget is approved for a Code of Conduct Council, the supportNERDs will continue to monitor the forum and enforce the Rules of Engagement as they previously have. 
+
+The sole proposed Code of Conduct Council Operating Budget is proposed by Juan Carlos Bell (juankbell) with a proposed operating budget of 55k OP: <https://gov.optimism.io/t/draft-code-of-conduct-council-cocc-operating-budget-for-season-6/8167/1>
+
+This proposal is eligible for Special Voting Cycle #23a: https://gov.optimism.io/t/season-6-code-of-conduct-council-renewal/8100",0
+120446190,7,63,46662599590868619415724059715206858415123913604990481279137083354870809650669,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120446190,120705390,"# Season 6: Intents Ratification 
+Intents are high-level strategic goals for the Collective. As the Collective grows and these goals extend to the broader Superchain ecosystem, the Foundation will propose all Intents for Season 6. These Intents must be ratified by the full Token House. Ratification implies support of these strategic goals for Season 6. 
+
+Intent 1: Progress Towards Decentralization
+The Collective must continue progressing towards decentralized, scalable compute. This includes both technical and governance decentralization. 
+
+
+Intent 2: Bring Chains to the Superchain
+The focus of Intent #2 is growing the Superchain, by expanding the network of OP Chains contributing to the Collective. This strategy should allow the Collective to grow faster, go farther, and scale Ethereum more effectively.
+
+
+Intent 3: Grow Application Devs on the Superchain
+The goal is to grow application developers across all OP Chains. This supports developers globally in building demand-generating applications on any OP Chain in the Superchain.
+
+This proposal is eligible for Special Voting Cycle #23a: <https://gov.optimism.io/t/season-6-intents-ratification/8104>",0
+120446190,7,66,17978891780730403376003321852165590938327948008084254963638289853163672435172,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120446190,120705390,"# Season 6: Intent Budgets 
+Intents are high-level strategic goals for the Collective. Each Intent is equipped with a Seasonal budget. The Foundation has proposed the below budgets under relevant Intents for Season 6. 
+
+Intent 1: Progress Towards Decentralization
+Proposed Gov Fund Budget: 500k OP
+
+Please note that the Gov Fund will not support technical decentralization under Intent #1 in Season 6.
+
+
+Intent 3: Grow Application Devs on the Superchain
+Proposed Gov Fund Budget: 18M OP, broken down as below: 
+
+Intent 3A: 6M OP for grants supporting OP Mainnet
+Intent 3B: 12M OP for chain-specific grant programs supporting the Superchain (to be run by these Chains).
+
+https://gov.optimism.io/t/season-6-intents-ratification/8104",0
+120447632,10,44,23296680451920040311284556255465306513981293154669425902294655221457403608367,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120447632,120706832,"# Season 6: Grants Council Operating Budget 
+The Grants Council plays an important role in the Collective and is assumed to persist each Season. The Token House may vote on a Council Operating Budget, thereby electing the proposal author as Council Lead. Delegates are effectively electing the Council Lead that has authored the approved budget.
+
+The sole proposed Grants Council Operating Budget is proposed by Gonna.eth with a proposed operating budget of 610k OP: <https://gov.optimism.io/t/season-6-grants-council-operating-budget/8171>
+
+This proposal is eligible for Special Voting Cycle #23a: <https://gov.optimism.io/t/season-6-grants-council-operating-budget/8082>
+",0
+120447678,4,21,14519586864906096178979647853880702292711403691701590913173582220625156722217,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120447678,120706878,"# Title: Season 6: Intent Budgets 
+Intents are high-level strategic goals for the Collective. Each Intent is equipped with a Seasonal budget. The Foundation has proposed the below budgets under relevant Intents for Season 6. 
+
+<https://gov.optimism.io/t/season-6-intents-ratification/8104>
+
+Intent 1: Progress Towards Decentralization
+
+
+Proposed Gov Fund Budget: 500k OP
+
+Please note that the Gov Fund will not support technical decentralization under Intent #1 in Season 6.
+
+
+Intent 3: Grow Application Devs on the Superchain
+
+Proposed Gov Fund Budget: 18M OP, broken down as below: 
+
+Intent 3A: 6M OP for grants supporting OP Mainnet
+
+Intent 3B: 12M OP for chain-specific grant programs supporting the Superchain (to be run by these Chains).
+
+This proposal is eligible for Special Voting Cycle #23a: <https://gov.optimism.io/t/season-6-intents-ratification/8104>
+",0
+120448044,21,82,4537769538885163906898768401836322976193114338273264147746088063279656611139,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],120448044,120707244,"# Season 6: Intent Budgets 
+Intents are high-level strategic goals for the Collective. Each Intent is equipped with a Seasonal budget. The Foundation has proposed the below budgets under relevant Intents for Season 6. 
+
+<https://gov.optimism.io/t/season-6-intents-ratification/8104>
+
+Intent 1: Progress Towards Decentralization
+
+Proposed Gov Fund Budget: 500k OP
+
+Please note that the Gov Fund will not support technical decentralization under Intent #1 in Season 6.
+
+
+Intent 3: Grow Application Devs on the Superchain
+
+Proposed Gov Fund Budget: 18M OP, broken down as below: 
+
+Intent 3A: 6M OP for grants supporting OP Mainnet
+
+Intent 3B: 12M OP for chain-specific grant programs supporting the Superchain (to be run by these Chains).
+
+This proposal is eligible for Special Voting Cycle #23a: <https://gov.optimism.io/t/season-6-intents-ratification/8104>",0
+121355297,8,19,19894803675554157870919000647998468859257602050917884642551010462863037711179,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],121355297,121614497,"# Upgrade Proposal #9: Fjord Network Upgrade 
+This upgrade includes the EIP-7212 precompile to reduce gas costs of many smart wallet applications, supports Brotli batch compression for ~5-15% lower data availability costs, and improves the robustness of L1 data pricing. The upgrade also increases and hardcodes the max-sequencer-drift parameter, giving chain operators more time to respond to L1 node issues without facing a potential L2 chain halt.
+
+Fjord is code complete in the optimism monorepo at commit 4a487b8920daa9dc4b496d691d5f283f9bb659b1 and op-geth at commit 3fbae78d638d1b903e702a14f98644c1103ae1b3. 
+
+
+This proposal is eligible for Special Voting Cycle #23b: 
+<https://gov.optimism.io/t/upgrade-proposal-9-fjord-network-upgrade/8236>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.
+",1
+121355297,8,34,64254865747689238476482316231542329918557877728914510953881453289938881180826,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],121355297,121614497,"# Anticapture Commission Amendment 
+In Season 5, the Anticapture Commission was established to ensure governance decentralization and was approved through the end of Season 6. 
+
+The proposed amendments refine the Commission's mandate, goals, and membership criteria based on feedback. High-impact delegates meeting specific criteria will ensure robust participation and contribution.
+
+This proposal is eligible for Special Voting Cycle #23b: <https://gov.optimism.io/t/season-6-anticapture-commission-amendment/8124>
+
+ If the amendment is not approved, the program will continue through the end of Season 6 as originally scoped (without the amendment applied.) ",0
+121355297,8,37,90369495475727036502467637477312343790528748282238130910775338005085857773129,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],121355297,121614497,"# Chain Delegation Program Amendment
+The Chain Delegation Program was approved through the end of Season 6 but was not utilized in Season 5 due to extended timelines and the evolving Superchain strategy. It is still expected to be useful for onboarding the next ~15 OP Chains. This amendment refines the proposal to better support the Superchain strategy.
+
+Eligible OP Chains can receive up to 1.5M OP based on specific criteria. The proposed amendments would increase the program size to 20M OP, to support the first ~15 OP Chains, and extend the timeline to a rolling basis until all 15 Chains have completed their first year of participation. 
+
+
+This proposal is eligible for Special Voting Cycle #23b: <https://gov.optimism.io/t/season-6-chain-delegation-program-amendment/8125>
+
+If not approved, the program will will continue to receive the original 10M OP delegated from the Governance Fund and will terminate at the end of Season 6..
+",0
+121355297,8,40,88658655411314992983575523105180250509368629063896834751261516507794732971264,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],121355297,121614497,"# Season 6: V2. Code of Conduct Council Renewal 
+Please see the Code of Conduct Rescoping #2 before voting on this proposal: https://gov.optimism.io/t/season-6-code-of-conduct-rescoping-2/8101.
+
+
+This v2 proposal addresses feedback from the previous cycle, aiming to renew the Code of Conduct Council for Season 6. If approved, the Council will become a persistent structure within the Collective, managing the enforcement of the Rules of Engagement. 
+
+The proposed Code of Conduct Council Operating Budget, presented by Juan Carlos Bell (juankbell), is 26k OP: <https://gov.optimism.io/t/final-v2-code-of-conduct-council-operating-budget-re-scope-for-season-6-cycle-23b/8271>
+
+
+This proposal is eligible for Special Voting Cycle #23b: <https://gov.optimism.io/t/final-v2-code-of-conduct-council-operating-budget-re-scope-for-season-6-cycle-23b/8271>
+
+Delegates may choose to approve an operating budget for the Code of Conduct Council to oversee the Rules of Engagement in Season 6, effectively electing the proposal author as Council Lead. If delegates do not believe an elected Council is necessary to enforce the Rules of Engagement, they should not approve any operating budget for a Code of Conduct Council.
+
+In the event that no operating budget is approved for a Code of Conduct Council, the supportNERDs will continue to monitor the forum and enforce the Rules of Engagement as they previously have.
+
+",0
+124376136,4,3,46514799174839131952937755475635933411907395382311347042580299316635260952272,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],124376136,124635336,"# Upgrade Proposal #10: Granite Network Upgrade
+This upgrade is proposed in response to security vulnerabilities identified during a series of third-party security audits by Spearbit, Cantina, and Code4rena. None of the vulnerabilities have been exploited, and user assets are not and were never at risk. The upgrade includes both a set of smart contract upgrades to fix the vulnerabilities identified in the audit as well as an L2 hardfork to improve the stability and performance of the fault proof system. In addition, we propose extending the capabilities of the Guardian and DeputyGuardian to set the anchor state for the fault proof system in order to prevent referencing invalid anchor states. Aside from implementing these fixes, the primary impact of this upgrade would be to reset user withdrawals at the planned time, similar to the initial Fault Proof upgrade.
+
+Granite is code complete in the optimism monorepo at commit a81de910dc2fd9b2f67ee946466f2de70d62611a and op-geth at commit 0f5b9dcfd2ac66f6fd8faae526b1549721f5f392.
+
+
+This proposal is eligible for  Voting Cycle #26: 
+<https://gov.optimism.io/t/upgrade-proposal-10-granite-network-upgrade/8733>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.
+
+",1
+125282339,6,23,54194543592303757979358957212312678549449891089859364558242427871997305750980,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],125282339,125541539,"# Rolling Mission Requests 
+There are currently 1,725,000 OP approved by the Token House under the Intent 3A budget that remain unallocated. The Grants Council requests that the Token House allow Mission Requests to be created on a rolling basis throughout Season 6 until this budget runs out. These rolling Mission Requests must align with Intent 3A: Grow Application Developers on OP Mainnet. 
+
+[This proposal is eligible for Voting Cycle #27:](https://gov.optimism.io/t/voting-cycle-roundup-27/8796)
+",0
+127097807,13,101,50775220738623167695573388814398057544437236582252674861818535424434586434657,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],127097807,127357007,"# Governor Update Proposal #3: Enable Onchain Treasury Execution
+This proposal outlines the “Enable onchain treasury execution” governor upgrade, allowing OP token transfer proposals to be executed automatically onchain without relying on the Optimism Foundation. Non-treasury proposals, such as protocol and governor upgrades, will continue to be executed via standard processes. This upgrade also includes minor patches based on previous audits.
+
+If approved by governance, the Optimism Foundation admin will set the new implementation of governor proxy at 0xcDF27F107725988f2261Ce2256bDfCdE8B382B10 to new implementation deployed at 0xecbf4ed9f47302f00f0f039a691e7db83bdd2624.
+
+[This proposal is eligible for Voting Cycle #29](https://gov.optimism.io/t/voting-cycle-roundup-29/9007?u=op_julian)
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.
+",1
+127097831,7,18,73810549639625460608526212484168523508252711948247527324237096115535475508877,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],127097831,127357031,"# Season 6: Standard Rollup Charter Ratification 
+The Standard Rollup is the Optimism Collective’s flagship, high-security blockspace product. The Standard Rollup targets the Collective’s highest bar for security, uptime, and decentralization.
+
+This Charter applies the principles of the Law of Chains to the specific context of Standard Rollups, and does not modify or supersede the Law of Chains in any way. All conflicts between this Charter and the provisions of Law of Chains will be resolved in favor of the Law of Chains.
+
+Optimism Governance is responsible for upholding the standards and policies outlined in this Charter and ensuring their consistency with the Law of Chains. All potential changes to the Standard Rollup should be treated with careful consideration by the governance community, to enable long-term, sustainable ecosystems to be built around Standard Rollup blockspace with confidence.
+
+For more information and explanation of the Blockspace Charter framework, see [here](https://gov.optimism.io/t/season-6-introducing-blockspace-charters-superchain-first-governance/8133).
+
+If this proposal is passed, the [Standard Rollup Charter](https://gov.optimism.io/t/season-6-standard-rollup-charter-ratification/8135) will be added to the Operating Manual github repo, and the Upgrade Proposal Template will be updated to the [charter-aware version](https://gov.optimism.io/t/season-6-charter-aware-upgrade-proposal-template/8134).
+
+[This proposal is eligible for Voting Cycle #29](https://gov.optimism.io/t/voting-cycle-roundup-29/9007)
+",0
+128833353,4,1,69771922871899678295641228800065180752005123065337241545846173169617313270459,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb0000000000000000000000001795652665faa2dfef9865544ae8d3c65f9643a80000000000000000000000000000000000000000000000000de0b6b3a7640000],128833353,129092553,"# Onchain Treasury Transfer Test
+This is a test vote for a future on onchain treasury transfer. This test vote will transfer a nominal amount of OP to 0x1795652665fAa2dfeF9865544ae8D3c65f9643A8, if approved.  This test vote will validate the new transfer mechanics to be implemented as a result of [Governor Update #3](https://gov.optimism.io/t/governor-update-proposal-3-enable-onchain-treasury-execution/9072?u=op_julian). Upon successful completion of this test vote, the Optimism Foundation will  transition to full onchain execution of OP token transfers in special voting cycle #31a. This test vote will require a reduced quorum of 4.5 million OP and will run for 6 days, occurring during an off-cycle to facilitate a smooth and safe special voting cycle #31a.",0
+129217629,8,17,94610974215642918725693487878085811785474320873544989487178353065899060460412,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb0000000000000000000000001795652665faa2dfef9865544ae8d3c65f9643a80000000000000000000000000000000000000000000000000de0b6b3a7640000],129217629,129476829,"# Onchain Treasury Transfer Cancellation Test
+This test vote will further verify the security and functionality of onchain treasury transfers. This test will:
+
+- Process a small transfer of OP tokens to the Milestones and Metrics multisig wallet (0x1795652665fAa2dfeF9865544ae8D3c65f9643A8)
+
+- Validate the Foundation's emergency cancellation mechanism for erroneous or malicious transfers
+
+This controlled test environment ensures we can safely execute and, if necessary, halt future treasury transfers. Your participation helps verify these critical governance functions.
+",0
+129217629,8,20,20127877429053636874064552098716749508236019236440427814457915785398876262515,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],129217629,129476829,"# Upgrade Proposal #11: Holocene Network Upgrade 
+The Holocene Network Upgrade contains three changes:
+
+- Holocene block derivation: a set of changes that render the derivation pipeline stricter and simpler, but also improve worst-case scenarios for Fault Proofs and Interoperability.
+- EIP-1559 configurability: The elasticity and denominator EIP-1559 parameters become configurable via the SystemConfig L1 contract, allowing gas target and gas limit to be independently configured.
+- MIPS contract upgrade: Updates to support additional calls made by the new op-program version.
+
+If this vote passes, the Holocene upgrade will be planned for execution on the 9th of Jan 2025 18:00:01 UTC. The upgrade will occur automatically for chains on the Granite mainnet release if those chains have opted-in to activate at Superchain times via their superchain-registry configuration (i.e., have the superchain_time set to a timestamp before or at the mainnet activation time, or have set their holocene_time directly). The mainnet release will be prepared at a later time during the governance process, but no later than 4 weeks before the proposed activation time.
+
+Holocene is code complete in the optimism monorepo at a tag op-node/v1.10.2-rc.1 and op-geth at tag op-geth/v1.101411.4-rc.2.
+
+[This proposal is eligible for Special Voting Cycle #31a:](https://gov.optimism.io/t/upgrade-proposal-11-holocene-network-upgrade/9313)
+
+**If passed in the Token House, it will proceed to a veto period in the Citizens’ House.**
+",1
+129217629,8,23,106197078319070238442982538943461006899502017598835122473289450535038443039415,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],129217629,129476829,"# Season 7: Intent Ratification
+Intents are high level strategic goals the entire Collective works towards. All contributions in the Collective should be working towards the Intents.
+
+In Season 7, we will have one Intent, focused on a core pillar of our Superchain Product Vision: Interoperability.
+
+Intent: A set of **interoperable** Stage 1 chains doing $250m per month in cross-chain asset transfers
+
+Ratification implies support of this strategic goal as the main focus for the Collective during Season 7.
+
+[This proposal is eligible for Special Voting Cycle #31a:](https://gov.optimism.io/t/season-7-intent/9292)
+
+**This proposal is subject to ratification in the Citizens’ House, occurring in the same Special Voting Cycle.**
+",0
+129217629,8,26,81329280883846954682349421813163481922086727616194816867537448588284139710873,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],129217629,129476829,"# Season 7: Anticapture Commission Amendment
+The Anticapture Commission was conceptualized and formally introduced by the Foundation as an experimental program in Season 5, with a view towards preventing capture across the Optimism Collective, while simultaneously representing the interests of key individual delegates. 
+
+Originally, the [Anticapture Commission Charter](https://gov.optimism.io/t/anticapture-commission/6889) was approved to operate for two seasons. It was further amended and carried forward into [Season 6](https://gov.optimism.io/t/season-6-anticapture-commission-amended/8132). 
+
+For Season 7, the Anticapture Commission is being proposed for renewal by the former Commission Lead. If approved by the Token House, the Anticapture Commission will continue to be delegated 10M OP from the Governance Fund in Season 7 and 8. The Anticapture Commission will not have an operating budget.
+
+If this proposal is approved, this [PR](https://github.com/ethereum-optimism/OPerating-manual/pull/34) will be merged to supersede the previous Charter hosted [here](https://github.com/ethereum-optimism/OPerating-manual/blob/main/Anticapture%20Commission%20Charter%20v1.1.md). 
+
+[This proposal is eligible for Special Voting Cycle #31a:](https://gov.optimism.io/t/season-7-anticapture-commission-charter-amendment/9354)",0
+129217629,8,29,113395645275190312177047367740435087758207466337425363849657431713193292571149,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],129217629,129476829,"# Season 7: Grants Council Operating Budget 
+The Grants Council plays an important role in the Collective and is assumed to persist each Season. The Token House may vote on a Council Operating Budget, thereby electing the proposal author as Council Lead. Delegates are effectively electing the Council Lead that has authored the approved budget.
+
+The sole Grants Council Operating Budget is proposed by Gonna.eth with an operating budget of 400k OP: <https://gov.optimism.io/t/grants-council-operating-budget-s7-request-for-feedback/9357>
+
+If this proposal is approved, this [PR](https://github.com/ethereum-optimism/OPerating-manual/pull/33) will be merged to supersede the previous Charter hosted [here](https://github.com/ethereum-optimism/OPerating-manual/blob/main/Grants%20Council%20Charter%20v0.1.md).
+
+[This proposal is eligible for Special Voting Cycle #31a:](https://gov.optimism.io/t/special-voting-cycle-roundup-31a/9331)",0
+129217629,8,32,49069551108010786317276710250321368518142423368375472047280675391658792795460,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],129217629,129476829,"# Season 7: Developer Advisory Board Operating Budget 
+The Developer Advisory Board plays an important role in the Collective and is assumed to persist each Season. The Token House may vote on a Board Operating Budget, thereby electing the proposal author as Board Lead. Delegates are effectively electing the Board Lead that has authored the approved budget.
+
+The sole Developer Advisory Board Operating Budget is proposed by zachobront with an operating budget of 190k OP: <https://gov.optimism.io/t/developer-advisory-board-season-7-operating-budget/9350>
+
+If this proposal is approved, this [PR](https://github.com/ethereum-optimism/OPerating-manual/pull/32) will be merged to supersede the previous Charter hosted [here](https://github.com/ethereum-optimism/OPerating-manual/blob/main/Developer%20Advisory%20Board%20Charter%20v1.1.md).
+
+[This proposal is eligible for Special Voting Cycle #31a:](https://gov.optimism.io/t/special-voting-cycle-roundup-31a/9331)",0
+129217629,8,35,28176481672236813969648290336143157264806680620695961617794539011701353731831,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],129217629,129476829,"# Season 7: Milestones and Metrics Council Operating Budget 
+The Foundation has proposed establishing an independent Milestones and Metrics Council for Season 7, transitioning the Milestones and Metrics function out of the Grants Council.
+
+The sole Milestones and Metrics Council Operating Budget is proposed by Juanbug_PGov with an operating budget of 170k OP: <https://gov.optimism.io/t/season-7-milestones-and-metrics-council-operating-budget/9353>
+
+Delegates may approve the proposed operating budget, which would elect the author as Council Lead. If delegates do not believe the Milestones and Metrics Council should be created, they should not approve this budget.
+
+[This proposal is eligible for Special Voting Cycle #31a:](https://gov.optimism.io/t/special-voting-cycle-roundup-31a/9331)",0
+129217629,8,38,37879045360062854784591124256577395563453262877307292920231075516279653147858,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],129217629,129476829,"# Code of Conduct Council Dissolution Proposal 
+The Foundation has proposed the dissolution of the Code of Conduct Council (CoCC) in Season 7. As outlined in the Operating Manual, a persistent Council continues into the next Season unless a dissolution proposal is approved. 
+
+This proposal reflects structural learnings, not the contributions of past members, who played a vital role in decentralizing accountability. 
+
+If approved, the CoCC’s operations will cease, and its functions may transition to other groups.
+
+There is no operating budget proposal (serving as a counterproposal)  to continue the Code of Conduct Council. 
+
+[This proposal is eligible for Special Voting Cycle #31a:](https://gov.optimism.io/t/code-of-conduct-council-dissolution-proposal/9321)
+",0
+129217629,8,41,105125741176440203640094995315240049083818024528491410796690326665108302292014,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb00000000000000000000000042415e7d47fb8080eb42f870bc2e04ab0852a264000000000000000000000000000000000000000000003e77fb673f038a600000],129217629,129476829,"# Season 7: Security Council Operating Budget [Onchain]
+The Security Council plays a crucial  role in the Collective and is assumed to persist each Season. The Token House may vote on a Council Operating Budget. 
+
+
+The sole Security Council Operating Budget is proposed by alisha.eth with an operating budget of 295k OP: 
+<https://gov.optimism.io/t/security-council-operating-budget-season-7/9358>
+
+The proposal will execute on-chain to the following multisig address: [0x42415E7D47Fb8080eb42f870BC2e04Ab0852a264] 
+
+A Foundation multisig will be the sole signer on this multisig for the initial transfer. Members signers will be added once onboarding is complete and the Foundation will be removed as a signer. 
+
+This proposal is eligible for Special Voting Cycle #31a: 
+<https://gov.optimism.io/t/special-voting-cycle-roundup-31a/9331>
+",0
+129217629,8,44,42171716559194066774096630474193953258592283643878595219084966413803469648242,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb0000000000000000000000001795652665faa2dfef9865544ae8d3c65f9643a8000000000000000000000000000000000000000000084595161401484a000000],129217629,129476829,"# Grants Council Mission [Onchain]
+In Season 7, the Grants Council will allocate 10M OP from the Governance Fund to projects advancing the Collective’s Intent: Interoperability.
+
+The Token House entrusts the Grants Council with full discretion to design and execute effective grant strategies. This expanded scope removes constraints to the Mission Request process and allows grants beyond OP Mainnet.
+
+Proposed Gov Fund Budget: 10M OP
+
+The proposal will execute on-chain to the following multisig address: [0x1795652665fAa2dfeF9865544ae8D3c65f9643A8] 
+
+A Foundation multisig will be the sole signer on this multisig for the initial transfer. Members signers will be added once onboarding is complete and the Foundation will be removed as a signer. 
+
+[This proposal is eligible for Special Voting Cycle #31a:](https://gov.optimism.io/t/season-7-governance-fund-missions/9300)
+",0
+129217629,8,47,110056430729080386792816227311450746138390196036704148024783380982810773372502,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x4200000000000000000000000000000000000042""]",[0],"[""""]",[a9059cbb0000000000000000000000001795652665faa2dfef9865544ae8d3c65f9643a80000000000000000000000000000000000000000000069e10de76676d0800000],129217629,129476829,"# Decision Market Mission [Onchain]
+In Season 7, the Collective will experiment with a new approach to grants from the Governance Fund: a decision market. This initiative, facilitated by the Foundation in partnership with Butter and the Uniswap Foundation, will allocate grants based on market predictions of a project’s ability to achieve key success metrics. The proposed budget will go towards funding projects, not Butter, the Uniswap Foundation, or the Optimism Foundation. 
+
+Proposed Gov Fund Budget: 500k OP
+
+The proposal will execute on-chain to the following multisig address: [0x1795652665fAa2dfeF9865544ae8D3c65f9643A8] 
+A Foundation multisig will be the sole signer on this multisig for the initial transfer. Members signers will be added once onboarding is complete and the Foundation will be removed as a signer. 
+
+[This proposal is eligible for Special Voting Cycle #31a:](https://gov.optimism.io/t/season-7-governance-fund-missions/9300)",0
+130428121,10,47,109906178950241194456716107956786281098102465720355052462090631179749332288099,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],130428121,130687321,"# Season 7: Chain Delegation Program Amendment
+The Chain Delegation Program was introduced in Season 5, to help new OP Chains onboard and build their delegation in Optimism’s governance. While this program is approved through the first 15 Chains completing their temporary 12 months of delegation via the program, the Foundation would like to propose a small amendment to the Chain Delegation Program starting in Season 7.
+
+This amendment seeks to align this program more closely with the Season 7 Intent: A set of Stage 1 chains doing $250M per month in cross-chain asset transfers.
+
+The proposal suggests moving “satisfying the Standard Rollup Charter criteria,” to be the first criteria rather than the last. This would effectively mean the program is only applicable to OP Chains satisfying the Standard Rollup Charter criteria.
+
+All other qualification criteria will remain unchanged (as previously approved).
+
+[This proposal is eligible for Special Voting Cycle #31b:](https://gov.optimism.io/t/season-7-chain-delegation-program-amendment/9484)
+
+If the amendments are not approved, the Chain Delegation Program will continue, without any changes to the qualification criteria, as approved in the most recent proposal.",0
+131332536,18,56,71928632649116715308847337447543955907072794738294227130170691217045092512147,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0xcdf27f107725988f2261ce2256bdfcde8b382b10""]",[0],"[""""]",[],131332536,131591736,"# Protocol Upgrade: Superchain Registry 2.0
+
+This Protocol Upgrade makes several improvements to the Standard Rollup Charter’s Onchain Criteria. Primarily, it adds additional requirements for standardization which were previously enforced by the Optimism Foundation via Offchain Criteria.
+
+This is a non-fork upgrade, meaning no upgrades to smart contracts or off-chain node software are required. This upgrade is accompanied by the “Superchain Registry 2.0,” a refactor of the Superchain Registry which reflects these improvements and makes other quality-of-life updates for its maintainers.
+
+This small Protocol Upgrade strengthens the Onchain Criteria for Standard Chains as we prepare for more chains in the Superchain to move to Stage 1.
+
+This proposal is eligible for Voting Cycle #32: 
+<https://gov.optimism.io/t/voting-cycle-roundup-32/9545>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.
+",1
+133146674,14,23,84511922734478887667300419900648701566511387783615524992018614345859900443455,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],133146674,133405874,"# Upgrade Proposal #13: OPCM and Incident Response improvements
+This proposal outlines more robust incident response processes and technical improvements to contracts and their management. It provides simplified processes, allows smaller and more frequent upgrades to occur, and enables more flexible and less disruptive ways to respond to potential incidents in the OP Stack fault proof system.
+
+This proposal:
+
+* outlines the implementation of a new system for upgrading L1 contracts across the Superchain (OP Contracts Manager),
+* introduces technical improvements to several key contracts to enable more flexible and less disruptive ways to respond to any potential incidents in the OP Stack fault proof system (Fault Proofs Incident Response Improvements), and
+* introduces a new [Safe Module](https://docs.safe.global/advanced/smart-account-modules) called the `DeputyPauseModule` to be installed into the Optimism Foundation Safe to simplify the process of quickly responding to security incidents via the Superchain-wide pause mechanism (Superchain Pause Improvements).
+
+Blockspace Charter
+* PR specifying the upgraded Blockspace Charter:
+[Update standard rollup charter for Upgrade 13 by mslipper · Pull Request #46 · ethereum-optimism/OPerating-manual · GitHub](https://github.com/ethereum-optimism/OPerating-manual/pull/46)
+
+This proposal is eligible for Voting Cycle #34: 
+<https://gov.optimism.io/t/voting-cycle-roundup-34/9711>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.
+",1
+134052781,10,22,95528263587371532982719325402371584327430753545162858644972401153516332664853,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],134052781,134311981,"# Upgrade Proposal #14: Isthmus L1 Contracts + MT-Cannon
+This proposal outlines the implementation of MT-Cannon which removes memory constraints for the fault proof program, and introduces the Operator Fee which is the first phase of addressing the challenges in accurately pricing user fees when chains employ ZK proving, alt-DA, and custom gas tokens.
+
+This proposal:
+
+* upgrades [Cannon](https://docs.optimism.io/stack/fault-proofs/cannon), the [fault proof VM](https://docs.optimism.io/stack/fault-proofs/fp-components#fault-proof-virtual-machine) to a new version that supports the MIPS-64 instruction set and supports running multi-threaded programs, removing memory constraints for the [fault proof program](https://docs.optimism.io/stack/fault-proofs/fp-components#fault-proof-program) (MT-Cannon), and
+* introduces the first phase of a mechanism addressing challenges in accurately pricing user fees when chains employ ZK proving, alt-DA, and custom gas tokens (Operator Fee).
+
+Blockspace Charter
+
+* PR specifying the upgraded Blockspace Charter
+[Update Standard Rollup Chart for Upgrade 14 by lewejahlil · Pull Request #47 · ethereum-optimism/OPerating-manual · GitHub](https://github.com/ethereum-optimism/OPerating-manual/pull/47)
+
+This proposal is eligible for Voting Cycle #35: <https://gov.optimism.io/t/voting-cycle-roundup-35/9771>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.
+",1
+134052781,10,25,8705916809146420472067303211131851783087744913535435360574720946039078686841,0xe4553b743e74da3424ac51f8c1e586fd43ae226f,"[""0x0000000000000000000000000000000000000000""]",[0],"[""""]",[],134052781,134311981,"# Upgrade Proposal #15: Isthmus Hard Fork
+This proposal outlines the features to be introduced with the Isthmus hard fork. These are key to maintaining parity with L1 and provide the best experience to users and developers of the Superchain that we can.
+This proposal introduces the Isthmus hard fork. The features to be activated are:
+
+* [L2 Withdrawals Root in Block Header](https://gov.optimism.io/t/proposal-preview-l2-withdrawals-root-in-block-header/9730)
+* [Operator Fee](https://gov.optimism.io/t/proposal-preview-operator-fee/9715)
+* [Implement Prague features in Isthmus](https://gov.optimism.io/t/proposal-preview-implement-prague-features-on-the-op-stack/9703)
+
+Blockspace Charter
+
+* This upgrade does not require any changes to the Standard Rollup Charter beyond those in [Upgrade #14](https://gov.optimism.io/t/upgrade-proposal-14-isthmus-l1-contracts-mt-cannon/9796/1), which this builds upon.
+
+This proposal is eligible for Voting Cycle #35: <https://gov.optimism.io/t/voting-cycle-roundup-35/9771>
+
+If passed in the Token House, it will proceed to a veto period in the Citizens’ House.
+",1

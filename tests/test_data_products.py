@@ -3,6 +3,7 @@ from app.data_products import Balances, Delegations, Proposals, Votes, ProposalT
 from app.clients import CSVClient
 import csv
 import os
+from collections import Counter
 from abifsm import ABI, ABISet
 from app.signatures import *
 
@@ -109,6 +110,81 @@ def test_Delegations_with_vote_events():
     # Last vote block should still be the highest block number
     assert votes.latest_vote_block['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == 100500000
 
+def test_Delegations_last_event():
+    delegations = Delegations()
+
+    data = [
+            {'block_number': 79335962, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 92356698, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'to_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 95086878, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'to_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 111126198, 'transaction_index': 6, 'log_index': 160, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 115182714, 'transaction_index': 8, 'log_index': 7, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 115988830, 'transaction_index': 13, 'log_index': 161, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'to_delegate': '0x3eee61b92c36e97be6319bf9096a1ac3c04a1466', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 123076144, 'transaction_index': 7, 'log_index': 29, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x3eee61b92c36e97be6319bf9096a1ac3c04a1466', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            {'block_number': 126484128, 'transaction_index': 21, 'log_index': 79, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            # Add a new delegation event for a different delegator
+            {'block_number': 130000000, 'transaction_index': 5, 'log_index': 10, 'delegator': '0xabc7e867cc42114f1cffa1c5572f591e8711123e', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'}
+            ] 
+
+    for record in data:
+        delegations.handle(record)
+
+    latest_event = delegations.delegatee_latest.get('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0')
+    
+    # Unpack the tuple values
+    block_number = latest_event
+    assert block_number == 130000000
+    
+    oldest_event = delegations.delegatee_oldest.get('0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0')
+    block_number = oldest_event
+    assert block_number == 111126198
+    
+    latest_event = delegations.delegatee_oldest.get('0x3eee61b92c36e97be6319bf9096a1ac3c04a1466')
+    block_number = latest_event
+    assert block_number == 115988830
+    
+    oldest_event = delegations.delegatee_oldest.get('0x3eee61b92c36e97be6319bf9096a1ac3c04a1466')
+    block_number = oldest_event
+    assert block_number == 115988830
+    
+    assert delegations.delegatee_oldest.get('0x1111111111111111111111111111111111111111') is None
+    assert delegations.delegatee_latest.get('0x1111111111111111111111111111111111111111') is None
+
+def test_Delegations_partial_delegations():
+    delegations = Delegations()
+
+    event = {
+        'block_number': 123456,
+        'transaction_index': 0,
+        'delegator': '0x1234567890123456789012345678901234567890',
+        'old_delegatees': '[]',
+        'new_delegatees': '[["0xabcdef1234567890123456789012345678901234", 5000], ["0x9876543210987654321098765432109876543210", 7500]]',
+        'signature': DELEGATE_CHANGED_2,
+        'sighash': 'test'
+    }
+    delegations.handle(event)
+
+    assert '0xabcdef1234567890123456789012345678901234' in delegations.delegatee_list
+    assert '0x9876543210987654321098765432109876543210' in delegations.delegatee_list
+    assert delegations.delegation_amounts['0xabcdef1234567890123456789012345678901234']['0x1234567890123456789012345678901234567890'] == 5000
+    assert delegations.delegation_amounts['0x9876543210987654321098765432109876543210']['0x1234567890123456789012345678901234567890'] == 7500
+
+    event = {
+        'block_number': 123457,
+        'transaction_index': 0,
+        'delegator': '0x1234567890123456789012345678901234567890',
+        'old_delegatees': '[["0xabcdef1234567890123456789012345678901234", 5000], ["0x9876543210987654321098765432109876543210", 7500]]',
+        'new_delegatees': '[["0xabcdef1234567890123456789012345678901234", 10000]]',
+        'signature': DELEGATE_CHANGED_2,
+        'sighash': 'test'
+    }
+    delegations.handle(event)
+
+    assert '0x9876543210987654321098765432109876543210' not in delegations.delegatee_list
+    assert delegations.delegation_amounts['0xabcdef1234567890123456789012345678901234']['0x1234567890123456789012345678901234567890'] == 10000
+    assert '0x1234567890123456789012345678901234567890' not in delegations.delegation_amounts['0x9876543210987654321098765432109876543210']
+
+
 ####################################
 #
 #  Test basic business logic of the data products, in the context of a specific Client and production like data.
@@ -181,6 +257,43 @@ def test_Proposals_one_op_approval_from_csv(op_governor_abis):
     assert first_proposal.create_event['voting_module_name'] == 'approval'
 
     assert first_proposal.create_event['decoded_proposal_data'] == (((0, (), (), (), 'World Foundation'), (0, (), (), (), 'Andrey Petrov'), (0, (), (), (), 'OP Labs'), (0, (), (), (), 'L2BEAT'), (0, (), (), (), 'Alchemy'), (0, (), (), (), 'Maggie Love'), (0, (), (), (), 'Gauntlet'), (0, (), (), (), 'Test in Prod'), (0, (), (), (), 'Yoav Weiss'), (0, (), (), (), 'ml_sudo'), (0, (), (), (), 'Kris Kaczor'), (0, (), (), (), 'Martin Tellechea'), (0, (), (), (), 'Ink'), (0, (), (), (), 'Coinbase'), (0, (), (), (), 'troy')), (15, 1, '0x0000000000000000000000000000000000000000', 6, 0))
+
+
+def test_Proposals_op_proposal_module_names(op_governor_abis):
+    
+    modules = {}
+    gov_spec = {'name': 'agora', 'version': 0.1}
+
+    proposals = Proposals(gov_spec, modules)
+        
+    csvc = CSVClient('tests/data/5000-all-optimism-proposalcreated-to-20250425')
+    chain_id = 10
+    
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_1, op_governor_abis):
+        proposals.handle(row)
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_2, op_governor_abis):
+        proposals.handle(row)
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_3, op_governor_abis):
+        proposals.handle(row)
+    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_4, op_governor_abis):
+        proposals.handle(row)
+
+    module_types = [p.voting_module_name for p in proposals.proposals.values()]
+
+    results = Counter(module_types)
+    
+    assert results['standard'] == 73
+    assert results['approval'] == 51
+    assert results['optimistic'] == 3
+
+    from sanic.response import json
+
+    # This confirms that the objects can be serialized in a response.
+    # The biggest risk is in decoding data incorrectly, and it getting
+    # left as bytes.
+    for proposal in proposals.proposals:
+        json(proposal)
+    
 
 def test_Votes_one_op_approval_from_csv(op_governor_abis):
     

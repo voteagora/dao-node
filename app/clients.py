@@ -17,7 +17,37 @@ from .utils import camel_to_snake
 
 csv.field_size_limit(sys.maxsize)
 
-DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN', 5))
+def resolve_block_count_span(chain_id=None):
+
+    target = 2000
+
+    if chain_id is None:
+        default_block_span = target
+    elif chain_id in (1, 11155111): # Ethereum, Sepolia
+        default_block_span = target
+    elif chain_id in (10, 8453): # Optimism, Base
+        default_block_span = target * 6
+    elif chain_id in (7560,): # Cyber
+        default_block_span = 10_000 
+    elif chain_id in (534352,): # Scroll
+        default_block_span = target * 4
+    elif chain_id in (901, 957): # Derive & it's Testnet
+        default_block_span = target * 6
+    elif chain_id in (59144, 59141): # Linea, Linea Sepolia
+        default_block_span = int(target * 4.76)
+    elif chain_id in (42161,): # Arbitrium One (ie XAI)
+        default_block_span = target * 48
+    else:
+        default_block_span = target
+
+    try:
+        override = int(os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN'))
+        assert override > 0
+    except:
+        override = None
+    
+    return override or default_block_span
+
 
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
 
@@ -75,7 +105,6 @@ class CSVClient:
             
             for row in reader:
 
-                row['block_number'] = int(row['block_number'])
                 row['log_index'] = int(row['log_index'])
                 row['transaction_index'] = int(row['transaction_index'])
 
@@ -155,14 +184,19 @@ class JsonRpcHistHttpClient:
             raise Exception(f"Could not connect to {self.url}")
 
         now = datetime.utcnow()
-        target_date = now - timedelta(days=4)
+        days_back = 1 # TODO: Change back to 4, after we get infra stable.
+        target_date = now - timedelta(days=days_back)
 
         latest_block = w3.eth.block_number
 
-        print(f"Searching for a block ~4 days ago from block {latest_block}")
+        chain_id = w3.eth.chain_id
+
+        print(f"Searching for a block ~{days_back} days ago from block {latest_block}")
+
+        step = resolve_block_count_span(chain_id)
 
         # Step backwards to find the block
-        for i in range(latest_block, 0, -1 * DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN):
+        for i in range(latest_block, 0, -1 * step):
 
             block = w3.eth.get_block(i)
             block_time = datetime.utcfromtimestamp(block.timestamp)
@@ -170,13 +204,13 @@ class JsonRpcHistHttpClient:
             # print(f"Block {block.number}: {block_time.isoformat()} UTC")
 
             if block_time < target_date:
-                logr.info(f"Found block from 4+ days ago: {block.number} @ {block_time.isoformat()} UTC")
+                logr.info(f"Found block from ~{days_back} days ago: {block.number} @ {block_time.isoformat()} UTC")
 
                 self.fallback_block[signature] = block.number 
 
                 return block.number
         else:
-            logr.info("No block older than 4 days found.")
+            logr.info(f"No block older than {days_back} days found.")
             return 0
 
     def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi):
@@ -229,7 +263,10 @@ class JsonRpcHistHttpClient:
         # TODO make sure inclusivivity is handled properly.    
         start_block = after
         end_block = w3.eth.block_number
-        step = DAO_NODE_ARCHIVE_NODE_HTTP_BLOCK_COUNT_SPAN 
+
+        chain_id = w3.eth.chain_id
+
+        step = resolve_block_count_span(chain_id) 
 
         cs_address = Web3.to_checksum_address(address)
 
@@ -239,7 +276,7 @@ class JsonRpcHistHttpClient:
 
             out = {}
             
-            out['block_number'] = log['blockNumber']
+            out['block_number'] = str(log['blockNumber'])
             out['transaction_index'] = log['transactionIndex']
             out['log_index'] = log['logIndex']
 
@@ -337,7 +374,7 @@ class JsonRpcRTWsClientV1:
                 decoded_response = processor(response['result'])
 
                 out = {}
-                out['block_number'] = decoded_response['blockNumber']
+                out['block_number'] = str(decoded_response['blockNumber'])
                 out['log_index'] = decoded_response['logIndex']
                 out['transaction_index'] = decoded_response['transactionIndex']
                 out.update(**decoded_response['args'])
@@ -385,7 +422,7 @@ class JsonRpcRTWsClient(JsonRpcRTWsClientV1):
             decoded[arg["name"]] = (indexed_values + non_indexed_values)[i]
 
         out = {
-            "block_number": int(ws_payload["blockNumber"], 16),
+            "block_number": str(int(ws_payload["blockNumber"], 16)),
             "log_index": int(ws_payload["logIndex"], 16),
             "transaction_index": int(ws_payload["transactionIndex"], 16),
             "signature": signature,

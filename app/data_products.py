@@ -1,11 +1,15 @@
 from copy import copy
 from collections import defaultdict
 from abc import ABC, abstractmethod
+import json
 
 from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
 
 from .signatures import *
+
+class ToDo(NotImplementedError):
+    pass
 
 class DataProduct(ABC):
 
@@ -107,7 +111,7 @@ class ProposalTypes(DataProduct):
         pit_proposal_type = None
 
         for proposal_type in proposal_type_history:
-            if proposal_type['block_number'] > block_number:
+            if int(proposal_type['block_number']) > int(block_number):
                 break
             pit_proposal_type = proposal_type
 
@@ -121,37 +125,119 @@ class Delegations(DataProduct):
         # Data about the delegatee (ie, the delegate's influence)
         self.delegatee_list = defaultdict(list) #  list of delegators
         self.delegatee_cnt = defaultdict(int) #  dele
+        self.delegatee_info = defaultdict(list) # list of (delegator, block_number, transaction_index) tuples
         
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
+        self.delegation_amounts = defaultdict(dict)
 
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
+        
+        # Track the oldest and latest delegation events for each delegate
+        self.delegatee_oldest = {}
+        self.delegatee_latest = {}
+
+    def _parse_delegate_array(self, array_str):
+        array_str = array_str.strip('"')
+        if not array_str or array_str == '[]':
+            return []
+            
+        try:
+            delegates = json.loads(array_str)
+            return [[addr.lower(), int(amount)] for addr, amount in delegates]
+        except (json.JSONDecodeError, ValueError):
+            return []
 
     def handle(self, event):
-
         signature = event['signature']
         block_number = event['block_number']
+        transaction_index = event['transaction_index']
 
         if signature == DELEGATE_CHANGED_1:
 
             delegator = event['delegator'].lower()
-
             to_delegate = event['to_delegate'].lower()
             from_delegate = event['from_delegate'].lower()
 
             self.delegator[delegator] = to_delegate
-
             self.delegatee_list[to_delegate].append(delegator)
+
+            if not to_delegate in self.delegatee_oldest:
+                self.delegatee_oldest[to_delegate] = block_number
+            
+            self.delegatee_latest[to_delegate] = block_number
+
+            self.delegatee_info[to_delegate].append((delegator, block_number, transaction_index))
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
-                    self.delegatee_list[from_delegate].remove(delegator)
+                    idx_to_remove = -1
+                    for i, d in enumerate(self.delegatee_list[from_delegate]):
+                        if d == delegator:
+                            idx_to_remove = i
+                            break
+                    
+                    if idx_to_remove != -1:
+                        del self.delegatee_list[from_delegate][idx_to_remove]
+                        del self.delegatee_info[from_delegate][idx_to_remove]
+
                     self.delegatee_cnt[from_delegate] = len(self.delegatee_list[from_delegate])
                 except ValueError as e:
                     print(f"E109250323 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
+
+        elif signature == DELEGATE_CHANGED_2:
+            delegator = event['delegator'].lower()
+            
+            # Parse old and new delegations
+            old_delegatees = self._parse_delegate_array(event.get('old_delegatees', '[]'))
+            new_delegatees = self._parse_delegate_array(event.get('new_delegatees', '[]'))
+            
+            # Handle old delegations removal
+            for old_delegation in old_delegatees:
+                old_delegate = old_delegation[0].lower()
+                amount = old_delegation[1]
+
+                if old_delegate in self.delegatee_list:
+                    idx_to_remove = -1
+                    for i, d in enumerate(self.delegatee_list[old_delegate]):
+                        if d == delegator:
+                            idx_to_remove = i
+                            break
+                        
+                    if idx_to_remove != -1:
+                        del self.delegatee_list[old_delegate][idx_to_remove]
+                        del self.delegatee_info[old_delegate][idx_to_remove] 
+                        self.delegatee_cnt[old_delegate] = len(self.delegatee_list[old_delegate])
+                        if not self.delegatee_list[old_delegate]:
+                            del self.delegatee_list[old_delegate]
+                            del self.delegatee_info[old_delegate]
+                    self.delegation_amounts[old_delegate].pop(delegator, None)
+                    
+                    # Update voting power
+                    self.delegatee_vp[old_delegate] -= amount
+                    self.delegatee_vp_history[old_delegate].append((block_number, self.delegatee_vp[old_delegate]))
+
+            # Handle new delegations addition
+            for new_delegation in new_delegatees:
+                new_delegate = new_delegation[0].lower()
+                amount = new_delegation[1]
+                
+                if new_delegate not in self.delegatee_list:
+                    self.delegatee_list[new_delegate] = []
+                    self.delegatee_info[new_delegate] = []
+
+                if delegator not in self.delegatee_list[new_delegate]:
+                    self.delegatee_list[new_delegate].append(delegator)
+                    self.delegatee_info[new_delegate].append((delegator, block_number, transaction_index))
+                    self.delegatee_cnt[new_delegate] = len(self.delegatee_list[new_delegate])
+                self.delegation_amounts[new_delegate][delegator] = amount
+                
+                # Update voting power
+                self.delegatee_vp[new_delegate] += amount
+                self.delegatee_vp_history[new_delegate].append((block_number, self.delegatee_vp[new_delegate]))
 
         elif signature == DELEGATE_VOTES_CHANGE:
 
@@ -176,6 +262,21 @@ LCREATED = len('ProposalCreated')
 LQUEUED = len('ProposalQueued')
 LEXECUTED = len('ProposalExecuted')
 LCANCELED = len('ProposalCanceled')
+
+def reverse_engineer_module(signature, proposal_data):
+
+    if signature in (PROPOSAL_CREATED_3, PROPOSAL_CREATED_4):
+        crit = '00000000000000000000000000000000000000000000000000000000000000c'
+        if proposal_data.startswith(crit):
+            return 'approval'
+        else:
+            return 'optimistic'
+
+    elif signature in (PROPOSAL_CREATED_1, PROPOSAL_CREATED_2):
+        return 'standard'
+    else:
+        raise Exception(f"Unrecognized signature '{signature}'")
+
 
 def decode_proposal_calldata(calldata: str, abi_types):
     """
@@ -229,26 +330,31 @@ def decode_proposal_data(proposal_type, proposal_data):
 
     if proposal_type == 'standard':
         return None
-    
-    if proposal_type == 'approval':
-        abi = ["(uint256,address[],uint256[],bytes[],string)[]", "(uint8,uint8,address,uint128,uint128)"]
-        abi2 = ["(address[],uint256[],bytes[],string)[]",        "(uint8,uint8,address,uint128,uint128)"] # OP/alligator only? Only for 0xe1a17f4770769f9d77ef56dd3b92500df161f3a1704ab99aec8ccf8653cae400l
-    elif proposal_type == 'optimistic':
-        abi = ["(uint248,bool)"]
-    else:
-        raise Exception("Unknown Proposal Type: {}".format(proposal_type))
 
     if proposal_data[:2] == '0x':
         proposal_data = proposal_data[2:]
     proposal_data = bytes.fromhex(proposal_data)
 
-    try:
-        result = decode_abi(abi, proposal_data)
-    except:
-        result = decode_abi(abi2, proposal_data)
-        result = bytes_to_hex(result)
+    if proposal_type == 'optimistic':
+        abi = ["(uint248,bool)"]
+        decoded = decode_abi(abi, proposal_data)
+        return bytes_to_hex(decoded)
+    
+    if proposal_type == 'approval':
+        abi = ["(uint256,address[],uint256[],bytes[],string)[]", "(uint8,uint8,address,uint128,uint128)"]
+        abi2 = ["(address[],uint256[],bytes[],string)[]",        "(uint8,uint8,address,uint128,uint128)"] # OP/alligator only? Only for 0xe1a17f4770769f9d77ef56dd3b92500df161f3a1704ab99aec8ccf8653cae400l
 
-    return result
+        try:
+            decoded = decode_abi(abi, proposal_data)
+        except Exception as err:
+            decoded = decode_abi(abi2, proposal_data)
+
+        decoded = bytes_to_hex(decoded)
+        
+        return decoded
+
+    raise Exception("Unknown Proposal Type: {}".format(proposal_type))
+
 
 class Proposal:
     def __init__(self, create_event):
@@ -287,11 +393,16 @@ class Proposal:
         return out
 
     def set_voting_module_name(self, name):
+        self.voting_module_name = name
         self.create_event['voting_module_name'] = name
         
     def resolve_voting_module_name(self, modules):
-        self.voting_module_name = modules.get(self.voting_module_address, "standard")
-        self.create_event['voting_module_name'] = self.voting_module_name
+        voting_module_name = modules.get(self.voting_module_address, "standard")
+        self.set_voting_module_name(voting_module_name)
+    
+    def reverse_engineer_module_name(self, signature, proposal_data):
+        voting_module_name = reverse_engineer_module(signature, proposal_data)
+        self.set_voting_module_name(voting_module_name)
 
     @property
     def voting_module_address(self):
@@ -374,18 +485,25 @@ class Proposals(DataProduct):
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
                 proposal = decode_create_event(event)
-                
-                if self.gov_spec['name'] == 'agora':
+
+                proposal_data = proposal.create_event.get('proposal_data', None)
+
+                if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1:
+                    raise ToDo("Old Govenors are using newer PTCs, and so using gov version here doesn't work perfectly for this check.  So the first one that upgrades, is going to trip this reminder.  Plus, PTC upgrades happen without changing gov versions Eg. Optimism.")
                     proposal.resolve_voting_module_name(self.modules)
-
-                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
-
-                    if voting_module_name in ('approval','optimistic'):
-                        proposal_data = proposal.create_event['proposal_data']
-                    
-                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)
+                elif self.gov_spec['name'] == 'agora':
+                    # Older PTC Contracts didn't fully describe themselves, so we 
+                    # this is a hack.
+                    proposal.reverse_engineer_module_name(signature, proposal_data)
                 else:
                     proposal.set_voting_module_name('standard')
+
+                if self.gov_spec['name'] == 'agora':
+                    
+                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
+
+                    if voting_module_name in ('approval', 'optimistic'):
+                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)                
                     
                 self.proposals[proposal_id] = proposal
 
@@ -487,6 +605,7 @@ class Votes(DataProduct):
 
         del event_cp['sighash']
         del event_cp['signature']
+        event_cp['proposal_id'] = str(event_cp['proposal_id'])
 
         self.voter_history[event['voter']].append(event_cp)
 

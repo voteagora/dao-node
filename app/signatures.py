@@ -24,3 +24,17 @@ VOTE_CAST_WITH_PARAMS_1 = 'VoteCastWithParams(address,uint256,uint8,uint256,stri
 SCOPE_CREATED  = 'ScopeCreated(uint8,bytes24,bytes4,string)'
 SCOPE_DELETED  = 'ScopeDeleted(uint8,bytes24)'
 SCOPE_DISABLED = 'ScopeDisabled(uint8,bytes24)'
+
+if __name__ == '__main__':
+
+    from web3 import Web3 as w3
+    
+    local_vars = list(locals().items())
+
+    for var, val in local_vars:
+
+        if isinstance(val, str) and "__" not in var:
+            print("     " + var)
+
+            print("0x" + w3.keccak(text=val).hex(), " -> ", val)
+

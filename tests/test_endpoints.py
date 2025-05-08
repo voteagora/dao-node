@@ -1,11 +1,12 @@
 import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock, AsyncMock, patch
 from sanic import Sanic
 from sanic.response import json
-from app.server import proposals_handler, proposal_types_handler, delegates_handler, ParticipationModel
-from app.data_products import Proposals, Votes, ProposalTypes
+from app.server import proposals_handler, proposal_types_handler, delegates_handler, delegate_handler, ParticipationModel
+from app.data_products import Proposals, Votes, Delegations, ProposalTypes, Balances
 from app.clients import CSVClient
 from app.signatures import *
+import json
 
 @pytest.fixture
 def app():
@@ -14,6 +15,11 @@ def app():
     @app.route('/v1/proposals')
     async def proposals(request):
         return await proposals_handler(app, request)
+    
+    @app.route('/v1/delegates')
+    async def delegates(request):
+        return await delegates_handler(app, request)
+    
 
     @app.route('/v1/proposal_types')
     async def proposal_types(request):
@@ -22,6 +28,10 @@ def app():
     @app.route('/v1/delegates')
     async def delegates(request):
         return await delegates_handler(app, request)
+
+    @app.route('/v1/delegate/<addr>')
+    async def delegate(request, addr):
+        return await delegate_handler(app, request, addr)
 
     return app
 
@@ -63,6 +73,100 @@ async def test_proposals_endpoint(app, test_client, compound_governor_abis):
     assert prop83['totals']['no-param']['2'] == '5795658915470619580362791'
 
 @pytest.mark.asyncio
+async def test_delegates_endpoint_sort_by_oldest(app):
+    
+    request = Mock()
+    request.args = {
+        "sort_by": "OLD",
+        "offset": "0",
+        "page_size": "10",
+        "reverse": "true",
+        "include": "VP,DC"
+    }
+    
+    delegations = Delegations()
+    
+    delegations.delegatee_oldest_event = {
+        "0x1111111111111111111111111111111111111111": {"block_number": 100, "delegator": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "from_delegate": "0x0000000000000000000000000000000000000000"},
+        "0x2222222222222222222222222222222222222222": {"block_number": 200, "delegator": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "from_delegate": "0x0000000000000000000000000000000000000000"},
+        "0x3333333333333333333333333333333333333333": {"block_number": 50, "delegator": "0xcccccccccccccccccccccccccccccccccccccccc", "from_delegate": "0x0000000000000000000000000000000000000000"}
+    }
+    
+    delegations.delegatee_vp = {"0x1111111111111111111111111111111111111111": 1000, "0x2222222222222222222222222222222222222222": 2000, "0x3333333333333333333333333333333333333333": 3000}
+    delegations.delegatee_cnt = {"0x1111111111111111111111111111111111111111": 5, "0x2222222222222222222222222222222222222222": 10, "0x3333333333333333333333333333333333333333": 15}
+    
+    # Configure mock app context
+    app.ctx = Mock()
+    app.ctx.delegations = delegations
+    app.ctx.proposals = Mock(spec=Proposals)
+    app.ctx.votes = Mock(spec=Votes)
+    
+    response = await delegates_handler(app, request)
+    
+    result = json.loads(response.body)
+    delegates = result["delegates"]
+    
+    assert len(delegates) == 3
+    assert delegates[0]["addr"] == "0x2222222222222222222222222222222222222222"  # Block 200 (highest)
+    assert delegates[0]["oldest_block"] == 200
+    assert delegates[1]["addr"] == "0x1111111111111111111111111111111111111111"  # Block 100
+    assert delegates[1]["oldest_block"] == 100
+    assert delegates[2]["addr"] == "0x3333333333333333333333333333333333333333"  # Block 50 (lowest)
+    assert delegates[2]["oldest_block"] == 50
+    
+    assert "voting_power" in delegates[0]
+    assert "from_cnt" in delegates[0]
+    assert delegates[0]["voting_power"] == "2000"
+    assert delegates[0]["from_cnt"] == 10
+
+@pytest.mark.asyncio
+async def test_delegates_endpoint_sort_by_latest(app):
+    
+    request = Mock()
+    request.args = {
+        "sort_by": "MRD",
+        "offset": "0",
+        "page_size": "10",
+        "reverse": "false",
+        "include": "VP,DC,OL"
+    }
+    
+    delegations = Delegations()
+    
+    delegations.delegatee_latest_event = {
+        "0x1111111111111111111111111111111111111111": {"block_number": 1000, "delegator": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "from_delegate": "0x0000000000000000000000000000000000000000"},
+        "0x2222222222222222222222222222222222222222": {"block_number": 2000, "delegator": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "from_delegate": "0x0000000000000000000000000000000000000000"},
+        "0x3333333333333333333333333333333333333333": {"block_number": 500, "delegator": "0xcccccccccccccccccccccccccccccccccccccccc", "from_delegate": "0x0000000000000000000000000000000000000000"}
+    }
+    
+    delegations.delegatee_oldest_event = {
+        "0x1111111111111111111111111111111111111111": {"block_number": 100, "delegator": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "from_delegate": "0x0000000000000000000000000000000000000000"},
+        "0x2222222222222222222222222222222222222222": {"block_number": 200, "delegator": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "from_delegate": "0x0000000000000000000000000000000000000000"},
+        "0x3333333333333333333333333333333333333333": {"block_number": 50, "delegator": "0xcccccccccccccccccccccccccccccccccccccccc", "from_delegate": "0x0000000000000000000000000000000000000000"}
+    }
+    
+    delegations.delegatee_vp = {"0x1111111111111111111111111111111111111111": 1000, "0x2222222222222222222222222222222222222222": 2000, "0x3333333333333333333333333333333333333333": 3000}
+    delegations.delegatee_cnt = {"0x1111111111111111111111111111111111111111": 5, "0x2222222222222222222222222222222222222222": 10, "0x3333333333333333333333333333333333333333": 15}
+    
+    # Configure mock app context
+    app.ctx = Mock()
+    app.ctx.delegations = delegations
+    app.ctx.proposals = Mock(spec=Proposals)
+    app.ctx.votes = Mock(spec=Votes)
+    
+    response = await delegates_handler(app, request)
+    
+    result = json.loads(response.body)
+    delegates = result["delegates"]
+    
+    assert len(delegates) == 3
+    assert delegates[0]["addr"] == "0x3333333333333333333333333333333333333333"  # Block 500 (lowest)
+    assert delegates[0]["most_recent_block"] == 500
+    assert delegates[1]["addr"] == "0x1111111111111111111111111111111111111111"  # Block 1000
+    assert delegates[1]["most_recent_block"] == 1000
+    assert delegates[2]["addr"] == "0x2222222222222222222222222222222222222222"  # Block 2000 (highest)
+    assert delegates[2]["most_recent_block"] == 2000
+
 async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
 
     pt = ProposalTypes()
@@ -85,7 +189,7 @@ async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
     proposal_type_id = '0' 
     assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
 
-    expected_array_element = {'quorum': 0, 'approval_threshold': 5100, 'name': 'Distribute Splits', 'module': '0x0000000000000000000000000000000000000000', 'scopes': [{'scope_key': '02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537', 'block_number': 8118843, 'transaction_index': 66, 'log_index': 113, 'selector': '2d3f5537', 'description': 'Distribute splits contract', 'disabled_event': {}, 'deleted_event': {}, 'status': 'created'}]}
+    expected_array_element = {'quorum': 0, 'approval_threshold': 5100, 'name': 'Distribute Splits', 'module': '0x0000000000000000000000000000000000000000', 'scopes': [{'scope_key': '02b27a65975a62cd8de7d22620bc9cd98e79f9042d3f5537', 'block_number': '8118843', 'transaction_index': 66, 'log_index': 113, 'selector': '2d3f5537', 'description': 'Distribute splits contract', 'disabled_event': {}, 'deleted_event': {}, 'status': 'created'}]}
     proposal_type_id = '1'
     assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
 
@@ -186,5 +290,36 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     assert len(delegates) == 2
     assert delegates[0]['addr'] == '0x2222'
     assert delegates[1]['addr'] == '0x1111'
+
+async def test_delegate_endpoint(app, test_client, scroll_token_abi):
+    delegations = Delegations()
+    balances = Balances(token_spec={'name': 'erc20', 'version': '?'})
+    
+    csvc = CSVClient('tests/data/6000-delegations')
+    chain_id = 1
+    for row in csvc.read(chain_id, '0x1234567890123456789012345678901234567890', DELEGATE_CHANGED_2, scroll_token_abi):
+        delegations.handle(row)
+    
+    balances.handle({
+        'block_number': 123456,
+        'from': '0x0000000000000000000000000000000000000000',
+        'to': '0x1234567890123456789012345678901234567890',
+        'value': 1000000000000000000,
+        'signature': 'Transfer(address,address,uint256)',
+        'sighash': 'test'
+    })
+    
+    app.ctx.delegations = delegations
+    app.ctx.balances = balances
+    
+    req, resp = await test_client.get('/v1/delegate/0xabcdef1234567890123456789012345678901234')
+    assert resp.status == 200
+    
+    data = resp.json
+    assert data['delegate']['addr'] == '0xabcdef1234567890123456789012345678901234'
+    assert len(data['delegate']['from_list']) == 1
+    assert data['delegate']['from_list'][0]['delegator'] == '0x1234567890123456789012345678901234567890'
+    assert data['delegate']['from_list'][0]['balance'] == '1000000000000000000'
+    assert data['delegate']['from_list'][0]['percentage'] == 10000
 
     
