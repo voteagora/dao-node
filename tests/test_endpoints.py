@@ -2,8 +2,8 @@ import pytest
 from unittest.mock import Mock, AsyncMock
 from sanic import Sanic
 from sanic.response import json
-from app.server import proposals_handler, proposal_types_handler
-from app.data_products import Proposals, Votes, ProposalTypes
+from app.server import proposals_handler, proposal_types_handler, delegate_handler
+from app.data_products import Proposals, Votes, ProposalTypes, Delegations, Balances
 from app.clients import CSVClient
 from app.signatures import *
 
@@ -18,6 +18,10 @@ def app():
     @app.route('/v1/proposal_types')
     async def proposal_types(request):
         return await proposal_types_handler(app, request)
+
+    @app.route('/v1/delegate/<addr>')
+    async def delegate(request, addr):
+        return await delegate_handler(app, request, addr)
 
     return app
 
@@ -85,5 +89,36 @@ async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
     proposal_type_id = '1'
     assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
 
+@pytest.mark.asyncio
+async def test_delegate_endpoint(app, test_client, scroll_token_abi):
+    delegations = Delegations()
+    balances = Balances(token_spec={'name': 'erc20', 'version': '?'})
+    
+    csvc = CSVClient('tests/data/6000-delegations')
+    chain_id = 1
+    for row in csvc.read(chain_id, '0x1234567890123456789012345678901234567890', DELEGATE_CHANGED_2, scroll_token_abi):
+        delegations.handle(row)
+    
+    balances.handle({
+        'block_number': 123456,
+        'from': '0x0000000000000000000000000000000000000000',
+        'to': '0x1234567890123456789012345678901234567890',
+        'value': 1000000000000000000,
+        'signature': 'Transfer(address,address,uint256)',
+        'sighash': 'test'
+    })
+    
+    app.ctx.delegations = delegations
+    app.ctx.balances = balances
+    
+    req, resp = await test_client.get('/v1/delegate/0xabcdef1234567890123456789012345678901234')
+    assert resp.status == 200
+    
+    data = resp.json
+    assert data['delegate']['addr'] == '0xabcdef1234567890123456789012345678901234'
+    assert len(data['delegate']['from_list']) == 1
+    assert data['delegate']['from_list'][0]['delegator'] == '0x1234567890123456789012345678901234567890'
+    assert data['delegate']['from_list'][0]['balance'] == '1000000000000000000'
+    assert data['delegate']['from_list'][0]['percentage'] == 10000
 
     
