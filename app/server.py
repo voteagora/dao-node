@@ -757,9 +757,9 @@ async def bootstrap_event_feeds(app, loop):
     if rpcc.is_valid():
        clients.append(rpcc)
 
-    # jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
-    # if jwsc.is_valid():
-    #    clients.append(jwsc)
+    jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
+    if jwsc.is_valid():
+       clients.append(jwsc)
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
