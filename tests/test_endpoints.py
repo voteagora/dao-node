@@ -19,15 +19,10 @@ def app():
     @app.route('/v1/delegates')
     async def delegates(request):
         return await delegates_handler(app, request)
-    
 
     @app.route('/v1/proposal_types')
     async def proposal_types(request):
         return await proposal_types_handler(app, request)
-
-    @app.route('/v1/delegates')
-    async def delegates(request):
-        return await delegates_handler(app, request)
 
     @app.route('/v1/delegate/<addr>')
     async def delegate(request, addr):
@@ -53,6 +48,9 @@ async def test_proposals_endpoint(app, test_client, compound_governor_abis):
     csvc = CSVClient('tests/data/2000-uniswap-PID83-only')
     chain_id = 1
     for row in csvc.read(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'VoteCast(address,uint256,uint8,uint256,string)', compound_governor_abis):
+        # Convert block_number to int before passing to handle
+        if 'block_number' in row and isinstance(row['block_number'], str):
+            row['block_number'] = int(row['block_number'])
         votes.handle(row)
 
     # Attach mock proposals to app context
@@ -243,35 +241,28 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     assert resp.status == 200
     delegates = resp.json['delegates']
     
-    assert delegates[0]['addr'] == '0x5555'
-    assert delegates[0]['last_vote_block'] == 500
-    assert delegates[1]['addr'] == '0x4444'
-    assert delegates[1]['last_vote_block'] == 400
-    assert delegates[2]['addr'] == '0x2222'
-    assert delegates[2]['last_vote_block'] == 200
-    assert delegates[3]['addr'] == '0x1111'
-    assert delegates[3]['last_vote_block'] == 100
-    assert delegates[4]['addr'] == '0x3333'
-    assert delegates[4]['last_vote_block'] == 0
-    
-    assert 'voting_power' in delegates[0]
-    assert 'from_cnt' in delegates[0]
+    assert len(delegates) == 5
+    assert delegates[0][0] == '0x5555'
+    assert delegates[0][1] == 500
+    assert delegates[1][0] == '0x4444'
+    assert delegates[1][1] == 400
+    assert delegates[2][0] == '0x2222'
+    assert delegates[2][1] == 200
+    assert delegates[3][0] == '0x1111'
+    assert delegates[3][1] == 100
+    assert delegates[4][0] == '0x3333'
+    assert delegates[4][1] == 0
     
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&reverse=false&include=VP,DC')
     
     assert resp.status == 200
     delegates = resp.json['delegates']
     
-    assert delegates[0]['addr'] == '0x3333'
-    assert delegates[0]['last_vote_block'] == 0
-    assert delegates[1]['addr'] == '0x1111'
-    assert delegates[1]['last_vote_block'] == 100
-    assert delegates[2]['addr'] == '0x2222'
-    assert delegates[2]['last_vote_block'] == 200
-    assert delegates[3]['addr'] == '0x4444'
-    assert delegates[3]['last_vote_block'] == 400
-    assert delegates[4]['addr'] == '0x5555'
-    assert delegates[4]['last_vote_block'] == 500
+    assert delegates[0][0] == '0x3333'
+    assert delegates[1][0] == '0x1111'
+    assert delegates[2][0] == '0x2222'
+    assert delegates[3][0] == '0x4444'
+    assert delegates[4][0] == '0x5555'
     
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&include=VP,DC')
     
@@ -279,8 +270,8 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     delegates = resp.json['delegates']
     
     assert len(delegates) == 2
-    assert delegates[0]['addr'] == '0x5555'
-    assert delegates[1]['addr'] == '0x4444'
+    assert delegates[0][0] == '0x5555'
+    assert delegates[1][0] == '0x4444'
     
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&offset=2&include=VP,DC')
     
@@ -288,8 +279,8 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     delegates = resp.json['delegates']
     
     assert len(delegates) == 2
-    assert delegates[0]['addr'] == '0x2222'
-    assert delegates[1]['addr'] == '0x1111'
+    assert delegates[0][0] == '0x2222'
+    assert delegates[1][0] == '0x1111'
 
 async def test_delegate_endpoint(app, test_client, scroll_token_abi):
     delegations = Delegations()

@@ -615,7 +615,7 @@ class Votes(DataProduct):
         self.proposal_vote_record[proposal_id].append(event_cp)
         
         voter = event['voter'].lower()
-        block_number = event['block_number']
+        block_number = int(event['block_number']) if isinstance(event['block_number'], str) else event['block_number']
         if block_number > self.latest_vote_block[voter]:
             self.latest_vote_block[voter] = block_number
 
