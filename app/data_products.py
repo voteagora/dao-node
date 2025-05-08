@@ -111,7 +111,7 @@ class ProposalTypes(DataProduct):
         pit_proposal_type = None
 
         for proposal_type in proposal_type_history:
-            if proposal_type['block_number'] > block_number:
+            if int(proposal_type['block_number']) > int(block_number):
                 break
             pit_proposal_type = proposal_type
 
@@ -148,8 +148,8 @@ class Delegations(DataProduct):
     def handle(self, event):
 
         signature = event['signature']
-        bn = event['block_number']
-        tid = event['transaction_index']
+        block_number = event['block_number']
+        transaction_index = event['transaction_index']
 
         if signature == DELEGATE_CHANGED_1:
 
@@ -161,7 +161,7 @@ class Delegations(DataProduct):
             self.delegator[delegator] = to_delegate
 
             self.delegatee_list[to_delegate].append(delegator)
-            self.delegatee_info[to_delegate].append((delegator, bn, tid))
+            self.delegatee_info[to_delegate].append((delegator, block_number, transaction_index))
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
@@ -247,9 +247,9 @@ class Delegations(DataProduct):
             self.voting_power += (new_votes - previous_votes)
             self.delegatee_vp[delegatee] = new_votes
 
-            bn = int(event['block_number'])
+            block_number = int(event['block_number'])
 
-            self.delegatee_vp_history[delegatee].append((bn, new_votes))
+            self.delegatee_vp_history[delegatee].append((block_number, new_votes))
 
 
 LCREATED = len('ProposalCreated')
@@ -597,6 +597,7 @@ class Votes(DataProduct):
 
         del event_cp['sighash']
         del event_cp['signature']
+        event_cp['proposal_id'] = str(event_cp['proposal_id'])
 
         self.voter_history[event['voter']].append(event_cp)
 
