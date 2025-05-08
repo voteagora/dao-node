@@ -99,6 +99,41 @@ def test_Delegations_last_event():
     assert delegations.delegatee_oldest.get('0x1111111111111111111111111111111111111111') is None
     assert delegations.delegatee_latest.get('0x1111111111111111111111111111111111111111') is None
 
+def test_Delegations_partial_delegations():
+    delegations = Delegations()
+
+    event = {
+        'block_number': 123456,
+        'transaction_index': 0,
+        'delegator': '0x1234567890123456789012345678901234567890',
+        'old_delegatees': '[]',
+        'new_delegatees': '[["0xabcdef1234567890123456789012345678901234", 5000], ["0x9876543210987654321098765432109876543210", 7500]]',
+        'signature': DELEGATE_CHANGED_2,
+        'sighash': 'test'
+    }
+    delegations.handle(event)
+
+    assert '0xabcdef1234567890123456789012345678901234' in delegations.delegatee_list
+    assert '0x9876543210987654321098765432109876543210' in delegations.delegatee_list
+    assert delegations.delegation_amounts['0xabcdef1234567890123456789012345678901234']['0x1234567890123456789012345678901234567890'] == 5000
+    assert delegations.delegation_amounts['0x9876543210987654321098765432109876543210']['0x1234567890123456789012345678901234567890'] == 7500
+
+    event = {
+        'block_number': 123457,
+        'transaction_index': 0,
+        'delegator': '0x1234567890123456789012345678901234567890',
+        'old_delegatees': '[["0xabcdef1234567890123456789012345678901234", 5000], ["0x9876543210987654321098765432109876543210", 7500]]',
+        'new_delegatees': '[["0xabcdef1234567890123456789012345678901234", 10000]]',
+        'signature': DELEGATE_CHANGED_2,
+        'sighash': 'test'
+    }
+    delegations.handle(event)
+
+    assert '0x9876543210987654321098765432109876543210' not in delegations.delegatee_list
+    assert delegations.delegation_amounts['0xabcdef1234567890123456789012345678901234']['0x1234567890123456789012345678901234567890'] == 10000
+    assert '0x1234567890123456789012345678901234567890' not in delegations.delegation_amounts['0x9876543210987654321098765432109876543210']
+
+
 ####################################
 #
 #  Test basic business logic of the data products, in the context of a specific Client and production like data.

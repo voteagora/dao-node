@@ -1,6 +1,7 @@
 from copy import copy
 from collections import defaultdict
 from abc import ABC, abstractmethod
+import json
 
 from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
@@ -110,7 +111,7 @@ class ProposalTypes(DataProduct):
         pit_proposal_type = None
 
         for proposal_type in proposal_type_history:
-            if proposal_type['block_number'] > block_number:
+            if int(proposal_type['block_number']) > int(block_number):
                 break
             pit_proposal_type = proposal_type
 
@@ -127,6 +128,7 @@ class Delegations(DataProduct):
         self.delegatee_info = defaultdict(list) # list of (delegator, block_number, transaction_index) tuples
         
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
+        self.delegation_amounts = defaultdict(dict)
 
         self.voting_power = 0
 
@@ -136,10 +138,21 @@ class Delegations(DataProduct):
         self.delegatee_oldest = {}
         self.delegatee_latest = {}
 
+    def _parse_delegate_array(self, array_str):
+        array_str = array_str.strip('"')
+        if not array_str or array_str == '[]':
+            return []
+            
+        try:
+            delegates = json.loads(array_str)
+            return [[addr.lower(), int(amount)] for addr, amount in delegates]
+        except (json.JSONDecodeError, ValueError):
+            return []
+
     def handle(self, event):
         signature = event['signature']
-        bn = event['block_number']
-        tid = event['transaction_index']
+        block_number = event['block_number']
+        transaction_index = event['transaction_index']
 
         if signature == DELEGATE_CHANGED_1:
 
@@ -151,10 +164,11 @@ class Delegations(DataProduct):
             self.delegatee_list[to_delegate].append(delegator)
 
             if not to_delegate in self.delegatee_oldest:
-                self.delegatee_oldest[to_delegate] = bn
+                self.delegatee_oldest[to_delegate] = block_number
             
-            self.delegatee_latest[to_delegate] = bn
-            self.delegatee_info[to_delegate].append((delegator, bn, tid))
+            self.delegatee_latest[to_delegate] = block_number
+
+            self.delegatee_info[to_delegate].append((delegator, block_number, transaction_index))
 
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
                 try:
@@ -174,6 +188,57 @@ class Delegations(DataProduct):
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
+        elif signature == DELEGATE_CHANGED_2:
+            delegator = event['delegator'].lower()
+            
+            # Parse old and new delegations
+            old_delegatees = self._parse_delegate_array(event.get('old_delegatees', '[]'))
+            new_delegatees = self._parse_delegate_array(event.get('new_delegatees', '[]'))
+            
+            # Handle old delegations removal
+            for old_delegation in old_delegatees:
+                old_delegate = old_delegation[0].lower()
+                amount = old_delegation[1]
+
+                if old_delegate in self.delegatee_list:
+                    idx_to_remove = -1
+                    for i, d in enumerate(self.delegatee_list[old_delegate]):
+                        if d == delegator:
+                            idx_to_remove = i
+                            break
+                        
+                    if idx_to_remove != -1:
+                        del self.delegatee_list[old_delegate][idx_to_remove]
+                        del self.delegatee_info[old_delegate][idx_to_remove] 
+                        self.delegatee_cnt[old_delegate] = len(self.delegatee_list[old_delegate])
+                        if not self.delegatee_list[old_delegate]:
+                            del self.delegatee_list[old_delegate]
+                            del self.delegatee_info[old_delegate]
+                    self.delegation_amounts[old_delegate].pop(delegator, None)
+                    
+                    # Update voting power
+                    self.delegatee_vp[old_delegate] -= amount
+                    self.delegatee_vp_history[old_delegate].append((block_number, self.delegatee_vp[old_delegate]))
+
+            # Handle new delegations addition
+            for new_delegation in new_delegatees:
+                new_delegate = new_delegation[0].lower()
+                amount = new_delegation[1]
+                
+                if new_delegate not in self.delegatee_list:
+                    self.delegatee_list[new_delegate] = []
+                    self.delegatee_info[new_delegate] = []
+
+                if delegator not in self.delegatee_list[new_delegate]:
+                    self.delegatee_list[new_delegate].append(delegator)
+                    self.delegatee_info[new_delegate].append((delegator, block_number, transaction_index))
+                    self.delegatee_cnt[new_delegate] = len(self.delegatee_list[new_delegate])
+                self.delegation_amounts[new_delegate][delegator] = amount
+                
+                # Update voting power
+                self.delegatee_vp[new_delegate] += amount
+                self.delegatee_vp_history[new_delegate].append((block_number, self.delegatee_vp[new_delegate]))
+
         elif signature == DELEGATE_VOTES_CHANGE:
 
             delegatee = event['delegate'].lower()
@@ -189,9 +254,9 @@ class Delegations(DataProduct):
             self.voting_power += (new_votes - previous_votes)
             self.delegatee_vp[delegatee] = new_votes
 
-            bn = int(event['block_number'])
+            block_number = int(event['block_number'])
 
-            self.delegatee_vp_history[delegatee].append((bn, new_votes))
+            self.delegatee_vp_history[delegatee].append((block_number, new_votes))
 
 
 LCREATED = len('ProposalCreated')

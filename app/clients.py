@@ -105,7 +105,6 @@ class CSVClient:
             
             for row in reader:
 
-                row['block_number'] = int(row['block_number'])
                 row['log_index'] = int(row['log_index'])
                 row['transaction_index'] = int(row['transaction_index'])
 
@@ -277,7 +276,7 @@ class JsonRpcHistHttpClient:
 
             out = {}
             
-            out['block_number'] = log['blockNumber']
+            out['block_number'] = str(log['blockNumber'])
             out['transaction_index'] = log['transactionIndex']
             out['log_index'] = log['logIndex']
 
@@ -375,7 +374,7 @@ class JsonRpcRTWsClientV1:
                 decoded_response = processor(response['result'])
 
                 out = {}
-                out['block_number'] = decoded_response['blockNumber']
+                out['block_number'] = str(decoded_response['blockNumber'])
                 out['log_index'] = decoded_response['logIndex']
                 out['transaction_index'] = decoded_response['transactionIndex']
                 out.update(**decoded_response['args'])
@@ -423,7 +422,7 @@ class JsonRpcRTWsClient(JsonRpcRTWsClientV1):
             decoded[arg["name"]] = (indexed_values + non_indexed_values)[i]
 
         out = {
-            "block_number": int(ws_payload["blockNumber"], 16),
+            "block_number": str(int(ws_payload["blockNumber"], 16)),
             "log_index": int(ws_payload["logIndex"], 16),
             "transaction_index": int(ws_payload["transactionIndex"], 16),
             "signature": signature,
