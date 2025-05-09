@@ -167,6 +167,19 @@ class Delegations(DataProduct):
             self.delegator[delegator] = to_delegate
             self.delegatee_list[to_delegate].append(delegator)
 
+            if not self.delegatee_oldest_event.get(to_delegate):
+                self.delegatee_oldest_event[to_delegate] = {
+                    'block_number': block_number,
+                    'delegator': delegator,
+                    'from_delegate': from_delegate,
+                }
+            
+            self.delegatee_latest_event[to_delegate] = {
+                'block_number': block_number,
+                'delegator': delegator,
+                'from_delegate': from_delegate,
+            }
+
             if not to_delegate in self.delegatee_oldest:
                 self.delegatee_oldest[to_delegate] = block_number
             

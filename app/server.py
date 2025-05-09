@@ -588,9 +588,9 @@ async def delegates_handler(app, request):
     elif sort_by_dc:
         out = list(app.ctx.delegations.delegatee_cnt.items())
     elif sort_by_lvb:
-        # Create a list of (address, last_vote_block) tuples using Votes data product
-        out = [(addr, app.ctx.votes.latest_vote_block.get(addr, 0)) 
-               for addr in set(app.ctx.delegations.delegatee_vp.keys())]
+        out = [(addr, app.ctx.votes.latest_vote_block.get(addr, 0))
+               for addr in app.ctx.delegations.delegatee_vp.keys()]
+        out.sort(key=lambda x: x[1], reverse=reverse)
     else:
         # Default to VP if sort_by is not recognized
         out = list(app.ctx.delegations.delegatee_vp.items())
@@ -598,10 +598,20 @@ async def delegates_handler(app, request):
     # TODO This should not be necessary. The data model should prune zeros.
     logr.info(f"Number of records: {len(out)}")
     if sort_by_lvb:
+        logr.info(f"Filtering by LVB, sample items: {out[:3]}")
         out = [obj for obj in out if app.ctx.delegations.delegatee_vp.get(obj[0], 0) > 0]
+        logr.info(f"After filtering by delegatee_vp > 0: {len(out)}")
+    elif sort_by_mrd or sort_by_old:
+        logr.info(f"Filtering by value > 0 (string conversion), sample items: {out[:3]}")
+        # Convert strings to integers for filtering
+        out = [obj for obj in out if int(obj[1]) > 0]
+        logr.info(f"After filtering: {len(out)}")
+        
+        out = [(obj[0], int(obj[1])) for obj in out]
     else:
+        logr.info(f"Filtering by value > 0, sample items: {out[:3]}")
         out = [obj for obj in out if obj[1] > 0]
-    logr.info(f"Number of records (excluding zeros): {len(out)}")
+        logr.info(f"After filtering: {len(out)}")
 
     out.sort(key=lambda x: x[1], reverse=reverse)    
 

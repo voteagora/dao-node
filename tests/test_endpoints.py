@@ -225,12 +225,12 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
                 '0x5555': [{'block_number': 500}],
                 # 0x3333 has no voting history
             }
-        
-        def get_last_vote_block(self, addr):
-            votes = self.voter_history.get(addr, [])
-            if not votes:
-                return 0
-            return max(vote['block_number'] for vote in votes)
+            self.latest_vote_block = {
+                '0x1111': 100,
+                '0x2222': 200,
+                '0x4444': 400,
+                '0x5555': 500,
+            }
     
     app.ctx.delegations = MockDelegations()
     app.ctx.proposals = MockProposals()

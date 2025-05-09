@@ -86,7 +86,6 @@ def test_Delegations_with_vote_events():
     for event in vote_events:
         votes.handle(event)
     
-    # Test direct access to latest_vote_block instead of using get_last_vote_block
     assert votes.latest_vote_block['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == 100500000
     assert votes.latest_vote_block['0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5'] == 100300000
     assert votes.latest_vote_block['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'] == 0
