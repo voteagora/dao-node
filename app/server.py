@@ -598,20 +598,14 @@ async def delegates_handler(app, request):
     # TODO This should not be necessary. The data model should prune zeros.
     logr.info(f"Number of records: {len(out)}")
     if sort_by_lvb:
-        logr.info(f"Filtering by LVB, sample items: {out[:3]}")
         out = [obj for obj in out if app.ctx.delegations.delegatee_vp.get(obj[0], 0) > 0]
-        logr.info(f"After filtering by delegatee_vp > 0: {len(out)}")
     elif sort_by_mrd or sort_by_old:
-        logr.info(f"Filtering by value > 0 (string conversion), sample items: {out[:3]}")
         # Convert strings to integers for filtering
         out = [obj for obj in out if int(obj[1]) > 0]
-        logr.info(f"After filtering: {len(out)}")
         
         out = [(obj[0], int(obj[1])) for obj in out]
     else:
-        logr.info(f"Filtering by value > 0, sample items: {out[:3]}")
         out = [obj for obj in out if obj[1] > 0]
-        logr.info(f"After filtering: {len(out)}")
 
     out.sort(key=lambda x: x[1], reverse=reverse)    
 
@@ -991,9 +985,9 @@ async def bootstrap_event_feeds(app, loop):
 
     ERC20 = public_config['token_spec']['name'] == 'erc20'
 
-    # if ERC20:
-    #     balances = Balances(token_spec=public_config['token_spec'])
-    #     app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
+    if ERC20:
+        balances = Balances(token_spec=public_config['token_spec'])
+        app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     delegations = Delegations()
     app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)

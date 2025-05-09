@@ -48,7 +48,6 @@ async def test_proposals_endpoint(app, test_client, compound_governor_abis):
     csvc = CSVClient('tests/data/2000-uniswap-PID83-only')
     chain_id = 1
     for row in csvc.read(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'VoteCast(address,uint256,uint8,uint256,string)', compound_governor_abis):
-        # Convert block_number to int before passing to handle
         if 'block_number' in row and isinstance(row['block_number'], str):
             row['block_number'] = int(row['block_number'])
         votes.handle(row)
