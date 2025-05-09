@@ -133,6 +133,10 @@ class Delegations(DataProduct):
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
+
+        # Track the oldest and latest delegation events for each delegate
+        self.delegatee_oldest_event = defaultdict(dict)
+        self.delegatee_latest_event = defaultdict(dict)
         
         # Track the oldest and latest delegation events for each delegate
         self.delegatee_oldest = {}
