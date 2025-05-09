@@ -133,6 +133,10 @@ class Delegations(DataProduct):
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
+
+        # Track the oldest and latest delegation events for each delegate
+        self.delegatee_oldest_event = defaultdict(dict)
+        self.delegatee_latest_event = defaultdict(dict)
         
         # Track the oldest and latest delegation events for each delegate
         self.delegatee_oldest = {}
@@ -162,6 +166,19 @@ class Delegations(DataProduct):
 
             self.delegator[delegator] = to_delegate
             self.delegatee_list[to_delegate].append(delegator)
+
+            if not self.delegatee_oldest_event.get(to_delegate):
+                self.delegatee_oldest_event[to_delegate] = {
+                    'block_number': block_number,
+                    'delegator': delegator,
+                    'from_delegate': from_delegate,
+                }
+            
+            self.delegatee_latest_event[to_delegate] = {
+                'block_number': block_number,
+                'delegator': delegator,
+                'from_delegate': from_delegate,
+            }
 
             if not to_delegate in self.delegatee_oldest:
                 self.delegatee_oldest[to_delegate] = block_number
@@ -257,7 +274,6 @@ class Delegations(DataProduct):
             block_number = int(event['block_number'])
 
             self.delegatee_vp_history[delegatee].append((block_number, new_votes))
-
 
 LCREATED = len('ProposalCreated')
 LQUEUED = len('ProposalQueued')
@@ -583,6 +599,8 @@ class Votes(DataProduct):
 
         self.voter_history = defaultdict(list)
         self.proposal_vote_record = defaultdict(list)
+        
+        self.latest_vote_block = defaultdict(int)
 
         if governor_spec['name'] == 'compound':
             self.proposal_id_field_name = 'id'
@@ -612,6 +630,11 @@ class Votes(DataProduct):
         del event_cp['proposal_id']
 
         self.proposal_vote_record[proposal_id].append(event_cp)
+        
+        voter = event['voter'].lower()
+        block_number = int(event['block_number']) if isinstance(event['block_number'], str) else event['block_number']
+        if block_number > self.latest_vote_block[voter]:
+            self.latest_vote_block[voter] = block_number
 
 class ParticipationModel:
     """

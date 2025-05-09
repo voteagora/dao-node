@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from sanic import Sanic
 from sanic.response import json
-from app.server import proposals_handler, proposal_types_handler, delegates_handler, delegate_handler
+from app.server import proposals_handler, proposal_types_handler, delegates_handler, delegate_handler, ParticipationModel
 from app.data_products import Proposals, Votes, Delegations, ProposalTypes, Balances
 from app.clients import CSVClient
 from app.signatures import *
@@ -19,7 +19,6 @@ def app():
     @app.route('/v1/delegates')
     async def delegates(request):
         return await delegates_handler(app, request)
-    
 
     @app.route('/v1/proposal_types')
     async def proposal_types(request):
@@ -49,6 +48,8 @@ async def test_proposals_endpoint(app, test_client, compound_governor_abis):
     csvc = CSVClient('tests/data/2000-uniswap-PID83-only')
     chain_id = 1
     for row in csvc.read(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'VoteCast(address,uint256,uint8,uint256,string)', compound_governor_abis):
+        if 'block_number' in row and isinstance(row['block_number'], str):
+            row['block_number'] = int(row['block_number'])
         votes.handle(row)
 
     # Attach mock proposals to app context
@@ -190,6 +191,96 @@ async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
     assert expected_array_element == resp.json['proposal_types'][proposal_type_id]
 
 @pytest.mark.asyncio
+async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
+    class MockDelegations:
+        def __init__(self):
+            # Sample delegate data
+            self.delegatee_vp = {
+                '0x1111': 1000,
+                '0x2222': 2000,
+                '0x3333': 3000,
+                '0x4444': 4000,
+                '0x5555': 5000,
+            }
+            
+            self.delegatee_cnt = {
+                '0x1111': 5,
+                '0x2222': 10,
+                '0x3333': 15,
+                '0x4444': 20,
+                '0x5555': 25,
+            }
+    
+    class MockProposals:
+        def completed(self, head=10):
+            return []
+    
+    class MockVotes:
+        def __init__(self):
+            self.voter_history = {
+                '0x1111': [{'block_number': 100}],
+                '0x2222': [{'block_number': 200}],
+                '0x4444': [{'block_number': 400}],
+                '0x5555': [{'block_number': 500}],
+                # 0x3333 has no voting history
+            }
+            self.latest_vote_block = {
+                '0x1111': 100,
+                '0x2222': 200,
+                '0x4444': 400,
+                '0x5555': 500,
+            }
+    
+    app.ctx.delegations = MockDelegations()
+    app.ctx.proposals = MockProposals()
+    app.ctx.votes = MockVotes()
+    
+    req, resp = await test_client.get('/v1/delegates?sort_by=LVB&include=VP,DC')
+    
+    assert resp.status == 200
+    delegates = resp.json['delegates']
+    
+    assert len(delegates) == 5
+    assert delegates[0][0] == '0x5555'
+    assert delegates[0][1] == 500
+    assert delegates[1][0] == '0x4444'
+    assert delegates[1][1] == 400
+    assert delegates[2][0] == '0x2222'
+    assert delegates[2][1] == 200
+    assert delegates[3][0] == '0x1111'
+    assert delegates[3][1] == 100
+    assert delegates[4][0] == '0x3333'
+    assert delegates[4][1] == 0
+    
+    req, resp = await test_client.get('/v1/delegates?sort_by=LVB&reverse=false&include=VP,DC')
+    
+    assert resp.status == 200
+    delegates = resp.json['delegates']
+    
+    assert delegates[0][0] == '0x3333'
+    assert delegates[1][0] == '0x1111'
+    assert delegates[2][0] == '0x2222'
+    assert delegates[3][0] == '0x4444'
+    assert delegates[4][0] == '0x5555'
+    
+    req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&include=VP,DC')
+    
+    assert resp.status == 200
+    delegates = resp.json['delegates']
+    
+    assert len(delegates) == 2
+    assert delegates[0][0] == '0x5555'
+    assert delegates[1][0] == '0x4444'
+    
+    req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&offset=2&include=VP,DC')
+    
+    assert resp.status == 200
+    delegates = resp.json['delegates']
+    
+    assert len(delegates) == 2
+    assert delegates[0][0] == '0x2222'
+    assert delegates[1][0] == '0x1111'
+
 async def test_delegate_endpoint(app, test_client, scroll_token_abi):
     delegations = Delegations()
     balances = Balances(token_spec={'name': 'erc20', 'version': '?'})
