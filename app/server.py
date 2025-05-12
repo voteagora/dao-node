@@ -355,30 +355,31 @@ async def proposal_ui(request):
 #
 ######################################################################
 
-@app.route('/v1/balance/<addr>')
-@openapi.tag("Token State")
-@openapi.summary("Token balance for a given address")
-@openapi.description("""
-## Description
-The balance of the voting token used for governance for a specific EOA as of the last block heard.
+if INCLUDE_BALANCES:
+    @app.route('/v1/balance/<addr>')
+    @openapi.tag("Token State")
+    @openapi.summary("Token balance for a given address")
+    @openapi.description("""
+    ## Description
+    The balance of the voting token used for governance for a specific EOA as of the last block heard.
 
-## Methodology
-Balances are updated on every transfer event.
+    ## Methodology
+    Balances are updated on every transfer event.
 
-## Performance
-- 🟢 
-- O(1)
-- E(t) <= 100 μs
+    ## Performance
+    - 🟢 
+    - O(1)
+    - E(t) <= 100 μs
 
-## Planned Enhancements
+    ## Planned Enhancements
 
-None
+    None
 
-""")
-@measure
-async def balances(request, addr):
-	return json({'balance' : str(app.ctx.balances.balance_of(addr)),
-                 'address' : addr})
+    """)
+    @measure
+    async def balances(request, addr):
+        return json({'balance' : str(app.ctx.balances.balance_of(addr)),
+                    'address' : addr})
 
 #############################################################################################################################################
 
