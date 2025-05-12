@@ -124,6 +124,11 @@ except:
     public_deployment = {}
     deployment = {'chain_id' : 1, 'token' : {'address' : '0x0000000000000000000000000000000000000000'}}
 
+
+ERC20 = public_config['token_spec']['name'] == 'erc20'
+NORMAL_STYLE = public_config['token_spec'].get('style', 'normal') == 'normal'
+INCLUDE_BALANCES = ERC20 and NORMAL_STYLE
+
 ########################################################################
 
 WorkerManager.THRESHOLD = 600 * 45 # 45 minutes
@@ -633,14 +638,22 @@ async def delegates_handler(app, request):
 
 async def delegate_handler(app, request, addr):
     from_list_with_info = []
+
     for pos, delegator in enumerate(app.ctx.delegations.delegatee_list[addr]):
         _, block_number, transaction_index = app.ctx.delegations.delegatee_info[addr][pos]
-        balance = str(app.ctx.balances.balance_of(delegator) if hasattr(app.ctx, 'balances') else 0)
+
+
         if addr in app.ctx.delegations.delegation_amounts and delegator in app.ctx.delegations.delegation_amounts[addr]:
             amount = app.ctx.delegations.delegation_amounts[addr][delegator]
         else:
             amount = 10000
+
         row = {'delegator' : delegator, 'balance' : balance, 'percentage' : amount, 'bn' : block_number, 'tid' : transaction_index}
+
+        if INCLUDE_BALANCES:
+            balance = str(app.ctx.balances.balance_of(delegator))
+            row['balance'] = balance
+
         from_list_with_info.append(row)
 
     return json({'delegate' : 
@@ -801,10 +814,7 @@ async def bootstrap_event_feeds(app, loop):
     # 🎪 🧠 Instantiate "Data Products".  These are the singletons that store data 
     #      in RAM, that need to be maintained for every event.
 
-    ERC20 = public_config['token_spec']['name'] == 'erc20'
-    STYLE = public_config['token_spec'].get('style', 'normal') == 'normal'
-
-    if ERC20 and STYLE:
+    if INCLUDE_BALANCES:
         balances = Balances(token_spec=public_config['token_spec'])
         app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
