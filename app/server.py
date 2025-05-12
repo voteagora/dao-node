@@ -635,7 +635,7 @@ async def delegate_handler(app, request, addr):
     from_list_with_info = []
     for pos, delegator in enumerate(app.ctx.delegations.delegatee_list[addr]):
         _, block_number, transaction_index = app.ctx.delegations.delegatee_info[addr][pos]
-        balance = str(app.ctx.balances.balance_of(delegator))
+        balance = str(app.ctx.balances.balance_of(delegator) if hasattr(app.ctx, 'balances') else 0)
         if addr in app.ctx.delegations.delegation_amounts and delegator in app.ctx.delegations.delegation_amounts[addr]:
             amount = app.ctx.delegations.delegation_amounts[addr][delegator]
         else:
