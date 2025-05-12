@@ -802,8 +802,9 @@ async def bootstrap_event_feeds(app, loop):
     #      in RAM, that need to be maintained for every event.
 
     ERC20 = public_config['token_spec']['name'] == 'erc20'
+    STYLE = public_config['token_spec'].get('style', 'normal') == 'normal'
 
-    if ERC20:
+    if ERC20 and STYLE:
         balances = Balances(token_spec=public_config['token_spec'])
         app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
