@@ -1346,6 +1346,8 @@ async def bootstrap_data_feeds(app, loop):
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
     elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 0.1:
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
+    elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 2.0:
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
     elif gov_spec_name == 'agora':
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_4]
     elif gov_spec_name == 'none':
