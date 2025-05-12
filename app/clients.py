@@ -301,7 +301,7 @@ class JsonRpcHistHttpClient:
            
             yield out
             
-class JsonRpcRTWsClientV1:
+class JsonRpcRTWsClient:
     timeliness = 'realtime'
 
     def __init__(self, url):
@@ -344,45 +344,6 @@ class JsonRpcRTWsClientV1:
             finally:
                 logr.info("[WS TASK] Exiting WebSocket listener task.")
                 
-    async def attempt_read(self, chain_id, address, signature, abis):
-
-        event = abis.get_by_signature(signature)
-        
-        abi = event.literal
-
-        async with AsyncWeb3(WebSocketProvider(self.url)) as w3:
-
-            if DAO_NODE_USE_POA_MIDDLEWARE:
-                w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
-            
-            EVENT_NAME = abi['name']            
-            contract_events = w3.eth.contract(abi=[abi]).events
-            processor = getattr(contract_events, EVENT_NAME)().process_log
-
-            event_filter = {
-                "address": address,
-                "topics": ["0x" + event.topic]
-            }
-
-            subscription_id = await w3.eth.subscribe("logs", event_filter)
-            logr.info(f"Setup subscription ID: {subscription_id} for {event_filter}")
-
-            async for response in w3.socket.process_subscriptions():
-
-                decoded_response = processor(response['result'])
-
-                out = {}
-                out['block_number'] = str(decoded_response['blockNumber'])
-                out['log_index'] = decoded_response['logIndex']
-                out['transaction_index'] = decoded_response['transactionIndex']
-                out.update(**decoded_response['args'])
-
-                out['signature'] = signature
-                out['sighash'] = event.topic
-
-
-class JsonRpcRTWsClient(JsonRpcRTWsClientV1):
-
     @staticmethod
     def decode_payload(ws_payload, inputs, signature, topic):
 
