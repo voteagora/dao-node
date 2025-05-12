@@ -649,7 +649,7 @@ async def delegate_handler(app, request, addr):
         else:
             amount = 10000
 
-        row = {'delegator' : delegator, 'balance' : balance, 'percentage' : amount, 'bn' : block_number, 'tid' : transaction_index}
+        row = {'delegator' : delegator, 'percentage' : amount, 'bn' : block_number, 'tid' : transaction_index}
 
         if INCLUDE_BALANCES:
             balance = str(app.ctx.balances.balance_of(delegator))
