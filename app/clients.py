@@ -399,7 +399,7 @@ class JsonRpcRTWsClient:
                         if queue and event_info:
                             # Process event outside the lock
                             event = self.decode_payload(result, event_info["inputs"], event_info["signature"], event_info["topic"])
-                            logr.info(f"Decoded event: {event}")
+                            # logr.info(f"Decoded event: {event}")
                             await queue.put(event)
                         else:
                             logr.warning(f"Received message for unknown subscription {sub_id}")
