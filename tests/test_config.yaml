@@ -1,0 +1,37 @@
+schema: test
+dao_slug: TEST
+friendly_short_name: TEST
+wrapped_tenant_prefix: test
+index_tenant_prefix: test
+
+token_spec:
+  name: erc20
+  version: "?"
+
+governor_spec:
+  name: agora
+  version: 1.1
+
+features:
+  staking: False
+
+deployments:
+  test:
+    chain_id: 1
+    token:
+      address: "0x0000000000000000000000000000000000000000"
+      decimals: 18
+    gov:
+      address: "0x0000000000000000000000000000000000000000"
+    ptc:
+      address: "0x0000000000000000000000000000000000000000"
+
+  main:
+    chain_id: 1
+    token:
+      address: "0x0000000000000000000000000000000000000000"
+      decimals: 18
+    gov:
+      address: "0x0000000000000000000000000000000000000000"
+    ptc:
+      address: "0x0000000000000000000000000000000000000000"

@@ -1,4 +1,7 @@
 import pytest
+import os
+os.environ['AGORA_CONFIG_FILE'] = 'tests/test_config.yaml'
+
 from unittest.mock import Mock, AsyncMock
 from sanic import Sanic
 from sanic.response import json
