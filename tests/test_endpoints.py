@@ -1,5 +1,8 @@
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+import os
+os.environ['AGORA_CONFIG_FILE'] = 'tests/test_config.yaml'
+
+from unittest.mock import Mock
 from sanic import Sanic
 from sanic.response import json
 from app.server import proposals_handler, proposal_types_handler, delegates_handler, delegate_handler, ParticipationModel

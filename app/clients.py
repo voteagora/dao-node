@@ -35,7 +35,7 @@ def resolve_block_count_span(chain_id=None):
         default_block_span = target * 6
     elif chain_id in (59144, 59141): # Linea, Linea Sepolia
         default_block_span = int(target * 4.76)
-    elif chain_id in (42161,): # Arbitrium One (ie XAI)
+    elif chain_id in (42161, 421614): # Arbitrum One (ie XAI), Arbitrum Sepolia
         default_block_span = target * 48
     else:
         default_block_span = target
@@ -99,45 +99,43 @@ class CSVClient:
             try:
                 fs = open(fname)
                 reader = csv.DictReader(fs)
-            except FileNotFoundError:
-                warn(f"Warning: {fname} not found, skipping.")
-                reader = []
             
-            for row in reader:
+                for row in reader:
 
-                row['log_index'] = int(row['log_index'])
-                row['transaction_index'] = int(row['transaction_index'])
+                    row['log_index'] = int(row['log_index'])
+                    row['transaction_index'] = int(row['transaction_index'])
 
-                # TODO - kill off either signature or sighash, we don't need 
-                #        to maintain both.
+                    # TODO - kill off either signature or sighash, we don't need 
+                    #        to maintain both.
 
-                # Approach A - Support sighash only.  
-                #              Code becomes harder to read and boot time
-                #              is slower.
-                # Approach B - Support signature only.
-                #              Need to maintain a reverse lookup for JSON-RPC
-                #              Boot would be faster, code would be prettier.
-                #              But we would have one structurally complext part 
-                #              of the code (to build and use the reverse lookup).
+                    # Approach A - Support sighash only.  
+                    #              Code becomes harder to read and boot time
+                    #              is slower.
+                    # Approach B - Support signature only.
+                    #              Need to maintain a reverse lookup for JSON-RPC
+                    #              Boot would be faster, code would be prettier.
+                    #              But we would have one structurally complext part 
+                    #              of the code (to build and use the reverse lookup).
 
-                row['signature'] = signature
-                row['sighash'] = abi_frag.topic
+                    row['signature'] = signature
+                    row['sighash'] = abi_frag.topic
 
-                for int_field in int_fields:
-                    try:
-                        row[int_field] = int(row[int_field])
-                    except ValueError:
-                        print(f"E182250323 - Problem with casting {int_field} to int, from file {fname}.")
-                    except KeyError:
-                        print(f"E184250323 - Problem with getting {int_field} from file {fname}.")
+                    for int_field in int_fields:
+                        try:
+                            row[int_field] = int(row[int_field])
+                        except ValueError:
+                            print(f"E182250323 - Problem with casting {int_field} to int, from file {fname}.")
+                        except KeyError:
+                            print(f"E184250323 - Problem with getting {int_field} from file {fname}.")
 
-                yield row
+                    yield row
 
-
-                cnt += 1
-                
-                if DEBUG and (cnt == 1000000):
-                    break
+                    cnt += 1
+                    
+                    if DEBUG and (cnt == 1000000):
+                        break
+            except FileNotFoundError:
+                raise FileNotFoundError(f"CSV file not found: {fname}")
 
 
 class JsonRpcHistHttpClient:
