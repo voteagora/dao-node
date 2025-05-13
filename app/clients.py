@@ -413,13 +413,35 @@ class JsonRpcRTWsClient:
                                 await queue.put(None)
                             self.subscriptions.clear()
                         return
+                    
                     logr.error(f"WebSocket connection closed ({type(e).__name__}), code={getattr(e, 'code', 'unknown')}, reason={getattr(e, 'reason', 'unknown')}")
-                    # Connection error - notify all queues and clear subscriptions
+                    # Store existing subscriptions before clearing
+                    old_subscriptions = None
                     async with self.subscription_lock:
-                        for sub_id, (queue, _) in self.subscriptions.items():
-                            await queue.put(None)
+                        old_subscriptions = self.subscriptions.copy()
                         self.subscriptions.clear()
-                    return
+                    
+                    # Try to reconnect
+                    for attempt in range(3):
+                        try:
+                            await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
+                            await self.ensure_connection()
+                            # If connection successful, try to resubscribe
+                            if old_subscriptions:
+                                async with self.subscription_lock:
+                                    self.subscriptions = old_subscriptions.copy()
+                                await self._resubscribe_all()
+                            break
+                        except Exception as reconnect_err:
+                            logr.error(f"Reconnection attempt {attempt + 1} failed: {reconnect_err}")
+                    else:  # All reconnection attempts failed
+                        logr.error("Failed to reconnect after 3 attempts")
+                        # Notify all queues of failure
+                        if old_subscriptions:
+                            for sub_id, (queue, _) in old_subscriptions.items():
+                                await queue.put(None)
+                        return
+                    
                 except Exception as e:
                     logr.exception(f"Error in message handler: {e}")
                     await asyncio.sleep(1)
