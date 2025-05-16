@@ -9,8 +9,9 @@ import websocket, websockets
 import asyncio
 from eth_abi.abi import decode as decode_abi
 
-from web3 import Web3, AsyncWeb3, WebSocketProvider
-from web3.middleware import ExtraDataToPOAMiddleware
+from web3 import Web3, AsyncWeb3
+from web3.providers.websocket import WebsocketProvider
+from web3.middleware.geth_poa import geth_poa_middleware
 from sanic.log import logger as logr, error_logger as errlogr
 
 from .utils import camel_to_snake
@@ -153,7 +154,7 @@ class JsonRpcHistHttpClient:
         w3 = Web3(Web3.HTTPProvider(self.url))
 
         if DAO_NODE_USE_POA_MIDDLEWARE:
-            w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+            w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         
         return w3
 
@@ -361,10 +362,10 @@ class JsonRpcRTWsClientV1:
         
         abi = event.literal
 
-        async with AsyncWeb3(WebSocketProvider(self.url)) as w3:
+        async with AsyncWeb3(WebsocketProvider(self.url)) as w3:
 
             if DAO_NODE_USE_POA_MIDDLEWARE:
-                w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+                w3.middleware_onion.inject(geth_poa_middleware, layer=0)
             
             EVENT_NAME = abi['name']            
             contract_events = w3.eth.contract(abi=[abi]).events

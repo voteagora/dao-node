@@ -571,6 +571,7 @@ async def delegates_handler(app, request):
     sort_by_old = sort_by == 'OLD' # oldest delegation
     sort_by_dc = sort_by == 'DC' # delegator count
     sort_by_lvb = sort_by == 'LVB' # latest voting block
+    sort_by_vpc = sort_by == 'VPC'
     offset = int(request.args.get("offset", DEFAULT_OFFSET))
     page_size = int(request.args.get("page_size", DEFAULT_PAGE_SIZE))
     reverse = request.args.get("reverse", "true").lower() == "true"
@@ -590,6 +591,10 @@ async def delegates_handler(app, request):
     elif sort_by_lvb:
         # Create a list of (address, last_vote_block) tuples using Votes data product
         out = [(addr, app.ctx.votes.get_last_vote_block(addr)) 
+               for addr in set(app.ctx.delegations.delegatee_vp.keys())]
+    elif sort_by_vpc:
+        # Create a list of (address, voting_power_change) tuples
+        out = [(addr, app.ctx.delegations.get_vp_change_7d(addr)) 
                for addr in set(app.ctx.delegations.delegatee_vp.keys())]
     else:
         # Default to VP if sort_by is not recognized
@@ -822,6 +827,71 @@ async def delegates_handler(app, request):
         elif add_most_recent_delegation:
             out = [{'addr': obj[0], 'last_vote_block': obj[1],
                    'most_recent_block': app.ctx.delegations.delegatee_latest_event[obj[0]]['block_number'] if obj[0] in app.ctx.delegations.delegatee_latest_event else None} for obj in out]
+    elif sort_by_vpc:
+        if add_voting_power and add_delegator_count and add_participation_rate and add_last_vote_block:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
+                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
+                   'participation': pm.calculate(obj[0]),
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
+        elif add_voting_power and add_delegator_count and add_participation_rate:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
+                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
+                   'participation': pm.calculate(obj[0])} for obj in out]
+        elif add_voting_power and add_delegator_count and add_last_vote_block:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
+                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]],
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
+        elif add_voting_power and add_participation_rate and add_last_vote_block:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
+                   'participation': pm.calculate(obj[0]),
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
+        elif add_delegator_count and add_participation_rate and add_last_vote_block:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
+                   'participation': pm.calculate(obj[0]),
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
+        elif add_voting_power and add_delegator_count:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
+                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
+        elif add_voting_power and add_participation_rate:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
+                   'participation': pm.calculate(obj[0])} for obj in out]
+        elif add_voting_power and add_last_vote_block:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]),
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
+        elif add_delegator_count and add_participation_rate:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
+                   'participation': pm.calculate(obj[0])} for obj in out]
+        elif add_delegator_count and add_last_vote_block:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]],
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
+        elif add_participation_rate and add_last_vote_block:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'participation': pm.calculate(obj[0]),
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
+        elif add_voting_power:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]])} for obj in out]
+        elif add_delegator_count:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
+        elif add_participation_rate:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'participation': pm.calculate(obj[0])} for obj in out]
+        elif add_last_vote_block:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1]), 
+                   'last_vote_block': app.ctx.votes.get_last_vote_block(obj[0])} for obj in out]
+        else:
+            out = [{'addr': obj[0], 'vp_change_7d': str(obj[1])} for obj in out]
 
     return json({'delegates': out})
 
