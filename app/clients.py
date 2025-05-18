@@ -356,6 +356,8 @@ class JsonRpcRTWsClient:
         self.message_task = None
         self._closing = False  # Flag to indicate client is shutting down
         self.response_queues = {}  # Maps request_id -> Queue for responses
+        self.block_headers_queue = asyncio.Queue()  # Queue for block headers
+        self.block_header_sub_id = None  # Subscription ID for block headers
 
     def is_valid(self):
         if self.url in ('', 'ignored', None):
@@ -407,6 +409,10 @@ class JsonRpcRTWsClient:
             # Create new connection
             self.ws = await websockets.connect(self.url, ping_interval=5, ping_timeout=3)
             self.message_task = asyncio.create_task(self._handle_messages())
+            
+            # Subscribe to block headers
+            await self._subscribe_to_block_headers()
+            
             logr.info("New WebSocket connection established and message handler started")
 
     async def _handle_messages(self):
@@ -429,6 +435,11 @@ class JsonRpcRTWsClient:
                     if message.get("method") == "eth_subscription":
                         sub_id = message["params"]["subscription"]
                         result = message["params"]["result"]
+
+                        # Check if this is a block header subscription
+                        if sub_id == self.block_header_sub_id:
+                            await self.block_headers_queue.put(result)
+                            continue
 
                         # Get subscription info under lock
                         queue = None
@@ -482,6 +493,8 @@ class JsonRpcRTWsClient:
                         if old_subscriptions:
                             for sub_id, (queue, _) in old_subscriptions.items():
                                 await queue.put(None)
+                        # Also notify block header subscribers
+                        await self.block_headers_queue.put(None)
                         return
                     
                 except Exception as e:
@@ -494,6 +507,8 @@ class JsonRpcRTWsClient:
                 for sub_id, (queue, _) in self.subscriptions.items():
                     await queue.put(None)
                 self.subscriptions.clear()
+                # Also notify block header subscribers
+                await self.block_headers_queue.put(None)
             self.message_task = None
 
     async def _resubscribe_all(self):
@@ -551,6 +566,58 @@ class JsonRpcRTWsClient:
                 await queue.put(None)  # Notify reader that subscription failed
         
         logr.info(f"Resubscription complete. Restored {len(self.subscriptions)} of {len(old_subscriptions)} subscriptions")
+
+    async def _subscribe_to_block_headers(self):
+        """Subscribe to new block headers"""
+        subscribe_params = {
+            "jsonrpc": "2.0",
+            "id": self.next_sub_request_id,
+            "method": "eth_subscribe",
+            "params": ["newHeads"]
+        }
+        self.next_sub_request_id += 1
+
+        # Create response queue for this request
+        response_queue = asyncio.Queue()
+        self.response_queues[subscribe_params["id"]] = response_queue
+
+        try:
+            logr.info("Subscribing to block headers")
+            await self.ws.send(json.dumps(subscribe_params))
+
+            # Wait for response with timeout
+            try:
+                response = await asyncio.wait_for(response_queue.get(), timeout=5)
+            except asyncio.TimeoutError:
+                logr.error("Timeout waiting for block header subscription response")
+                raise
+        finally:
+            # Clean up response queue
+            self.response_queues.pop(subscribe_params["id"], None)
+
+        if "result" in response:
+            self.block_header_sub_id = response["result"]
+            logr.info(f"Successfully subscribed to block headers with ID: {self.block_header_sub_id}")
+        else:
+            logr.error(f"Failed to subscribe to block headers: {response}")
+            raise Exception(f"Failed to subscribe to block headers: {response.get('error', 'Unknown error')}")
+
+    async def read_blocks(self, chain_id):
+        """Get an async iterator over block headers"""
+        while not self._closing:
+            try:
+                header = await self.block_headers_queue.get()
+                if header is None:
+                    return
+    
+                event = {'topic': 'newHeads',
+                         'block_number': int(header['number'], 16),
+                         'timestamp': int(header['timestamp'], 16)}
+    
+                yield event
+            except Exception as e:
+                logr.exception(f"Error getting block header: {e}")
+                await asyncio.sleep(1)
 
     async def read(self, chain_id, address, signature, abis, after):
         event = abis.get_by_signature(signature)
