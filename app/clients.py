@@ -78,8 +78,22 @@ class CSVClient:
     def get_fallback_block(self, signature):
         return 0
 
-    def fname(self, chain_id, address, signature):
+    def events_fname(self, chain_id, address, signature):
         return self.path / f'{chain_id}/{address}/{signature}.csv'
+
+    def blocks_fname(self, chain_id):
+        return self.path / f'{chain_id}/blocks.csv'
+
+    def read_blocks(self, chain_id):
+
+        fname = self.blocks_fname(chain_id)
+
+        with open(fname, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                row['timestamp'] = int(row['timestamp'])
+                yield row
+
 
     def read(self, chain_id, address, signature, abis, after=0):
 
@@ -88,7 +102,7 @@ class CSVClient:
         if abi_frag is None:
             raise KeyError(f"Signature `{signature}` Not Found")
 
-        fname = self.fname(chain_id, address, signature)
+        fname = self.events_fname(chain_id, address, signature)
 
         int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
 
@@ -249,6 +263,34 @@ class JsonRpcHistHttpClient:
             
         return all_logs
 
+    def get_paginated_blocks(self, w3, chain_id):
+
+        latest_block = w3.eth.block_number
+
+        chain_id = w3.eth.chain_id
+
+        step = resolve_block_count_span(chain_id) 
+
+        for from_block in range(latest_block, 0, -1 * step):
+
+            to_block = min(from_block + step - 1, latest_block)  # Ensure we don't exceed the latest_block
+
+            logr.debug(f"Looping block {from_block=}, {to_block=}")
+
+            blocks = w3.eth.get_block_range(from_block, to_block)
+
+            for block in blocks:
+                block['timestamp'] = int(block['timestamp'])
+                yield block
+
+    def read_blocks(self, chain_id):
+        
+        w3 = self.connect()
+        
+        blocks = self.get_paginated_blocks(w3, chain_id)
+
+        for block in blocks:
+            yield block
 
     def read(self, chain_id, address, signature, abis, after):
 
