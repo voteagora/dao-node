@@ -50,23 +50,37 @@ def sync_from_gcs(dir: str, multi_processing=False, strict=False):
         if address:
             addresses.append(address.lower())
 
+    cmds = []
     for address in addresses:
 
         source_path = f"gs://{dao_node_gcloud_bucket}/v1/snapshot/v1/events/{chain_id}/{address}"
 
-        print(f"Syncing archive event data from : {source_path}")
-
+        print(f"reading archive event data from : {source_path}")
+        
         cmd = ["gsutil"]
-
         if multi_processing:
             cmd.append("-m")
-
         dest = (Path(dir) / str(chain_id))
-
         dest.mkdir(parents=True, exist_ok=True)
-        
         cmd.extend(["cp", "-D", "-r", source_path, str(dest.absolute())])
+        cmds.append(cmd)
+    
+    source_path = f"gs://{dao_node_gcloud_bucket}/v1/snapshot/v1/blocks/{chain_id}.csv"
 
+    print(f"reading archive block data from : {source_path}")
+
+    cmd = ["gsutil"]
+    if multi_processing:
+        cmd.append("-m")
+    
+    dest_dir = (Path(dir) / str(chain_id))
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = (dest_dir / "blocks.csv")
+    cmd.extend(["cp", "-D", source_path, str(dest.absolute())])
+
+    cmds.append(cmd)
+    
+    for cmd in cmds:
         try:
             subprocess.check_call(cmd)
             print(f"Successfully synced from {source_path} to {dir}")
