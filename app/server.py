@@ -263,12 +263,21 @@ class EventFeed:
     
     async def run(self, app):
 
-        data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
+        data_product_event_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
+        data_product_block_dispatchers = app.ctx.dps[f"{self.chain_id}"]
 
         async for event in self.realtime_async_read():
-            for data_product_dispatcher in data_product_dispatchers:
-                event['signature'] = self.signature
-                data_product_dispatcher.handle(event)
+
+            print("YIELDING EVENT from run")
+            print(event)
+
+            if event.get('topic', '') == 'newHeads':
+                for data_product_block_dispatcher in data_product_block_dispatchers:
+                    data_product_block_dispatcher.handle(event)
+            else:
+                for data_product_event_dispatcher in data_product_event_dispatchers:
+                    event['signature'] = self.signature
+                    data_product_event_dispatcher.handle(event)
 
             # See note below about Sanic Signals
 
@@ -297,9 +306,11 @@ class DataProductContext:
 
     def register(self, chain_id_contract_signature, data_product):
 
-        _, contract, signature = chain_id_contract_signature.split(".")
+        if "." in chain_id_contract_signature:
+            
+            _, contract, signature = chain_id_contract_signature.split(".")
 
-        self.event_feed_meta[contract].append(signature)
+            self.event_feed_meta[contract].append(signature)
 
         self.dps[chain_id_contract_signature].append(data_product)
 
@@ -1012,6 +1023,7 @@ async def bootstrap_event_feeds(app, loop):
         app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     delegations = Delegations()
+    app.ctx.register(f'{chain_id}', delegations)
     app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
 
     if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):

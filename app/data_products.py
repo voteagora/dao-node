@@ -154,6 +154,11 @@ class Delegations(DataProduct):
             return []
 
     def handle(self, event):
+
+        if event.get('topic', '') == 'newHeads':
+            print("NEW BLOCK!!!")
+            return
+          
         signature = event['signature']
         block_number = event['block_number']
         transaction_index = event['transaction_index']
