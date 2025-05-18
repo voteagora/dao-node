@@ -6,7 +6,7 @@ load_dotenv()
 from importlib.metadata import version as importlib_version
 this_env = Environment()
 
-import csv, time, pdb, os, logging
+import csv, time, pdb, os, logging, heapq
 import datetime as dt
 import asyncio
 from collections import defaultdict
@@ -170,7 +170,96 @@ class ClientSequencer:
 
     def get_async_iterator(self):
         return self 
-    
+
+def event_sort_key(event):
+    # Adjust field names if needed
+    return (
+        event['block_number'],
+        event['transaction_index'],
+        event['log_index']
+    )
+
+def merge_sorted_streams(readers):
+
+    # Initialize the heap
+    heap = []
+    for i, reader in enumerate(readers):
+        try:
+            row = next(reader)
+            heapq.heappush(heap, (event_sort_key(row), i, row))
+        except StopIteration:
+            pass  # Empty file
+
+    while heap:
+        _, i, event = heapq.heappop(heap)
+        yield event  # Or process the event here
+
+        try:
+            next_row = next(readers[i])
+            heapq.heappush(heap, (event_sort_key(next_row), i, next_row))
+        except StopIteration:
+            pass
+
+
+class ChainFeed:
+    def __init__(self, chain_id, abis, client_sequencer):
+        self.chain_id = chain_id
+        self.abis = abis
+        self.cs = client_sequencer
+        self.block = 0
+        self.booting = True
+        self.signature_streams = []
+
+    def add(self, address, signature):
+
+        if (address, signature) not in self.signature_streams:
+            self.signature_streams.append((address, signature))
+
+    def archive_read(self):
+
+        # TODO - Use the iterator here instead of addressing.
+        client = self.cs.clients[0]
+        readers = []
+        for address, signature in self.signature_streams:
+            reader = client.initialize(self.chain_id, address, signature, self.abis, after=0)
+            readers.append(reader)
+        
+        for event in merge_sorted_streams(readers):
+            yield event
+        
+    async def boot(self, app):
+        
+        cnt = 0
+
+        start = dt.datetime.now()
+
+        logr.info(f"Booting chain fee {self.chain_id}")
+
+        sig_counter = defaultdict(int)
+
+        for event in self.archive_read():
+            sig_counter[event['signature']] += 1
+
+            data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{event['address']}.{event['signature']}"]
+
+            cnt += 1
+
+            for data_product_dispatcher in data_product_dispatchers:
+                data_product_dispatcher.handle(event)
+
+            if (cnt % 100_000) == 0:
+                logr.info(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}")
+            
+        end = dt.datetime.now() 
+
+        self.booting = False
+
+        logr.info(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds:")
+        logr.info(sig_counter)
+
+
+        
+
 class EventFeed:
     def __init__(self, chain_id, address, signature, abis, client_sequencer):
         self.chain_id = chain_id
@@ -959,6 +1048,7 @@ async def bootstrap_event_feeds(app, loop):
     if csvc.is_valid():
         clients.append(csvc)
     
+    """
     rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
     if rpcc.is_valid():
        clients.append(rpcc)
@@ -966,6 +1056,7 @@ async def bootstrap_event_feeds(app, loop):
     jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
     if jwsc.is_valid():
        clients.append(jwsc)
+    """
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
@@ -1059,25 +1150,28 @@ async def bootstrap_event_feeds(app, loop):
         app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
 
     #################################################################################
-    # 🎪 🍔 Instantiate an "Event Feed" for every network, contract, and relevant 
+    # 🎪 🍔 Instantiate an "Chain Feed" for every network, contract, and relevant 
     #       event signature.  Then register each one with the client sequencer so it
     #       can know to read in the past and subscribe to the future.
     #       This has been automatically handled, by picking up metadata from
     #       the data product registration step.  
 
+    cf = ChainFeed(chain_id, abis, dcqs)
+    
     for address, signatures in app.ctx.event_feed_meta.items():
         for signature in signatures:
-            ev = EventFeed(chain_id, address, signature, abis, dcqs)
-            app.ctx.add_event_feed(ev)
-            app.add_task(ev.boot(app))
+            cf.add(address, signature)
+
+    # TODO - Can this be removed?
+    # app.ctx.add_chain_feed(cf)
+    app.add_task(cf.boot(app))
 
 @app.after_server_start
-async def subscribe_event_fees(app, loop):
+async def subscribe_chain_feed(app, loop):
 
-    logr.info("Adding signal handler for each event feed.")
-    for ev in app.ctx.event_feeds:
-        logr.info(f"Invoking ev.run(app) for {ev.signature}")
-        app.add_task(ev.run(app))
+    logr.info("Adding signal handler for chain feed.")
+    # TODO ADD THIS BACK TO GET SOCKETS WORKING
+    # app.add_task(app.ctx.chain_feed.run(app))
 
 ##################################
 #

@@ -56,6 +56,7 @@ DEBUG = False
 INT_TYPES = [f"uint{i}" for i in range(8, 257, 8)]
 INT_TYPES.append("uint")
 
+
 class CSVClient:
     timeliness = 'archive'
 
@@ -78,8 +79,14 @@ class CSVClient:
     def get_fallback_block(self, signature):
         return 0
 
-    def fname(self, chain_id, address, signature):
+    def events_fname(self, chain_id, address, signature):
         return self.path / f'{chain_id}/{address}/{signature}.csv'
+    
+    def blocks_fname(self, chain_id):
+        return self.path / f'{chain_id}/blocks.csv'
+
+    def initialize(self, chain_id, address, signature, abis, after=0):
+        return self.read(chain_id, address, signature, abis, after=after)
 
     def read(self, chain_id, address, signature, abis, after=0):
 
@@ -88,7 +95,7 @@ class CSVClient:
         if abi_frag is None:
             raise KeyError(f"Signature `{signature}` Not Found")
 
-        fname = self.fname(chain_id, address, signature)
+        fname = self.events_fname(chain_id, address, signature)
 
         int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
 
@@ -97,11 +104,13 @@ class CSVClient:
         if after == 0:
             
             try:
+                print(f"Reading events from {fname}")
                 fs = open(fname)
                 reader = csv.DictReader(fs)
             
                 for row in reader:
 
+                    row['block_number'] = int(row['block_number'])
                     row['log_index'] = int(row['log_index'])
                     row['transaction_index'] = int(row['transaction_index'])
 
@@ -119,6 +128,7 @@ class CSVClient:
 
                     row['signature'] = signature
                     row['sighash'] = abi_frag.topic
+                    row['address'] = address
 
                     for int_field in int_fields:
                         try:
@@ -134,6 +144,7 @@ class CSVClient:
                     
                     if DEBUG and (cnt == 1000000):
                         break
+                print(f"Done reading {cnt} events from {fname}")
             except FileNotFoundError:
                 raise FileNotFoundError(f"CSV file not found: {fname}")
 
