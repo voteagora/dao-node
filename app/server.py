@@ -776,6 +776,13 @@ async def delegates_handler(app, request):
     print(transformers)
 
     out = [dict([(k, func(addr, sort_val)) for k, func in transformers]) for addr, sort_val in out]
+    
+    if add_voting_power:
+        for delegate in out:
+            delegate['VP'] = str(delegate['VP'])
+    if add_seven_day_vp_change:
+        for delegate in out:
+            delegate['VPC'] = str(delegate['VPC'])
 
     return json({'delegates': out})
 
