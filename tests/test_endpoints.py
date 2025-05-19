@@ -243,17 +243,16 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     assert resp.status == 200
     delegates = resp.json['delegates']
     
-    assert len(delegates) == 5
-    assert delegates[0][0] == '0x5555'
-    assert delegates[0][1] == 500
-    assert delegates[1][0] == '0x4444'
-    assert delegates[1][1] == 400
-    assert delegates[2][0] == '0x2222'
-    assert delegates[2][1] == 200
-    assert delegates[3][0] == '0x1111'
-    assert delegates[3][1] == 100
-    assert delegates[4][0] == '0x3333'
-    assert delegates[4][1] == 0
+    print(delegates)
+    assert len(delegates) == 4, "Expecting 4, not 5, because 0x3333 has never voted"
+    assert delegates[0]['addr'] == '0x5555'
+    assert delegates[0]['LVB'] == 500
+    assert delegates[1]['addr'] == '0x4444'
+    assert delegates[1]['LVB'] == 400
+    assert delegates[2]['addr'] == '0x2222'
+    assert delegates[2]['LVB'] == 200
+    assert delegates[3]['addr'] == '0x1111'
+    assert delegates[3]['LVB'] == 100
     
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&reverse=false&include=VP,DC')
     
