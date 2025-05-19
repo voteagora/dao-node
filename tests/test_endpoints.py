@@ -108,16 +108,16 @@ async def test_delegates_endpoint_sort_by_oldest(app):
     
     assert len(delegates) == 3
     assert delegates[0]["addr"] == "0x2222222222222222222222222222222222222222"  # Block 200 (highest)
-    assert delegates[0]["oldest_block"] == 200
+    assert delegates[0]["OLD"] == 200
     assert delegates[1]["addr"] == "0x1111111111111111111111111111111111111111"  # Block 100
-    assert delegates[1]["oldest_block"] == 100
+    assert delegates[1]["OLD"] == 100
     assert delegates[2]["addr"] == "0x3333333333333333333333333333333333333333"  # Block 50 (lowest)
-    assert delegates[2]["oldest_block"] == 50
+    assert delegates[2]["OLD"] == 50
     
-    assert "voting_power" in delegates[0]
-    assert "from_cnt" in delegates[0]
-    assert delegates[0]["voting_power"] == "2000"
-    assert delegates[0]["from_cnt"] == 10
+    assert "VP" in delegates[0]
+    assert "DC" in delegates[0]
+    assert delegates[0]["VP"] == "2000"
+    assert delegates[0]["DC"] == 10
 
 @pytest.mark.asyncio
 async def test_delegates_endpoint_sort_by_latest(app):
@@ -161,11 +161,11 @@ async def test_delegates_endpoint_sort_by_latest(app):
     
     assert len(delegates) == 3
     assert delegates[0]["addr"] == "0x3333333333333333333333333333333333333333"  # Block 500 (lowest)
-    assert delegates[0]["most_recent_block"] == 500
+    assert delegates[0]["MRD"] == 500
     assert delegates[1]["addr"] == "0x1111111111111111111111111111111111111111"  # Block 1000
-    assert delegates[1]["most_recent_block"] == 1000
+    assert delegates[1]["MRD"] == 1000
     assert delegates[2]["addr"] == "0x2222222222222222222222222222222222222222"  # Block 2000 (highest)
-    assert delegates[2]["most_recent_block"] == 2000
+    assert delegates[2]["MRD"] == 2000
 
 async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
 
@@ -260,11 +260,10 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     assert resp.status == 200
     delegates = resp.json['delegates']
     
-    assert delegates[0][0] == '0x3333'
-    assert delegates[1][0] == '0x1111'
-    assert delegates[2][0] == '0x2222'
-    assert delegates[3][0] == '0x4444'
-    assert delegates[4][0] == '0x5555'
+    assert delegates[0]['addr'] == '0x1111'
+    assert delegates[1]['addr'] == '0x2222'
+    assert delegates[2]['addr'] == '0x4444'
+    assert delegates[3]['addr'] == '0x5555'
     
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&include=VP,DC')
     
@@ -272,8 +271,8 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     delegates = resp.json['delegates']
     
     assert len(delegates) == 2
-    assert delegates[0][0] == '0x5555'
-    assert delegates[1][0] == '0x4444'
+    assert delegates[0]['addr'] == '0x5555'
+    assert delegates[1]['addr'] == '0x4444'
     
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&page_size=2&offset=2&include=VP,DC')
     
@@ -281,8 +280,8 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     delegates = resp.json['delegates']
     
     assert len(delegates) == 2
-    assert delegates[0][0] == '0x2222'
-    assert delegates[1][0] == '0x1111'
+    assert delegates[0]['addr'] == '0x2222'
+    assert delegates[1]['addr'] == '0x1111'
 
 async def test_delegate_endpoint(app, test_client, scroll_token_abi):
     delegations = Delegations()
