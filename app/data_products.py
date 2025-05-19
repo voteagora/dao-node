@@ -1,7 +1,8 @@
 from copy import copy
 from collections import defaultdict
+from sortedcontainers import SortedDict
 from abc import ABC, abstractmethod
-import json
+import json, time
 
 from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
@@ -142,6 +143,17 @@ class Delegations(DataProduct):
         self.delegatee_oldest = {}
         self.delegatee_latest = {}
 
+        self.block_to_timestamp = SortedDict()
+        self.timestamp_to_block = SortedDict()
+
+        self.delegatee_vp_recent_history = defaultdict(SortedDict)
+
+        self.current_block_number = 0
+        self.seven_day_block_number = 0
+        self.current_rounded_timestamp = 0        
+
+        self.cached_seven_day_vp = defaultdict(lambda: (0, 0))
+
     def _parse_delegate_array(self, array_str):
         array_str = array_str.strip('"')
         if not array_str or array_str == '[]':
@@ -152,13 +164,35 @@ class Delegations(DataProduct):
             return [[addr.lower(), int(amount)] for addr, amount in delegates]
         except (json.JSONDecodeError, ValueError):
             return []
-
+    
     def handle_block(self, event):
+        
+        print(f"NEW BLOCK: {event['block_number']}")
 
-        if event.get('topic', '') == 'newHeads':
-            print("NEW BLOCK!!!")
-            return
+        timestamp = event['timestamp']
+        block_number = event['block_number']
 
+        assert isinstance(block_number, int)
+        assert isinstance(timestamp, int)
+
+        rounded_timestamp = timestamp - (timestamp % 3600)
+
+        self.block_to_timestamp[block_number] = timestamp
+        self.timestamp_to_block[timestamp] = block_number
+
+        if self.current_rounded_timestamp != rounded_timestamp:
+            self.current_rounded_timestamp = rounded_timestamp
+
+            seven_days_ago = self.current_rounded_timestamp - 7 * 24 * 60 * 60
+            
+            # bisect_right returns the first position after seven_days_ago, 
+            # so the -1 gets the previous block
+            index = self.timestamp_to_block.bisect_right(seven_days_ago)
+            if index != 0:
+                closest_key = self.timestamp_to_block.keys()[index - 1]
+                self.seven_day_block_number = self.timestamp_to_block[closest_key]
+            else:
+                pass # print("No timestamp found that is older than 7 days.")
 
     def handle(self, event):
 
@@ -243,7 +277,9 @@ class Delegations(DataProduct):
                     
                     # Update voting power
                     self.delegatee_vp[old_delegate] -= amount
-                    self.delegatee_vp_history[old_delegate].append((block_number, self.delegatee_vp[old_delegate]))
+
+                    # TODO: Is this redundant? With the line below during handling of 'DELEGATE_VOTES_CHANGE'?
+                    # self.delegatee_vp_history[old_delegate].append((block_number, self.delegatee_vp[old_delegate]))
 
             # Handle new delegations addition
             for new_delegation in new_delegatees:
@@ -262,7 +298,9 @@ class Delegations(DataProduct):
                 
                 # Update voting power
                 self.delegatee_vp[new_delegate] += amount
-                self.delegatee_vp_history[new_delegate].append((block_number, self.delegatee_vp[new_delegate]))
+                
+                # TODO: Is this redundant? With the line below during handling of 'DELEGATE_VOTES_CHANGE'?
+                # self.delegatee_vp_history[new_delegate].append((block_number, self.delegatee_vp[new_delegate]))
 
         elif signature == DELEGATE_VOTES_CHANGE:
 
@@ -282,6 +320,47 @@ class Delegations(DataProduct):
             block_number = int(event['block_number'])
 
             self.delegatee_vp_history[delegatee].append((block_number, new_votes))
+
+            recent_history = self.delegatee_vp_recent_history[delegatee]
+            recent_history[self.current_rounded_timestamp] = new_votes
+            if self.seven_day_block_number > 0:
+                k = recent_history.bisect_left(self.seven_day_block_number) - 1
+                recent_history = SortedDict(recent_history.irange(minimum=k))
+            self.delegatee_vp_recent_history[delegatee] = recent_history
+    
+    def get_seven_day_vp(self, delegatee):
+
+        vp, block_number = self.cached_seven_day_vp[delegatee]
+
+        if block_number == self.seven_day_block_number:
+            return vp
+
+        recent_history = self.delegatee_vp_recent_history[delegatee]
+        k = recent_history.bisect_left(self.seven_day_block_number)
+        vp = recent_history[recent_history.keys()[k]]
+
+        self.cached_seven_day_vp[delegatee] = (vp, self.seven_day_block_number)
+
+        return vp
+
+    def delegate_growth_rate(self, delegatee):
+
+        self.cached_growth_rate
+        
+        cur_vp = self.delegatee_vp[delegatee]
+        old_vp = self.get_seven_day_vp(delegatee)
+
+        if old_vp == 0:
+            return None
+
+        delta = cur_vp - old_vp
+
+        return delta / old_vp, delta, old_vp
+        
+                
+
+
+
 
 LCREATED = len('ProposalCreated')
 LQUEUED = len('ProposalQueued')
