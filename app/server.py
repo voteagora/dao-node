@@ -759,19 +759,19 @@ async def delegates_handler(app, request):
     transformers = [('addr', addr_func)]
 
     if add_voting_power:
-        transformers.append(('voting_power', use_sort_key if sort_by_vp else voting_power_func))
+        transformers.append(('VP',  use_sort_key if sort_by_vp else voting_power_func))
     if add_delegator_count:
-        transformers.append(('from_cnt', use_sort_key if sort_by_dc else from_cnt_func))
+        transformers.append(('DC',  use_sort_key if sort_by_dc else from_cnt_func))
     if add_participation_rate:
-        transformers.append(('participation', participation_func))
+        transformers.append(('PR',  participation_func))
     if add_last_vote_block:
-        transformers.append(('last_vote_block', use_sort_key if sort_by_lvb else last_vote_block_func))
+        transformers.append(('LVB', use_sort_key if sort_by_lvb else last_vote_block_func))
     if add_most_recent_delegation:
-        transformers.append(('most_recent_delegation', use_sort_key if sort_by_mrd else most_recent_delegation_func))
+        transformers.append(('MRD', use_sort_key if sort_by_mrd else most_recent_delegation_func))
     if add_oldest_delegation:
-        transformers.append(('oldest_delegation', use_sort_key if sort_by_old else oldest_delegation_func))
+        transformers.append(('OLD', use_sort_key if sort_by_old else oldest_delegation_func))
     if add_seven_day_vp_change:
-        transformers.append(('seven_day_vp_change', use_sort_key if sort_by_vpc else seven_day_vp_change_func))
+        transformers.append(('VPC', use_sort_key if sort_by_vpc else seven_day_vp_change_func))
 
     print(transformers)
 
