@@ -143,7 +143,6 @@ class Delegations(DataProduct):
         self.delegatee_oldest = {}
         self.delegatee_latest = {}
 
-        self.block_to_timestamp = SortedDict()
         self.timestamp_to_block = SortedDict()
 
         self.delegatee_vp_recent_history = defaultdict(SortedDict)
@@ -164,10 +163,8 @@ class Delegations(DataProduct):
             return [[addr.lower(), int(amount)] for addr, amount in delegates]
         except (json.JSONDecodeError, ValueError):
             return []
-    
+
     def handle_block(self, event):
-        
-        print(f"NEW BLOCK: {event['block_number']}")
 
         timestamp = event['timestamp']
         block_number = event['block_number']
@@ -177,7 +174,6 @@ class Delegations(DataProduct):
 
         rounded_timestamp = timestamp - (timestamp % 3600)
 
-        self.block_to_timestamp[block_number] = timestamp
         self.timestamp_to_block[timestamp] = block_number
 
         if self.current_rounded_timestamp != rounded_timestamp:
