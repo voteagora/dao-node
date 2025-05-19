@@ -343,19 +343,12 @@ class Delegations(DataProduct):
 
         return vp
 
-    def delegate_growth_rate(self, delegatee):
-
-        self.cached_growth_rate
+    def delegate_seven_day_vp_change(self, delegatee):
         
         cur_vp = self.delegatee_vp[delegatee]
         old_vp = self.get_seven_day_vp(delegatee)
 
-        if old_vp == 0:
-            return None
-
-        delta = cur_vp - old_vp
-
-        return delta / old_vp, delta, old_vp
+        return cur_vp - old_vp
         
                 
 
