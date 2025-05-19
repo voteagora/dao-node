@@ -181,8 +181,9 @@ class EventFeed:
         self.block = 0
         self.booting = True
 
+    @property
     def name(self):
-        return f"ef={self.chain_id}.{self.address}.{self.signature}"
+        return f"EventFeed({self.chain_id}, {self.address}, {self.signature})"
 
     def archive_read(self):
         previous_csv_client_failed_filenotfound = False 
@@ -284,8 +285,9 @@ class BlockFeed:
         self.block = 0
         self.booting = True
 
+    @property
     def name(self):
-        return f"cf={self.chain_id}"
+        return f"BlockFeed({self.chain_id})"
 
     def archive_read(self):
         previous_csv_client_failed_filenotfound = False 
@@ -370,7 +372,7 @@ class BlockFeed:
 
         async for block in self.realtime_async_read():
             for data_product_event_dispatcher in data_product_event_dispatchers:
-                data_product_event_dispatcher.handle(block)
+                data_product_event_dispatcher.handle_new_block(block)
 
 
 class DataProductContext:
