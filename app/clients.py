@@ -84,7 +84,10 @@ class CSVClient:
     def blocks_fname(self, chain_id):
         return self.path / f'{chain_id}/blocks.csv'
 
-    def read_blocks(self, chain_id):
+    def read_blocks(self, chain_id, after=0):
+
+        if after != 0:
+            raise Exception("'After' block != 0, is not yet supported.  Instead, CSVs are just expected to only be last 8 days.")
 
         fname = self.blocks_fname(chain_id)
 
@@ -92,6 +95,7 @@ class CSVClient:
             reader = csv.DictReader(f)
             for row in reader:
                 row['timestamp'] = int(row['timestamp'])
+                row['block_number'] = int(row['block_number'])
                 yield row
 
 
@@ -263,31 +267,33 @@ class JsonRpcHistHttpClient:
             
         return all_logs
 
-    def get_paginated_blocks(self, w3, chain_id):
+    def get_paginated_blocks(self, w3, chain_id, start_block, end_block, step):
+
+        for block_num in range(start_block, end_block, step):
+            full_block = w3.eth.get_block(block_num)
+
+            block = {}
+            timestamp = full_block['timestamp']
+            assert isinstance(timestamp, int)
+            block['timestamp'] = timestamp
+
+            block_number = full_block['number']
+            assert isinstance(block_number, int)
+            block['block_number'] = block_number
+
+            yield block
+
+    def read_blocks(self, chain_id, after):
+        
+        w3 = self.connect()
 
         latest_block = w3.eth.block_number
 
         chain_id = w3.eth.chain_id
 
         step = resolve_block_count_span(chain_id) 
-
-        for from_block in range(latest_block, 0, -1 * step):
-
-            to_block = min(from_block + step - 1, latest_block)  # Ensure we don't exceed the latest_block
-
-            logr.debug(f"Looping block {from_block=}, {to_block=}")
-
-            blocks = w3.eth.get_block_range(from_block, to_block)
-
-            for block in blocks:
-                block['timestamp'] = int(block['timestamp'])
-                yield block
-
-    def read_blocks(self, chain_id):
         
-        w3 = self.connect()
-        
-        blocks = self.get_paginated_blocks(w3, chain_id)
+        blocks = self.get_paginated_blocks(w3, chain_id, start_block=after, end_block=latest_block, step=step)
 
         for block in blocks:
             yield block
@@ -423,7 +429,6 @@ class JsonRpcRTWsClient:
                     # Get the message without holding the lock
                     raw_message = await self.ws.recv()
                     message = json.loads(raw_message)
-                    
                     # Handle subscription responses
                     if "id" in message:
                         req_id = message["id"]
@@ -602,19 +607,19 @@ class JsonRpcRTWsClient:
             logr.error(f"Failed to subscribe to block headers: {response}")
             raise Exception(f"Failed to subscribe to block headers: {response.get('error', 'Unknown error')}")
 
-    async def read_blocks(self, chain_id):
+    async def read_blocks(self, chain_id, after):
         """Get an async iterator over block headers"""
         while not self._closing:
             try:
                 header = await self.block_headers_queue.get()
                 if header is None:
                     return
+                block_num = int(header['number'], 16)
+                if block_num > after:
+                    event = {'block_number': block_num,
+                            'timestamp': int(header['timestamp'], 16)}        
+                    yield event
     
-                event = {'topic': 'newHeads',
-                         'block_number': int(header['number'], 16),
-                         'timestamp': int(header['timestamp'], 16)}
-    
-                yield event
             except Exception as e:
                 logr.exception(f"Error getting block header: {e}")
                 await asyncio.sleep(1)

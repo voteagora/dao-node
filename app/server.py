@@ -296,17 +296,12 @@ class BlockFeed:
 
             if client.timeliness == 'archive':
 
-                if i > 0 and not previous_csv_client_failed_filenotfound:
-                    self.block = max(self.block, client.get_fallback_block(self.signature))
-                if previous_csv_client_failed_filenotfound:
-                    previous_csv_client_failed_filenotfound = False
-
                 emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
 
                 logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client)} from block {self.block}")
 
                 try:
-                    reader = client.read_blocks(self.chain_id)
+                    reader = client.read_blocks(self.chain_id, self.block)
 
                     cnt = 0
                     for event in reader:
@@ -314,7 +309,7 @@ class BlockFeed:
                         self.block = max(self.block, int(event['block_number']))
                         yield event
 
-                    logr.info(f"{emoji} Done reading {cnt} {self.signature} events as block {self.block}")
+                    logr.info(f"{emoji} Done reading {cnt} blocks, latest is {self.block}")
 
                 except FileNotFoundError as e:
                     logr.warn(f"{emoji} File not found for {self.signature} by {type(client).__name__}: {e}. Skipping to next client.")
@@ -332,7 +327,7 @@ class BlockFeed:
                 if self.block is None:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
-                reader = client.read_blocks(self.chain_id)
+                reader = client.read_blocks(self.chain_id, self.block)
 
                 async for event in reader:
                     self.block = max(self.block, event['block_number'])
@@ -351,7 +346,7 @@ class BlockFeed:
         for event in self.archive_read():
             cnt += 1
             for data_product_dispatcher in data_product_dispatchers:
-                data_product_dispatcher.handle(event)
+                data_product_dispatcher.handle_block(event)
 
             if (cnt % 1_000_000) == 0:
                 logr.info(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}")
@@ -372,7 +367,7 @@ class BlockFeed:
 
         async for block in self.realtime_async_read():
             for data_product_event_dispatcher in data_product_event_dispatchers:
-                data_product_event_dispatcher.handle_new_block(block)
+                data_product_event_dispatcher.handle_block(block)
 
 
 class DataProductContext:
