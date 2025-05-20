@@ -153,12 +153,15 @@ class Delegations(DataProduct):
         except (json.JSONDecodeError, ValueError):
             return []
 
-    def handle(self, event):
+    def handle_block(self, event):
 
         if event.get('topic', '') == 'newHeads':
             print("NEW BLOCK!!!")
             return
-          
+
+
+    def handle(self, event):
+
         signature = event['signature']
         block_number = event['block_number']
         transaction_index = event['transaction_index']
