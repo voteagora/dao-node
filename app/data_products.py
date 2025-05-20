@@ -118,6 +118,12 @@ class ProposalTypes(DataProduct):
 
         return {k : pit_proposal_type[k] for k in ['quorum', 'approval_threshold', 'name']}
 
+def seven_days_ago(ts):
+    return ts - (7 * 24 * 60 * 60)
+
+def round_and_seven_days_ago(ts):
+    tmp = ts - (ts % 3600)
+    return seven_days_ago(tmp)
 
 class Delegations(DataProduct):
     def __init__(self):
@@ -144,12 +150,14 @@ class Delegations(DataProduct):
         self.delegatee_latest = {}
 
         self.timestamp_to_block = SortedDict()
-
         self.delegatee_vp_recent_history = defaultdict(SortedDict)
 
         self.current_block_number = 0
+        self.current_ts = 0
+        self.current_rounded_ts = 0
+
         self.seven_day_block_number = 0
-        self.current_rounded_timestamp = 0        
+        self.seven_day_ts = 0
 
         self.cached_seven_day_vp = defaultdict(lambda: (0, 0))
 
@@ -172,18 +180,20 @@ class Delegations(DataProduct):
         assert isinstance(block_number, int)
         assert isinstance(timestamp, int)
 
-        rounded_timestamp = timestamp - (timestamp % 3600)
+        self.current_block_number = block_number
+        self.current_ts = timestamp
 
         self.timestamp_to_block[timestamp] = block_number
 
-        if self.current_rounded_timestamp != rounded_timestamp:
-            self.current_rounded_timestamp = rounded_timestamp
+        rounded_ts = timestamp - (timestamp % 3600)
+        self.rounded_seven_day_ts = seven_days_ago(rounded_ts)
 
-            seven_days_ago = self.current_rounded_timestamp - 7 * 24 * 60 * 60
-            
+        if self.current_rounded_ts != rounded_ts:
+            self.current_rounded_ts = rounded_ts
+
             # bisect_right returns the first position after seven_days_ago, 
             # so the -1 gets the previous block
-            index = self.timestamp_to_block.bisect_right(seven_days_ago)
+            index = self.timestamp_to_block.bisect_right(self.rounded_seven_day_ts)
             if index != 0:
                 closest_key = self.timestamp_to_block.keys()[index - 1]
                 self.seven_day_block_number = self.timestamp_to_block[closest_key]
@@ -318,12 +328,32 @@ class Delegations(DataProduct):
             self.delegatee_vp_history[delegatee].append((block_number, new_votes))
 
             recent_history = self.delegatee_vp_recent_history[delegatee]
-            recent_history[self.current_rounded_timestamp] = new_votes
-            if self.seven_day_block_number > 0:
-                k = recent_history.bisect_left(self.seven_day_block_number) - 1
-                recent_history = SortedDict(recent_history.irange(minimum=k))
+
+            recent_history[block_number] = new_votes
+
+            """
+
+            # Pruning not supported yet... (it's buggy somehow...)
+
+            if len(recent_history) > 1:
+                print(self.seven_day_ts)
+                k = recent_history.bisect_left(self.seven_day_ts)
+                pruned_recent_history = SortedDict((key, recent_history[key]) for key in recent_history.irange(minimum=k))
+
+                if len(recent_history) != len(pruned_recent_history):
+                    print("BEFORE PRUNING:")
+                    print(recent_history)
+                    print(k)
+                    print("AFTER PRUNING:")
+                    print(pruned_recent_history)
+
+                self.delegatee_vp_recent_history[delegatee] = pruned_recent_history
+            else:
+                self.delegatee_vp_recent_history[delegatee] = recent_history
+            """
+
             self.delegatee_vp_recent_history[delegatee] = recent_history
-    
+
     def get_seven_day_vp(self, delegatee):
 
         vp, block_number = self.cached_seven_day_vp[delegatee]
@@ -332,7 +362,18 @@ class Delegations(DataProduct):
             return vp
 
         recent_history = self.delegatee_vp_recent_history[delegatee]
-        k = recent_history.bisect_left(self.seven_day_block_number)
+
+        # print(f"{recent_history=}")
+
+        # print(f"self.seven_day_block_number={self.seven_day_block_number}")
+
+        if len(recent_history) == 0:
+            return 0
+
+        k = recent_history.bisect_left(self.seven_day_block_number) - 1
+
+        # print(f"{k=}, len(recent_history)={len(recent_history)}, tip_key={recent_history.keys()[-1]}, self.seven_day_ts={self.seven_day_ts}")
+
         vp = recent_history[recent_history.keys()[k]]
 
         self.cached_seven_day_vp[delegatee] = (vp, self.seven_day_block_number)
@@ -343,8 +384,13 @@ class Delegations(DataProduct):
         
         cur_vp = self.delegatee_vp[delegatee]
         old_vp = self.get_seven_day_vp(delegatee)
+        delta = cur_vp - old_vp
 
-        return cur_vp - old_vp
+        # print(f"{cur_vp=}")
+        # print(f"{old_vp=}")
+        # print(f"{delta=}")
+
+        return delta 
         
                 
 
