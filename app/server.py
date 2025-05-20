@@ -725,6 +725,10 @@ async def delegates_handler(app, request):
         if len(out) > page_size:
             out = out[:page_size]
 
+    # Cast big numbers to str, only after sorting and cropping...
+    if sort_by_vp or sort_by_vpc:
+        out = [(addr, str(v)) for addr, v in out]
+
     add_delegator_count = 'DC' in include or sort_by_dc
     add_participation_rate = 'PR' in include or sort_by_pr
     add_voting_power = 'VP' in include or sort_by_vp
@@ -751,7 +755,7 @@ async def delegates_handler(app, request):
     last_vote_block_func = lambda x, y: app.ctx.votes.latest_vote_block.get(x, 0)
     most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event[x]['block_number']
     oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event[x]['block_number']
-    seven_day_vp_change_func = lambda x, y: app.ctx.delegations.delegate_seven_day_vp_change(x)
+    seven_day_vp_change_func = lambda x, y: str(app.ctx.delegations.delegate_seven_day_vp_change(x))
 
     use_sort_key = lambda x, y: y
     addr_func = lambda x, y: x
@@ -773,16 +777,7 @@ async def delegates_handler(app, request):
     if add_seven_day_vp_change:
         transformers.append(('VPC', use_sort_key if sort_by_vpc else seven_day_vp_change_func))
 
-    print(transformers)
-
     out = [dict([(k, func(addr, sort_val)) for k, func in transformers]) for addr, sort_val in out]
-    
-    if add_voting_power:
-        for delegate in out:
-            delegate['VP'] = str(delegate['VP'])
-    if add_seven_day_vp_change:
-        for delegate in out:
-            delegate['VPC'] = str(delegate['VPC'])
 
     return json({'delegates': out})
 
