@@ -1020,15 +1020,15 @@ async def bootstrap_event_feeds(app, loop):
     #       This has been automatically handled, by picking up metadata from
     #       the data product registration step.  
 
+    cf = BlockFeed(chain_id, dcqs)
+    app.ctx.add_feed(cf)
+    app.add_task(cf.boot(app))
+
     for address, signatures in app.ctx.feed_meta.items():
         for signature in signatures:
             ef = EventFeed(chain_id, address, signature, abis, dcqs)
             app.ctx.add_feed(ef)
             app.add_task(ef.boot(app))
-    
-    cf = BlockFeed(chain_id, dcqs)
-    app.ctx.add_feed(cf)
-    app.add_task(cf.boot(app))
 
 @app.after_server_start
 async def subscribe_feeds(app):
