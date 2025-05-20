@@ -369,10 +369,12 @@ def test_DelegateVotesChanged_7day_growth_rate():
         if source == 'votes':
             d.handle(row)
         elif source == 'block':
-            d.handle_new_block(row)
+            d.handle_block(row)
 
     for delegatee in d.delegatee_vp:
         print(f"{delegatee}: {d.delegate_seven_day_vp_change(delegatee)}")
+
+    
     end = time.perf_counter()
     print(f"Time: {end - start}")
 
