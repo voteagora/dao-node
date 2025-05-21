@@ -1,7 +1,15 @@
+import os
+import json
+
 import pytest
 from app.signatures import DELEGATE_VOTES_CHANGE, DELEGATE_CHANGED_1, DELEGATE_CHANGED_2
 from app.clients_wsjson import JsonRpcRtWsClientCaster
 from pprint import pprint
+from app.utils import camel_to_snake
+from app.signatures import DELEGATE_VOTES_CHANGE, DELEGATE_CHANGED_1
+from eth_abi.abi import decode as decode_abi
+from app.clients import JsonRpcRTWsClient, JsonRpcHistHttpClient, resolve_block_count_span
+from dotenv import load_dotenv
 
 delegate_changed_ws_payload = {'address': '0x27b0031c64f4231f0aff28e668553d73f48125f3', 'topics': ['0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f', '0x000000000000000000000000c950b9f32259860f4731d318cb5a28b2db892f88', '0x000000000000000000000000c950b9f32259860f4731d318cb5a28b2db892f88', '0x0000000000000000000000000000000000000000000000000000000000000000'], 'data': '0x', 'blockNumber': '0x7ce8d9', 'transactionHash': '0x6ee9de9644f6c75d83d598240067d1f20466b10c8721a61a8870a040efbafad8', 'transactionIndex': '0x1f', 'blockHash': '0x81f0810aa58f1f30ac28e10aa9680c9b4247fc38a8b6a273f847f1fc06c92365', 'logIndex': '0x32', 'removed': False}
 delegate_votes_changed_ws_payload = {'address': '0x27b0031c64f4231f0aff28e668553d73f48125f3', 'topics': ['0xdec2bacdd2f05b59de34da9b523dff8be42e5e38e818c82fdb0bae774387a724', '0x000000000000000000000000c950b9f32259860f4731d318cb5a28b2db892f88'], 'data': '0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000', 'blockNumber': '0x7ce8d9', 'transactionHash': '0x6ee9de9644f6c75d83d598240067d1f20466b10c8721a61a8870a040efbafad8', 'transactionIndex': '0x1f', 'blockHash': '0x81f0810aa58f1f30ac28e10aa9680c9b4247fc38a8b6a273f847f1fc06c92365', 'logIndex': '0x33', 'removed': False}
@@ -20,10 +28,10 @@ def test_web_socket_response_serialization_1(pguild_token_abi, ws_payload, signa
 
     event = pguild_token_abi.get_by_signature(signature)
 
-    topic = event.topic 
-    
-    caster = JsonRpcRtWsClientCaster(pguild_token_abi) 
-    
+    topic = event.topic
+
+    caster = JsonRpcRtWsClientCaster(pguild_token_abi)
+
     out = caster.lookup(signature)(ws_payload)
 
     # These are added by the client...not the caster.  Meh.
@@ -47,14 +55,14 @@ AttributeDict({'address': '0xd29687c813D741E2F938F4aC377128810E217b1b',
                'removed': False})
 """
 
-delegate_changed_2_ws_payload = {'address': '0xd29687c813d741e2f938f4ac377128810e217b1b', 
-                                 'topics': ['0x327464c976c7451e477f8f5e678ddde081fa6ec7db71881b63f8d989951b8a9b', '0x000000000000000000000000a622279f76ddbed4f2cc986c09244262dba8f4ba'], 
-                                 'data': '0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000010000000000000000000000001b686ee8e31c5959d9f5bbd8122a58682788eead0000000000000000000000000000000000000000000000000000000000000a4b0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000010dc5440ad49f9ec0dd325b622d9fd225944ee40000000000000000000000000000000000000000000000000000000000000a65', 
-                                 'blockNumber': '0xf3406e', 
-                                 'transactionHash': '0xca3374e9d25e59705f0b066c28c6619e0e5c65c83dfdcbebd67cea41450420a1', 
-                                 'transactionIndex': '0x0', 
-                                 'blockHash': '0xe4c42b2f634c14ac370b83e7052440e3499480f8cefe8c1d64c63c1b989faa34', 
-                                 'logIndex': '0x2', 
+delegate_changed_2_ws_payload = {'address': '0xd29687c813d741e2f938f4ac377128810e217b1b',
+                                 'topics': ['0x327464c976c7451e477f8f5e678ddde081fa6ec7db71881b63f8d989951b8a9b', '0x000000000000000000000000a622279f76ddbed4f2cc986c09244262dba8f4ba'],
+                                 'data': '0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000010000000000000000000000001b686ee8e31c5959d9f5bbd8122a58682788eead0000000000000000000000000000000000000000000000000000000000000a4b0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000010dc5440ad49f9ec0dd325b622d9fd225944ee40000000000000000000000000000000000000000000000000000000000000a65',
+                                 'blockNumber': '0xf3406e',
+                                 'transactionHash': '0xca3374e9d25e59705f0b066c28c6619e0e5c65c83dfdcbebd67cea41450420a1',
+                                 'transactionIndex': '0x0',
+                                 'blockHash': '0xe4c42b2f634c14ac370b83e7052440e3499480f8cefe8c1d64c63c1b989faa34',
+                                 'logIndex': '0x2',
                                  'removed': False}
 
 """"
@@ -110,13 +118,13 @@ test_cases = [(delegate_changed_2_ws_payload, DELEGATE_CHANGED_2, delegate_chang
     test_cases,
 )
 def test_web_socket_response_serialization_2(scroll_token_abi, ws_payload, signature, expected_event):
-    
+
     event = scroll_token_abi.get_by_signature(signature)
-    
+
     topic = event.topic 
     
-    caster = JsonRpcRtWsClientCaster(scroll_token_abi) 
-    
+    caster = JsonRpcRtWsClientCaster(scroll_token_abi)
+
     out = caster.lookup(signature)(ws_payload)
 
     # These are added by the client...not the caster.  Meh.
@@ -124,3 +132,29 @@ def test_web_socket_response_serialization_2(scroll_token_abi, ws_payload, signa
     out['sighash'] = topic.replace("0x", "")
 
     assert out == expected_event
+
+def test_get_paginated_logs():
+    load_dotenv()
+    DAO_NODE_ARCHIVE_NODE_HTTP = "https://opbnb-mainnet.g.alchemy.com/v2/"
+    ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('ALCHEMY_API_KEY', '')
+    jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
+
+    block_count_span = resolve_block_count_span(10)
+
+    with open('./abis/op-gov.json', 'r') as f:
+        abi = json.load(f)
+
+    logs = jrhhc.get_paginated_logs(
+        jrhhc.connect(),
+        "0x27b0031c64f4231f0aff28e668553d73f48125f3",
+        "0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f",
+        1000000000000000000000000000000000000000000000000000000000000000,
+        1000000000000000000000000000000000000000000000000000000000000000,
+        block_count_span,
+        abi
+    )
+
+    print(logs)
+
+def test_get_paginated_logs_block_range_over_2000():
+    pass
