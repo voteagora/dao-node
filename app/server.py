@@ -682,11 +682,18 @@ async def delegates_handler(app, request):
     
     sort_by_vp  = sort_by == 'VP'  # Voting Power
     sort_by_dc  = sort_by == 'DC'  # Delegator Count
-    sort_by_pr  = False            # Partipcipation Rate ( Not supported yet) 
+    sort_by_pr  = sort_by == 'PR'  # Partipcipation Rate ( Not supported yet) 
+
+    if sort_by_pr:
+        print("Sorting by PR is not indended for production use yet.  We need a faster data product.")
+
     sort_by_lvb = sort_by == 'LVB' # Last Vote Block
     sort_by_mrd = sort_by == 'MRD' # Most Recent Delegation
     sort_by_old = sort_by == 'OLD' # Oldest Delegation
     sort_by_vpc = sort_by == 'VPC' # 7-day Voting Power Change
+
+    if sort_by_pr or add_participation_rate:
+        pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
 
     offset = int(request.args.get("offset", DEFAULT_OFFSET))
     page_size = int(request.args.get("page_size", DEFAULT_PAGE_SIZE))
@@ -701,6 +708,9 @@ async def delegates_handler(app, request):
     elif sort_by_mrd:
         out = [(addr, int(event['block_number'])) 
                for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
+    elif sort_by_pr:
+        out = [(addr, pm.calculate(addr))
+               for addr in app.ctx.votes.voter_history.keys()]
     elif sort_by_old:
         out = [(addr, int(event['block_number'])) 
                for addr, event in app.ctx.delegations.delegatee_oldest_event.items()]
@@ -737,9 +747,6 @@ async def delegates_handler(app, request):
     add_oldest_delegation = 'OLD' in include or sort_by_old
     add_seven_day_vp_change = 'VPC' in include or sort_by_vpc
 
-    if add_participation_rate:
-        pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
-
     # Everything below, replaces that gawdaful combinatorical mess with a single dict(**(k, func(v)),
     # where func(v) is a lambda that returns the value for key k, but ... this might actually be slower
     # than writing a million if-statements out, per-row, because we're iterating over transformers
@@ -767,7 +774,7 @@ async def delegates_handler(app, request):
     if add_delegator_count:
         transformers.append(('DC',  use_sort_key if sort_by_dc else from_cnt_func))
     if add_participation_rate:
-        transformers.append(('PR',  participation_func))
+        transformers.append(('PR',  use_sort_key if sort_by_pr else participation_func))
     if add_last_vote_block:
         transformers.append(('LVB', use_sort_key if sort_by_lvb else last_vote_block_func))
     if add_most_recent_delegation:
