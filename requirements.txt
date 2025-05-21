@@ -23,3 +23,4 @@ websocket-client
 sanic-ext
 python-dotenv
 pyenvdiff
+sortedcontainers
