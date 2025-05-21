@@ -356,6 +356,7 @@ class JsonRpcRTWsClient:
         self.url = url
         self.ws = None
         self.ws_lock = asyncio.Lock()
+        self.ws_recv_lock = asyncio.Lock()  # New lock specifically for recv operations
         self.subscription_lock = asyncio.Lock()
         self.subscriptions = {}
         self.next_sub_request_id = 1
@@ -427,7 +428,8 @@ class JsonRpcRTWsClient:
             while not self._closing:
                 try:
                     # Get the message without holding the lock
-                    raw_message = await self.ws.recv()
+                    async with self.ws_recv_lock:
+                        raw_message = await self.ws.recv()
                     message = json.loads(raw_message)
                     # Handle subscription responses
                     if "id" in message:
