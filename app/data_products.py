@@ -221,13 +221,13 @@ class Delegations(DataProduct):
                 self.delegatee_oldest_event[to_delegate] = {
                     'block_number': block_number,
                     'delegator': delegator,
-                    'from_delegate': from_delegate,
+                    # 'from_delegate': from_delegate, don't think we actually need this...
                 }
             
             self.delegatee_latest_event[to_delegate] = {
                 'block_number': block_number,
                 'delegator': delegator,
-                'from_delegate': from_delegate,
+                # 'from_delegate': from_delegate, don't think we actually need this...
             }
 
             if not to_delegate in self.delegatee_oldest:
@@ -272,15 +272,26 @@ class Delegations(DataProduct):
 
             # Handle new delegations addition
             for new_delegation in new_delegatees:
-                new_delegate = new_delegation[0].lower()
+                to_delegate = new_delegation[0].lower()
                 amount = new_delegation[1]
                 
-                self.delegatee_list[new_delegate][delegator] = (block_number, transaction_index)
-                self.delegatee_cnt[new_delegate] = len(self.delegatee_list[new_delegate])
-                self.delegation_amounts[new_delegate][delegator] = amount
+                if not self.delegatee_oldest_event.get(to_delegate):
+                    self.delegatee_oldest_event[to_delegate] = {
+                        'block_number': block_number,
+                        'delegator': delegator
+                    }
+            
+                self.delegatee_latest_event[to_delegate] = {
+                    'block_number': block_number,
+                    'delegator': delegator,
+                }
+
+                self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
+                self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
+                self.delegation_amounts[to_delegate][delegator] = amount
                 
                 # Update voting power
-                self.delegatee_vp[new_delegate] += amount
+                self.delegatee_vp[to_delegate] += amount
                 
 
         elif signature == DELEGATE_VOTES_CHANGE:
