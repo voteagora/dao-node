@@ -130,10 +130,9 @@ class Delegations(DataProduct):
         self.delegator = defaultdict(None) # owner, doing the delegation
         
         # Data about the delegatee (ie, the delegate's influence)
-        self.delegatee_list = defaultdict(list) #  list of delegators
+        self.delegatee_list = defaultdict(SortedDict) #  list of delegators
         self.delegatee_cnt = defaultdict(int) #  dele
-        self.delegatee_info = defaultdict(list) # list of (delegator, block_number, transaction_index) tuples
-        
+
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
         self.delegation_amounts = defaultdict(dict)
 
@@ -213,7 +212,7 @@ class Delegations(DataProduct):
             from_delegate = event['from_delegate'].lower()
 
             self.delegator[delegator] = to_delegate
-            self.delegatee_list[to_delegate].append(delegator)
+            self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
 
             if not self.delegatee_oldest_event.get(to_delegate):
                 self.delegatee_oldest_event[to_delegate] = {
@@ -230,26 +229,16 @@ class Delegations(DataProduct):
 
             if not to_delegate in self.delegatee_oldest:
                 self.delegatee_oldest[to_delegate] = block_number
-            
+
             self.delegatee_latest[to_delegate] = block_number
 
-            self.delegatee_info[to_delegate].append((delegator, block_number, transaction_index))
-
             if (from_delegate != '0x0000000000000000000000000000000000000000'):
-                try:
-                    idx_to_remove = -1
-                    for i, d in enumerate(self.delegatee_list[from_delegate]):
-                        if d == delegator:
-                            idx_to_remove = i
-                            break
-                    
-                    if idx_to_remove != -1:
-                        del self.delegatee_list[from_delegate][idx_to_remove]
-                        del self.delegatee_info[from_delegate][idx_to_remove]
-
-                    self.delegatee_cnt[from_delegate] = len(self.delegatee_list[from_delegate])
-                except ValueError as e:
-                    print(f"E109250323 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
+                if from_delegate != to_delegate:
+                    try:
+                        if delegator in self.delegatee_list[from_delegate]:
+                            del self.delegatee_list[from_delegate][delegator]                
+                    except KeyError as e:
+                        print(f"E251250520 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
             self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
@@ -266,19 +255,13 @@ class Delegations(DataProduct):
                 amount = old_delegation[1]
 
                 if old_delegate in self.delegatee_list:
-                    idx_to_remove = -1
-                    for i, d in enumerate(self.delegatee_list[old_delegate]):
-                        if d == delegator:
-                            idx_to_remove = i
-                            break
+                    if delegator in self.delegatee_list[old_delegate]:
+                        del self.delegatee_list[old_delegate][delegator]
                         
-                    if idx_to_remove != -1:
-                        del self.delegatee_list[old_delegate][idx_to_remove]
-                        del self.delegatee_info[old_delegate][idx_to_remove] 
-                        self.delegatee_cnt[old_delegate] = len(self.delegatee_list[old_delegate])
-                        if not self.delegatee_list[old_delegate]:
-                            del self.delegatee_list[old_delegate]
-                            del self.delegatee_info[old_delegate]
+                    cnt = len(self.delegatee_list[old_delegate])
+                    if cnt == 0:
+                        del self.delegatee_list[old_delegate]
+
                     self.delegation_amounts[old_delegate].pop(delegator, None)
                     
                     # Update voting power
@@ -289,14 +272,8 @@ class Delegations(DataProduct):
                 new_delegate = new_delegation[0].lower()
                 amount = new_delegation[1]
                 
-                if new_delegate not in self.delegatee_list:
-                    self.delegatee_list[new_delegate] = []
-                    self.delegatee_info[new_delegate] = []
-
-                if delegator not in self.delegatee_list[new_delegate]:
-                    self.delegatee_list[new_delegate].append(delegator)
-                    self.delegatee_info[new_delegate].append((delegator, block_number, transaction_index))
-                    self.delegatee_cnt[new_delegate] = len(self.delegatee_list[new_delegate])
+                self.delegatee_list[new_delegate][delegator] = (block_number, transaction_index)
+                self.delegatee_cnt[new_delegate] = len(self.delegatee_list[new_delegate])
                 self.delegation_amounts[new_delegate][delegator] = amount
                 
                 # Update voting power
