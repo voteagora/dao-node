@@ -627,6 +627,15 @@ class Proposals(DataProduct):
                 if head > 0 or head <= -1:
                     yield proposal
                     head -= 1
+    
+    def counted(self, head=-1):
+        for proposal in reversed(self.proposals.values()):
+            if not proposal.canceled:
+                counted = 1 if (proposal.queued or proposal.executed) else 0
+                if head > 0 or head <= -1:
+                    yield proposal, counted
+                    head -= counted
+
 
 def nested_default_dict():
     return defaultdict(int)
@@ -709,32 +718,60 @@ class Votes(DataProduct):
 
 class ParticipationModel:
     """
-    This participation model looks at the 10 most recent completed non-cancelled votes
-    
-    And then checks to see if a specific delegate voted in those relevant proposals.
+    This participation model looks back at the 10 most recent non-cancelled completed proposals, and any active proposals.
 
-    A logical enhancement from here, would be Creating a DataProduct that calculated 
-    this for all delegates at the time of the completion for any proposal.  This would 
-    move the calc from the endpoint to the data product step.
+    We let T be the # of non-cancelleted completed proposals plus any active propsals.  
+    
+    T >= 10
+    
+    We let NC be the # of not yet completed proposals.
+
+    NC <= T
+
+    And...
+
+    Therefore C = T - NC, ie any completed proposals.
+
+    The model's numerator is the sum of any votes from all T.
+    
+    The model's denominator is the sum of any  checks to see if a specific delegate voted in any of those relevant proposals.
+
+    The numerator of the participation rate is the count of T proposals, if the delegate has voted.
+
+    The denominator of the participation rate is the count of C proposals, plus the count of any NC if the delegated has voted. 
+
+    Such that, numerator >= denominator. 
+
+    A logical enhancement from here, would be creating a DataProduct that calculated 
+    this for all delegates at the time of the completion for any proposal.  
+    
+    This would move the calc from the endpoint to the data product step.
     """
 
     def __init__(self, proposals_dp : Proposals, votes_dp : Votes):
         self.proposals = proposals_dp
         self.votes = votes_dp
 
-        self.relevant_proposals = [int(p.create_event['id']) for p in self.proposals.completed(head=10)]
+        self.relevant_and_active_proposals = [(proposal.create_event['id'], counted) for proposal, counted in self.proposals.counted(head=10)]
+        self.tot_considered = -1 * len(self.relevant_and_active_proposals)
     
     def calculate(self, addr):
 
-        num = 0
-        den = 0
-
         historic_proposal_ids = [vote['proposal_id'] for vote in self.votes.voter_history[addr]]
-        recent_proposal_ids = set(historic_proposal_ids[:10])
 
-        for proposal_id in self.relevant_proposals:
-            if proposal_id in recent_proposal_ids:
+        recent_proposal_ids = set(historic_proposal_ids[self.tot_considered:])
+
+        den = 0
+        num = 0
+
+        for proposal_id, counted in self.relevant_and_active_proposals:
+            if counted:
                 den += 1
-            num += 1
-        
-        return den / num
+                if (proposal_id in recent_proposal_ids):
+                    num += 1
+            else:
+                if (proposal_id in recent_proposal_ids):
+                    num += 1
+                    den += 1
+
+        return num / den
