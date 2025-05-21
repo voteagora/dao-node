@@ -748,15 +748,6 @@ async def delegates_handler(app, request):
     if sort_by_vp or sort_by_vpc:
         out = [(addr, str(v)) for addr, v in out]
 
-    # Everything below, replaces that gawdaful combinatorical mess with a single dict(**(k, func(v)),
-    # where func(v) is a lambda that returns the value for key k, but ... this might actually be slower
-    # than writing a million if-statements out, per-row, because we're iterating over transformers
-    # dynamically at runtime, rather than at compile time.  Would love to profile the diff...
-    # but alas, I'm out of time...
-
-    # If this is terribly slow...backup plan is now the idea Carl had, and if both of these
-    # are too slow, then Jeff will write the million if-statements out.
-
     voting_power_func = lambda x, y: str(app.ctx.delegations.delegatee_vp[x])
     from_cnt_func = lambda x, y: app.ctx.delegations.delegatee_cnt[x]
     participation_func = lambda x, y: pm.calculate(x)

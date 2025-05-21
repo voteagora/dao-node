@@ -118,11 +118,14 @@ class ProposalTypes(DataProduct):
 
         return {k : pit_proposal_type[k] for k in ['quorum', 'approval_threshold', 'name']}
 
+def round_to_hour(ts):
+    return ts - (ts % 3600)
+
 def seven_days_ago(ts):
     return ts - (7 * 24 * 60 * 60)
 
 def round_and_seven_days_ago(ts):
-    tmp = ts - (ts % 3600)
+    tmp = round_to_hour(ts)
     return seven_days_ago(tmp)
 
 class Delegations(DataProduct):
@@ -184,7 +187,7 @@ class Delegations(DataProduct):
 
         self.timestamp_to_block[timestamp] = block_number
 
-        rounded_ts = timestamp - (timestamp % 3600)
+        rounded_ts = round_to_hour(timestamp)
         self.rounded_seven_day_ts = seven_days_ago(rounded_ts)
 
         if self.current_rounded_ts != rounded_ts:
