@@ -78,8 +78,26 @@ class CSVClient:
     def get_fallback_block(self, signature):
         return 0
 
-    def fname(self, chain_id, address, signature):
+    def events_fname(self, chain_id, address, signature):
         return self.path / f'{chain_id}/{address}/{signature}.csv'
+
+    def blocks_fname(self, chain_id):
+        return self.path / f'{chain_id}/blocks.csv'
+
+    def read_blocks(self, chain_id, after=0):
+
+        if after != 0:
+            raise Exception("'After' block != 0, is not yet supported.  Instead, CSVs are just expected to only be last 8 days.")
+
+        fname = self.blocks_fname(chain_id)
+
+        with open(fname, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                row['timestamp'] = int(row['timestamp'])
+                row['block_number'] = int(row['block_number'])
+                yield row
+
 
     def read(self, chain_id, address, signature, abis, after=0):
 
@@ -88,7 +106,7 @@ class CSVClient:
         if abi_frag is None:
             raise KeyError(f"Signature `{signature}` Not Found")
 
-        fname = self.fname(chain_id, address, signature)
+        fname = self.events_fname(chain_id, address, signature)
 
         int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
 
@@ -249,6 +267,36 @@ class JsonRpcHistHttpClient:
             
         return all_logs
 
+    def get_paginated_blocks(self, w3, chain_id, start_block, end_block, step):
+
+        for block_num in range(start_block, end_block, step):
+            full_block = w3.eth.get_block(block_num)
+
+            block = {}
+            timestamp = full_block['timestamp']
+            assert isinstance(timestamp, int)
+            block['timestamp'] = timestamp
+
+            block_number = full_block['number']
+            assert isinstance(block_number, int)
+            block['block_number'] = block_number
+
+            yield block
+
+    def read_blocks(self, chain_id, after):
+        
+        w3 = self.connect()
+
+        latest_block = w3.eth.block_number
+
+        chain_id = w3.eth.chain_id
+
+        step = resolve_block_count_span(chain_id) 
+        
+        blocks = self.get_paginated_blocks(w3, chain_id, start_block=after, end_block=latest_block, step=step)
+
+        for block in blocks:
+            yield block
 
     def read(self, chain_id, address, signature, abis, after):
 
@@ -314,6 +362,8 @@ class JsonRpcRTWsClient:
         self.message_task = None
         self._closing = False  # Flag to indicate client is shutting down
         self.response_queues = {}  # Maps request_id -> Queue for responses
+        self.block_headers_queue = asyncio.Queue()  # Queue for block headers
+        self.block_header_sub_id = None  # Subscription ID for block headers
 
     def is_valid(self):
         if self.url in ('', 'ignored', None):
@@ -365,6 +415,10 @@ class JsonRpcRTWsClient:
             # Create new connection
             self.ws = await websockets.connect(self.url, ping_interval=5, ping_timeout=3)
             self.message_task = asyncio.create_task(self._handle_messages())
+            
+            # Subscribe to block headers
+            await self._subscribe_to_block_headers()
+            
             logr.info("New WebSocket connection established and message handler started")
 
     async def _handle_messages(self):
@@ -375,7 +429,6 @@ class JsonRpcRTWsClient:
                     # Get the message without holding the lock
                     raw_message = await self.ws.recv()
                     message = json.loads(raw_message)
-                    
                     # Handle subscription responses
                     if "id" in message:
                         req_id = message["id"]
@@ -387,6 +440,11 @@ class JsonRpcRTWsClient:
                     if message.get("method") == "eth_subscription":
                         sub_id = message["params"]["subscription"]
                         result = message["params"]["result"]
+
+                        # Check if this is a block header subscription
+                        if sub_id == self.block_header_sub_id:
+                            await self.block_headers_queue.put(result)
+                            continue
 
                         # Get subscription info under lock
                         queue = None
@@ -440,6 +498,8 @@ class JsonRpcRTWsClient:
                         if old_subscriptions:
                             for sub_id, (queue, _) in old_subscriptions.items():
                                 await queue.put(None)
+                        # Also notify block header subscribers
+                        await self.block_headers_queue.put(None)
                         return
                     
                 except Exception as e:
@@ -452,6 +512,8 @@ class JsonRpcRTWsClient:
                 for sub_id, (queue, _) in self.subscriptions.items():
                     await queue.put(None)
                 self.subscriptions.clear()
+                # Also notify block header subscribers
+                await self.block_headers_queue.put(None)
             self.message_task = None
 
     async def _resubscribe_all(self):
@@ -509,6 +571,58 @@ class JsonRpcRTWsClient:
                 await queue.put(None)  # Notify reader that subscription failed
         
         logr.info(f"Resubscription complete. Restored {len(self.subscriptions)} of {len(old_subscriptions)} subscriptions")
+
+    async def _subscribe_to_block_headers(self):
+        """Subscribe to new block headers"""
+        subscribe_params = {
+            "jsonrpc": "2.0",
+            "id": self.next_sub_request_id,
+            "method": "eth_subscribe",
+            "params": ["newHeads"]
+        }
+        self.next_sub_request_id += 1
+
+        # Create response queue for this request
+        response_queue = asyncio.Queue()
+        self.response_queues[subscribe_params["id"]] = response_queue
+
+        try:
+            logr.info("Subscribing to block headers")
+            await self.ws.send(json.dumps(subscribe_params))
+
+            # Wait for response with timeout
+            try:
+                response = await asyncio.wait_for(response_queue.get(), timeout=5)
+            except asyncio.TimeoutError:
+                logr.error("Timeout waiting for block header subscription response")
+                raise
+        finally:
+            # Clean up response queue
+            self.response_queues.pop(subscribe_params["id"], None)
+
+        if "result" in response:
+            self.block_header_sub_id = response["result"]
+            logr.info(f"Successfully subscribed to block headers with ID: {self.block_header_sub_id}")
+        else:
+            logr.error(f"Failed to subscribe to block headers: {response}")
+            raise Exception(f"Failed to subscribe to block headers: {response.get('error', 'Unknown error')}")
+
+    async def read_blocks(self, chain_id, after):
+        """Get an async iterator over block headers"""
+        while not self._closing:
+            try:
+                header = await self.block_headers_queue.get()
+                if header is None:
+                    return
+                block_num = int(header['number'], 16)
+                if block_num > after:
+                    event = {'block_number': block_num,
+                            'timestamp': int(header['timestamp'], 16)}        
+                    yield event
+    
+            except Exception as e:
+                logr.exception(f"Error getting block header: {e}")
+                await asyncio.sleep(1)
 
     async def read(self, chain_id, address, signature, abis, after):
         event = abis.get_by_signature(signature)
