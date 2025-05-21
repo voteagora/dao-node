@@ -284,9 +284,6 @@ class Delegations(DataProduct):
                     # Update voting power
                     self.delegatee_vp[old_delegate] -= amount
 
-                    # TODO: Is this redundant? With the line below during handling of 'DELEGATE_VOTES_CHANGE'?
-                    # self.delegatee_vp_history[old_delegate].append((block_number, self.delegatee_vp[old_delegate]))
-
             # Handle new delegations addition
             for new_delegation in new_delegatees:
                 new_delegate = new_delegation[0].lower()
@@ -305,8 +302,6 @@ class Delegations(DataProduct):
                 # Update voting power
                 self.delegatee_vp[new_delegate] += amount
                 
-                # TODO: Is this redundant? With the line below during handling of 'DELEGATE_VOTES_CHANGE'?
-                # self.delegatee_vp_history[new_delegate].append((block_number, self.delegatee_vp[new_delegate]))
 
         elif signature == DELEGATE_VOTES_CHANGE:
 
@@ -331,27 +326,14 @@ class Delegations(DataProduct):
 
             recent_history[block_number] = new_votes
 
-            """
-
-            # Pruning not supported yet... (it's buggy somehow...)
-
             if len(recent_history) > 1:
-                print(self.seven_day_ts)
-                k = recent_history.bisect_left(self.seven_day_ts)
-                pruned_recent_history = SortedDict((key, recent_history[key]) for key in recent_history.irange(minimum=k))
+                pos = recent_history.bisect_right(self.seven_day_block_number)
+                pos = max(pos - 1, 0)
+                prune_block = recent_history.keys()[pos]
 
-                if len(recent_history) != len(pruned_recent_history):
-                    print("BEFORE PRUNING:")
-                    print(recent_history)
-                    print(k)
-                    print("AFTER PRUNING:")
-                    print(pruned_recent_history)
-
-                self.delegatee_vp_recent_history[delegatee] = pruned_recent_history
-            else:
-                self.delegatee_vp_recent_history[delegatee] = recent_history
-            """
-
+                if pos != 0:
+                    recent_history = SortedDict((key, recent_history[key]) for key in recent_history.irange(minimum=prune_block))
+    
             self.delegatee_vp_recent_history[delegatee] = recent_history
 
     def get_seven_day_vp(self, delegatee):
@@ -363,16 +345,10 @@ class Delegations(DataProduct):
 
         recent_history = self.delegatee_vp_recent_history[delegatee]
 
-        # print(f"{recent_history=}")
-
-        # print(f"self.seven_day_block_number={self.seven_day_block_number}")
-
         if len(recent_history) == 0:
             return 0
 
         k = recent_history.bisect_left(self.seven_day_block_number) - 1
-
-        # print(f"{k=}, len(recent_history)={len(recent_history)}, tip_key={recent_history.keys()[-1]}, self.seven_day_ts={self.seven_day_ts}")
 
         vp = recent_history[recent_history.keys()[k]]
 
@@ -385,10 +361,6 @@ class Delegations(DataProduct):
         cur_vp = self.delegatee_vp[delegatee]
         old_vp = self.get_seven_day_vp(delegatee)
         delta = cur_vp - old_vp
-
-        # print(f"{cur_vp=}")
-        # print(f"{old_vp=}")
-        # print(f"{delta=}")
 
         return delta 
         
