@@ -692,8 +692,6 @@ async def delegates_handler(app, request):
     sort_by_old = sort_by == 'OLD' # Oldest Delegation
     sort_by_vpc = sort_by == 'VPC' # 7-day Voting Power Change
 
-    if sort_by_pr or add_participation_rate:
-        pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
 
     offset = int(request.args.get("offset", DEFAULT_OFFSET))
     page_size = int(request.args.get("page_size", DEFAULT_PAGE_SIZE))
@@ -701,6 +699,17 @@ async def delegates_handler(app, request):
     reverse = request.args.get("reverse", "true").lower() == "true"
 
     include = request.args.get("include", 'DC,PR').split(",")
+
+    add_delegator_count = 'DC' in include or sort_by_dc
+    add_participation_rate = 'PR' in include or sort_by_pr
+    add_voting_power = 'VP' in include or sort_by_vp
+    add_last_vote_block = 'LVB' in include or sort_by_lvb
+    add_most_recent_delegation = 'MRD' in include or sort_by_mrd
+    add_oldest_delegation = 'OLD' in include or sort_by_old
+    add_seven_day_vp_change = 'VPC' in include or sort_by_vpc
+
+    if sort_by_pr or add_participation_rate:
+        pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
 
     # Get the initial list based on sort criteria
     if sort_by_vp:
@@ -738,14 +747,6 @@ async def delegates_handler(app, request):
     # Cast big numbers to str, only after sorting and cropping...
     if sort_by_vp or sort_by_vpc:
         out = [(addr, str(v)) for addr, v in out]
-
-    add_delegator_count = 'DC' in include or sort_by_dc
-    add_participation_rate = 'PR' in include or sort_by_pr
-    add_voting_power = 'VP' in include or sort_by_vp
-    add_last_vote_block = 'LVB' in include or sort_by_lvb
-    add_most_recent_delegation = 'MRD' in include or sort_by_mrd
-    add_oldest_delegation = 'OLD' in include or sort_by_old
-    add_seven_day_vp_change = 'VPC' in include or sort_by_vpc
 
     # Everything below, replaces that gawdaful combinatorical mess with a single dict(**(k, func(v)),
     # where func(v) is a lambda that returns the value for key k, but ... this might actually be slower
