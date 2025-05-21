@@ -3,6 +3,8 @@ from app.data_products import Balances, Delegations, Proposals, Votes, ProposalT
 from app.clients import CSVClient
 import csv
 import os
+import heapq
+import time
 from collections import Counter
 from abifsm import ABI, ABISet
 from app.signatures import *
@@ -333,3 +335,48 @@ def test_ProposalTypes_proposal_type_set_with_one_scope_created(pguild_ptc_abi):
     assert pt.proposal_types[2]['approval_threshold'] == 5100
 
     assert pt.proposal_types[1]['scopes'][0]['description'] == 'Distribute splits contract'
+
+def test_DelegateVotesChanged_7day_growth_rate():
+
+    d = Delegations()
+    
+    def read_sorted_dvc():
+        with open('tests/data/5500-10Koptimism-dvc-w-blocks/10/0x4200000000000000000000000000000000000042/DelegateVotesChanged(address,uint256,uint256).csv', 'r') as f:
+            for row in csv.DictReader(f):
+                row['signature'] = 'DelegateVotesChanged(address,uint256,uint256)'
+                yield int(row['block_number']), row
+
+    def read_sorted_blocks():
+        with open('tests/data/5500-10Koptimism-dvc-w-blocks/10/blocks.csv', 'r') as f:
+            for row in csv.DictReader(f):
+                row['timestamp'] = int(row['timestamp'])
+                row['block_number'] = int(row['block_number'])
+                yield row['block_number'], row
+
+    merged = heapq.merge(
+        ((block_number, 'votes', row) for block_number, row in read_sorted_dvc()),
+        ((block_number, 'block', row) for block_number, row in read_sorted_blocks()),
+        key=lambda x: x[0]
+    )
+
+
+    start = time.perf_counter()
+
+    for block_number, source, row in merged:
+        
+        # print(source)
+
+        if source == 'votes':
+            d.handle(row)
+        elif source == 'block':
+            d.handle_block(row)
+
+    for delegatee in d.delegatee_vp:
+        print(f"{delegatee}: {d.delegate_seven_day_vp_change(delegatee)}")
+
+    
+    end = time.perf_counter()
+    print(f"Time: {end - start}")
+
+
+

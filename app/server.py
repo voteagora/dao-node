@@ -628,7 +628,7 @@ Total = O(n) + O(page_size) + O(n * log(n)) + O(page_size) + Opr = O(n) + O(n * 
 
 ## Test Coverage
 
-❌ - Bad, none exists.
+- 🟡 - Some unit tests for the underlying data model.
 
 """)
 @openapi.parameter(
@@ -653,7 +653,7 @@ Total = O(n) + O(page_size) + O(n * log(n)) + O(page_size) + Opr = O(n) + O(n * 
     location="query", 
     required=False, 
     default='VP',
-    description="Sort by either voting-power ('VP'), delegator-count ('DC'), most-recent-delegation ('MRD'), or oldest-delegation ('OLD') or last-vote-block ('LVB')."
+    description="Sort by either voting-power ('VP'), delegator-count ('DC'), most-recent-delegation ('MRD'), oldest-delegation ('OLD'), last-vote-block ('LVB') or 7-day-voting-power-change ('VPC')."
 )
 @openapi.parameter(
     "reverse", 
@@ -669,7 +669,7 @@ Total = O(n) + O(page_size) + O(n * log(n)) + O(page_size) + Opr = O(n) + O(n * 
     location="query", 
     required=False, 
     default='DC,PR',
-    description="Comma seperated list of other dimensions to include, beyond the sort-by criteria. Use 'VP', 'DC', 'PR', 'MRD', 'OLD',and 'LVB' for voting power, delegator count, participation rate, most recent block, oldest block, and last vote block respectively."
+    description="Comma separated list of other dimensions to include, beyond the sort-by criteria. Use 'VP' for voting power, 'DC' for delegator count, 'PR' for participation rate, and 'VPC' for 7-day voting power change."
 )
 @measure
 async def delegates(request):
@@ -678,46 +678,43 @@ async def delegates(request):
 async def delegates_handler(app, request):
 
     sort_by = request.args.get("sort_by", 'VP')
-    sort_by_vp = sort_by == 'VP'
-    sort_by_dc = sort_by == 'DC'
-    sort_by_lvb = sort_by == 'LVB'
-    sort_by_mrd = sort_by == 'MRD'
-    sort_by_old = sort_by == 'OLD'
+    print(sort_by)
+    
+    sort_by_vp  = sort_by == 'VP'  # Voting Power
+    sort_by_dc  = sort_by == 'DC'  # Delegator Count
+    sort_by_pr  = False            # Partipcipation Rate ( Not supported yet) 
+    sort_by_lvb = sort_by == 'LVB' # Last Vote Block
+    sort_by_mrd = sort_by == 'MRD' # Most Recent Delegation
+    sort_by_old = sort_by == 'OLD' # Oldest Delegation
+    sort_by_vpc = sort_by == 'VPC' # 7-day Voting Power Change
+
     offset = int(request.args.get("offset", DEFAULT_OFFSET))
     page_size = int(request.args.get("page_size", DEFAULT_PAGE_SIZE))
+
     reverse = request.args.get("reverse", "true").lower() == "true"
+
     include = request.args.get("include", 'DC,PR').split(",")
 
     # Get the initial list based on sort criteria
     if sort_by_vp:
         out = list(app.ctx.delegations.delegatee_vp.items())
     elif sort_by_mrd:
-        out = [(addr, event['block_number']) 
+        out = [(addr, int(event['block_number'])) 
                for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
     elif sort_by_old:
-        out = [(addr, event['block_number']) 
+        out = [(addr, int(event['block_number'])) 
                for addr, event in app.ctx.delegations.delegatee_oldest_event.items()]
     elif sort_by_dc:
         out = list(app.ctx.delegations.delegatee_cnt.items())
     elif sort_by_lvb:
-        out = [(addr, app.ctx.votes.latest_vote_block.get(addr, 0))
+        out = [(addr, int(app.ctx.votes.latest_vote_block.get(addr, 0)))
                for addr in app.ctx.delegations.delegatee_vp.keys()]
-        out.sort(key=lambda x: x[1], reverse=reverse)
+        out  = [obj for obj in out if obj[1] > 0] # TODO This should not be necessary. The data model should prune zeros.
+    elif sort_by_vpc:
+        out = [(addr, app.ctx.delegations.delegate_seven_day_vp_change(addr))
+               for addr in app.ctx.delegations.delegatee_vp.keys()]
     else:
-        # Default to VP if sort_by is not recognized
-        out = list(app.ctx.delegations.delegatee_vp.items())
-
-    # TODO This should not be necessary. The data model should prune zeros.
-    logr.info(f"Number of records: {len(out)}")
-    if sort_by_lvb:
-        out = [obj for obj in out if app.ctx.delegations.delegatee_vp.get(obj[0], 0) > 0]
-    elif sort_by_mrd or sort_by_old:
-        # Convert strings to integers for filtering
-        out = [obj for obj in out if int(obj[1]) > 0]
-        
-        out = [(obj[0], int(obj[1])) for obj in out]
-    else:
-        out = [obj for obj in out if obj[1] > 0]
+        raise Exception(f"Sort by '{sort_by}' not implemented.")
 
     out.sort(key=lambda x: x[1], reverse=reverse)    
 
@@ -728,198 +725,59 @@ async def delegates_handler(app, request):
         if len(out) > page_size:
             out = out[:page_size]
 
-    add_delegator_count = 'DC' in include
-    add_participation_rate = 'PR' in include
-    add_voting_power = 'VP' in include
-    add_last_vote_block = 'LVB' in include
-    add_most_recent_delegation = 'MRD' in include
-    add_oldest_delegation = 'OLD' in include
+    # Cast big numbers to str, only after sorting and cropping...
+    if sort_by_vp or sort_by_vpc:
+        out = [(addr, str(v)) for addr, v in out]
+
+    add_delegator_count = 'DC' in include or sort_by_dc
+    add_participation_rate = 'PR' in include or sort_by_pr
+    add_voting_power = 'VP' in include or sort_by_vp
+    add_last_vote_block = 'LVB' in include or sort_by_lvb
+    add_most_recent_delegation = 'MRD' in include or sort_by_mrd
+    add_oldest_delegation = 'OLD' in include or sort_by_old
+    add_seven_day_vp_change = 'VPC' in include or sort_by_vpc
 
     if add_participation_rate:
         pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
 
-    # Create response objects with requested fields
-    if sort_by_vp:
-        if add_delegator_count and add_participation_rate and add_last_vote_block:
-            out = [{'addr': obj[0], 'voting_power': str(obj[1]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0]), 
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_delegator_count and add_participation_rate:
-            out = [{'addr': obj[0], 'voting_power': str(obj[1]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_delegator_count:
-            out = [{'addr': obj[0], 'voting_power': str(obj[1]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
-        else:
-            out = [{'addr': obj[0], 'voting_power': str(obj[1])} for obj in out]
-    elif sort_by_mrd:
-        if add_voting_power and add_delegator_count and add_participation_rate and add_last_vote_block:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0]),
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_voting_power and add_delegator_count and add_participation_rate:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_voting_power and add_delegator_count and add_last_vote_block:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]],
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_voting_power and add_participation_rate and add_last_vote_block:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'participation': pm.calculate(obj[0]),
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_delegator_count and add_participation_rate and add_last_vote_block:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0]),
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_voting_power and add_delegator_count:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
-        elif add_voting_power and add_participation_rate:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_voting_power and add_last_vote_block:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]),
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_delegator_count and add_participation_rate:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_delegator_count and add_last_vote_block:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]],
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_participation_rate and add_last_vote_block:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'participation': pm.calculate(obj[0]),
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_voting_power:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]])} for obj in out]
-        elif add_delegator_count:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
-        elif add_participation_rate:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_last_vote_block:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1], 
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        else:
-            out = [{'addr': obj[0], 'most_recent_block': obj[1]} for obj in out]
-    elif sort_by_old:
-        if add_voting_power and add_delegator_count and add_participation_rate:
-            out = [{'addr': obj[0], 'oldest_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_voting_power and add_delegator_count:
-            out = [{'addr': obj[0], 'oldest_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
-        elif add_voting_power and add_participation_rate:
-            out = [{'addr': obj[0], 'oldest_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_delegator_count and add_participation_rate:
-            out = [{'addr': obj[0], 'oldest_block': obj[1], 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_voting_power:
-            out = [{'addr': obj[0], 'oldest_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]])} for obj in out]
-        elif add_delegator_count:
-            out = [{'addr': obj[0], 'oldest_block': obj[1], 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]]} for obj in out]
-        elif add_participation_rate:
-            out = [{'addr': obj[0], 'oldest_block': obj[1], 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        else:
-            out = [{'addr': obj[0], 'oldest_block': obj[1]} for obj in out]
-    elif sort_by_dc:
-        if add_voting_power and add_participation_rate and add_last_vote_block:
-            out = [{'addr': obj[0], 'from_cnt': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'participation': pm.calculate(obj[0]), 
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_voting_power and add_participation_rate:
-            out = [{'addr': obj[0], 'from_cnt': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_voting_power and add_last_vote_block:
-            out = [{'addr': obj[0], 'from_cnt': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]),
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_participation_rate and add_last_vote_block:
-            out = [{'addr': obj[0], 'from_cnt': obj[1], 
-                   'participation': pm.calculate(obj[0]),
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        elif add_voting_power:
-            out = [{'addr': obj[0], 'from_cnt': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]])} for obj in out]
-        elif add_participation_rate:
-            out = [{'addr': obj[0], 'from_cnt': obj[1], 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_last_vote_block:
-            out = [{'addr': obj[0], 'from_cnt': obj[1], 
-                   'last_vote_block': app.ctx.votes.latest_vote_block.get(obj[0], 0)} for obj in out]
-        else:
-            out = [{'addr': obj[0], 'from_cnt': obj[1]} for obj in out]
-    elif sort_by_lvb:
-        if add_voting_power and add_delegator_count and add_participation_rate and add_most_recent_delegation:
-            out = [{'addr': obj[0], 'last_vote_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0]),
-                   'most_recent_block': app.ctx.delegations.delegatee_latest_event[obj[0]]['block_number'] if obj[0] in app.ctx.delegations.delegatee_latest_event else None} for obj in out]
-        elif add_voting_power and add_delegator_count and add_participation_rate:
-            out = [{'addr': obj[0], 'last_vote_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]], 
-                   'participation': pm.calculate(obj[0])} for obj in out]
-        elif add_voting_power and add_delegator_count and add_most_recent_delegation:
-            out = [{'addr': obj[0], 'last_vote_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]), 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]],
-                   'most_recent_block': app.ctx.delegations.delegatee_latest_event[obj[0]]['block_number'] if obj[0] in app.ctx.delegations.delegatee_latest_event else None} for obj in out]
-        elif add_voting_power and add_participation_rate and add_most_recent_delegation:
-            out = [{'addr': obj[0], 'last_vote_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]),
-                   'participation': pm.calculate(obj[0]),
-                   'most_recent_block': app.ctx.delegations.delegatee_latest_event[obj[0]]['block_number'] if obj[0] in app.ctx.delegations.delegatee_latest_event else None} for obj in out]
-        elif add_delegator_count and add_participation_rate and add_most_recent_delegation:
-            out = [{'addr': obj[0], 'last_vote_block': obj[1], 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]],
-                   'participation': pm.calculate(obj[0]),
-                   'most_recent_block': app.ctx.delegations.delegatee_latest_event[obj[0]]['block_number'] if obj[0] in app.ctx.delegations.delegatee_latest_event else None} for obj in out]
-        elif add_voting_power and add_most_recent_delegation:
-            out = [{'addr': obj[0], 'last_vote_block': obj[1], 
-                   'voting_power': str(app.ctx.delegations.delegatee_vp[obj[0]]),
-                   'most_recent_block': app.ctx.delegations.delegatee_latest_event[obj[0]]['block_number'] if obj[0] in app.ctx.delegations.delegatee_latest_event else None} for obj in out]
-        elif add_delegator_count and add_most_recent_delegation:
-            out = [{'addr': obj[0], 'last_vote_block': obj[1], 
-                   'from_cnt': app.ctx.delegations.delegatee_cnt[obj[0]],
-                   'most_recent_block': app.ctx.delegations.delegatee_latest_event[obj[0]]['block_number'] if obj[0] in app.ctx.delegations.delegatee_latest_event else None} for obj in out]
-        elif add_participation_rate and add_most_recent_delegation:
-            out = [{'addr': obj[0], 'last_vote_block': obj[1], 
-                   'participation': pm.calculate(obj[0]),
-                   'most_recent_block': app.ctx.delegations.delegatee_latest_event[obj[0]]['block_number'] if obj[0] in app.ctx.delegations.delegatee_latest_event else None} for obj in out]
-        elif add_most_recent_delegation:
-            out = [{'addr': obj[0], 'last_vote_block': obj[1],
-                   'most_recent_block': app.ctx.delegations.delegatee_latest_event[obj[0]]['block_number'] if obj[0] in app.ctx.delegations.delegatee_latest_event else None} for obj in out]
+    # Everything below, replaces that gawdaful combinatorical mess with a single dict(**(k, func(v)),
+    # where func(v) is a lambda that returns the value for key k, but ... this might actually be slower
+    # than writing a million if-statements out, per-row, because we're iterating over transformers
+    # dynamically at runtime, rather than at compile time.  Would love to profile the diff...
+    # but alas, I'm out of time...
 
+    # If this is terribly slow...backup plan is now the idea Carl had, and if both of these
+    # are too slow, then Jeff will write the million if-statements out.
+
+    voting_power_func = lambda x, y: str(app.ctx.delegations.delegatee_vp[x])
+    from_cnt_func = lambda x, y: app.ctx.delegations.delegatee_cnt[x]
+    participation_func = lambda x, y: pm.calculate(x)
+    last_vote_block_func = lambda x, y: app.ctx.votes.latest_vote_block.get(x, 0)
+    most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event[x]['block_number']
+    oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event[x]['block_number']
+    seven_day_vp_change_func = lambda x, y: str(app.ctx.delegations.delegate_seven_day_vp_change(x))
+
+    use_sort_key = lambda x, y: y
+    addr_func = lambda x, y: x
+    
+    transformers = [('addr', addr_func)]
+
+    if add_voting_power:
+        transformers.append(('VP',  use_sort_key if sort_by_vp else voting_power_func))
+    if add_delegator_count:
+        transformers.append(('DC',  use_sort_key if sort_by_dc else from_cnt_func))
+    if add_participation_rate:
+        transformers.append(('PR',  participation_func))
+    if add_last_vote_block:
+        transformers.append(('LVB', use_sort_key if sort_by_lvb else last_vote_block_func))
+    if add_most_recent_delegation:
+        transformers.append(('MRD', use_sort_key if sort_by_mrd else most_recent_delegation_func))
+    if add_oldest_delegation:
+        transformers.append(('OLD', use_sort_key if sort_by_old else oldest_delegation_func))
+    if add_seven_day_vp_change:
+        transformers.append(('VPC', use_sort_key if sort_by_vpc else seven_day_vp_change_func))
+
+    out = [dict([(k, func(addr, sort_val)) for k, func in transformers]) for addr, sort_val in out]
 
     return json({'delegates': out})
 
@@ -1162,15 +1020,15 @@ async def bootstrap_event_feeds(app, loop):
     #       This has been automatically handled, by picking up metadata from
     #       the data product registration step.  
 
+    cf = BlockFeed(chain_id, dcqs)
+    app.ctx.add_feed(cf)
+    app.add_task(cf.boot(app))
+
     for address, signatures in app.ctx.feed_meta.items():
         for signature in signatures:
             ef = EventFeed(chain_id, address, signature, abis, dcqs)
             app.ctx.add_feed(ef)
             app.add_task(ef.boot(app))
-    
-    cf = BlockFeed(chain_id, dcqs)
-    app.ctx.add_feed(cf)
-    app.add_task(cf.boot(app))
 
 @app.after_server_start
 async def subscribe_feeds(app):
