@@ -800,11 +800,15 @@ async def delegate_handler(app, request, addr):
 
         from_list_with_info.append(row)
 
+        pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
+        participation_rate = pm.calculate(addr)
+
     return json({'delegate' : 
                 {'addr' : addr,
                 'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
                 'from_list' : from_list_with_info,
-                'voting_power' : str(app.ctx.delegations.delegatee_vp[addr])}})
+                'voting_power' : str(app.ctx.delegations.delegatee_vp[addr]),
+                'participation_rate' : participation_rate}})
 
 @app.route('/v1/delegate/<addr>')
 @openapi.tag("Delegation State")
