@@ -244,9 +244,11 @@ class JsonRpcHistHttpClient:
             logr.debug(f"Looping block {from_block=}, {to_block=}")
 
             # Fetch the logs for the current block range
-            logs = self.get_logs_by_block_range(w3, contract_address, event_signature_hash, from_block, to_block)
-
-            print(f"Logs infunc {logs}")
+            try:
+                logs = self.get_logs_by_block_range(w3, contract_address, event_signature_hash, from_block, to_block)
+            except Exception as e:
+                print(f"Failed to get logs {e}")
+                raise e
 
             EVENT_NAME = abi['name']            
             contract_events = w3.eth.contract(abi=[abi]).events
@@ -261,7 +263,7 @@ class JsonRpcHistHttpClient:
             
         return all_logs
 
-    def get_logs_by_block_range(self, w3, contract_address, event_signature_hash, from_block, to_block):
+    def get_logs_by_block_range(self, w3, contract_address, event_signature_hash, from_block, to_block, current_recursion_depth = 0, max_recursion_depth=10):
         # Set filter parameters for each range
         event_filter = {
             "fromBlock": from_block,
@@ -277,9 +279,39 @@ class JsonRpcHistHttpClient:
             if hasattr(e, 'response'):
                 response_json = json.loads(e.response.text)
                 api_error_code = response_json.get("error", {}).get("code")
-                if api_error_code == 32600 or api_error_code == 32602:
-                    print("Caught!")
-            # add one to recursion depth
+                if api_error_code == -32600 or api_error_code == -32602:
+                    # add one to recursion depth
+                    new_recursion_depth = current_recursion_depth + 1
+                    # split block range in half
+                    mid = (from_block + to_block) // 2
+                    # Get results from both recursive calls
+                    first_half = self.get_logs_by_block_range(
+                        w3=w3,
+                        from_block=from_block,
+                        to_block=mid - 1,
+                        contract_address=contract_address,
+                        event_signature_hash=event_signature_hash,
+                        current_recursion_depth=new_recursion_depth,
+                        max_recursion_depth=max_recursion_depth
+                    )
+
+                    second_half = self.get_logs_by_block_range(
+                        w3=w3,
+                        from_block=mid,
+                        to_block=to_block,
+                        contract_address=contract_address,
+                        event_signature_hash=event_signature_hash,
+                        current_recursion_depth=new_recursion_depth,
+                        max_recursion_depth=max_recursion_depth
+                    )
+
+                    # Combine results, handling potential None values
+                    logs = []
+                    if first_half is not None:
+                        logs.extend(first_half)
+                    if second_half is not None:
+                        logs.extend(second_half)
+                    return logs
             # Fallback to raising the exception
             raise e
         return logs
