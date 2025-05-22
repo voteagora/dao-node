@@ -243,16 +243,10 @@ class JsonRpcHistHttpClient:
 
             logr.debug(f"Looping block {from_block=}, {to_block=}")
 
-            # Set filter parameters for each range
-            event_filter = {
-                "fromBlock": from_block,
-                "toBlock": to_block,
-                "address": contract_address,
-                "topics": [event_signature_hash]
-            }
-
             # Fetch the logs for the current block range
-            logs = w3.eth.get_logs(event_filter)
+            logs = self.get_logs_by_block_range(w3, contract_address, event_signature_hash, from_block, to_block)
+
+            print(f"Logs infunc {logs}")
 
             EVENT_NAME = abi['name']            
             contract_events = w3.eth.contract(abi=[abi]).events
@@ -266,6 +260,29 @@ class JsonRpcHistHttpClient:
                 break
             
         return all_logs
+
+    def get_logs_by_block_range(self, w3, contract_address, event_signature_hash, from_block, to_block):
+        # Set filter parameters for each range
+        event_filter = {
+            "fromBlock": from_block,
+            "toBlock": to_block,
+            "address": contract_address,
+            "topics": [event_signature_hash]
+        }
+
+        try:
+            logs = w3.eth.get_logs(event_filter)
+        except Exception as e:
+            # catch and attempt to recover block limitation ranges
+            if hasattr(e, 'response'):
+                response_json = json.loads(e.response.text)
+                api_error_code = response_json.get("error", {}).get("code")
+                if api_error_code == 32600 or api_error_code == 32602:
+                    print("Caught!")
+            # add one to recursion depth
+            # Fallback to raising the exception
+            raise e
+        return logs
 
     def get_paginated_blocks(self, w3, chain_id, start_block, end_block, step):
 
