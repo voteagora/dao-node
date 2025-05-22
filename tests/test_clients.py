@@ -2,6 +2,8 @@ import os
 import json
 
 import pytest
+from _pytest.outcomes import Exit
+
 from app.utils import camel_to_snake
 from app.signatures import DELEGATE_VOTES_CHANGE, DELEGATE_CHANGED_1
 from eth_abi.abi import decode as decode_abi
@@ -60,3 +62,82 @@ def test_get_paginated_logs():
 
 def test_get_paginated_logs_block_range_over_2000():
     pass
+
+mock_logs = [{x: f"Test Log {x}" for x in range(100)}]
+
+def mock_get_logs(event_filter):
+    start = event_filter.get('fromBlock')
+    end = event_filter.get('toBlock')
+
+    if end - start > 20:
+        raise Exception(
+            "web3.exceptions.Web3RPCError: {'code': -32602, 'message': 'Log response size exceeded. You can make eth_getLogs requests with up to a 2K block range and no limit on the response size, or you can request any block range with a cap of 10K logs in the response. Based on your parameters and the response size limit, this block range should work: [0x81c5fbc, 0x81c6902]'}")
+
+    return [log for x, log in enumerate(mock_logs) if start <= x <= end]
+
+def poc(from_block, to_block, contract_address, event_signature_hash, current_recursion_depth, max_recursion_depth=10):
+    if current_recursion_depth > max_recursion_depth:
+        raise Exception(f"Maximum recursion depth {max_recursion_depth} exceeded. This can be adjusted in the function parameter.")
+
+    event_filter = {
+        "fromBlock": from_block,
+        "toBlock": to_block,
+        "address": contract_address,
+        "topics": [event_signature_hash]
+    }
+    try:
+        logs = mock_get_logs(event_filter)
+        return logs
+    except Exception as e:
+        error_msg = str(e)
+        if "Log response size exceeded" in error_msg:
+            print("Recursively calling poc with a smaller block range.")
+
+            # add one to recursion depth
+            current_recursion_depth += 1
+
+            # split block range in half
+            mid = (from_block + to_block) // 2
+
+            print(f"poc1: from {from_block} - {mid-1}\npoc2: from {mid} - {to_block}")
+            # Get results from both recursive calls
+            first_half = poc(
+                from_block=from_block,
+                to_block=mid - 1,
+                contract_address=contract_address,
+                event_signature_hash=event_signature_hash,
+                current_recursion_depth=current_recursion_depth,
+                max_recursion_depth=max_recursion_depth
+            )
+
+            second_half = poc(
+                from_block=mid,
+                to_block=to_block,
+                contract_address=contract_address,
+                event_signature_hash=event_signature_hash,
+                current_recursion_depth=current_recursion_depth,
+                max_recursion_depth=max_recursion_depth
+            )
+
+            # Combine results, handling potential None values
+            result = []
+            if first_half is not None:
+                result.extend(first_half)
+            if second_half is not None:
+                result.extend(second_half)
+            return result
+
+        else:
+                raise e
+
+
+def test_poc():
+    logs = poc(
+        from_block=0,
+        to_block=100,
+        contract_address="0x27b0031c64f4231f0aff28e668553d73f48125f3",
+        event_signature_hash="0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f",
+        current_recursion_depth=0,
+        max_recursion_depth=10
+    )
+    print(logs)
