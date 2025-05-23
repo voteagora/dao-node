@@ -87,7 +87,7 @@ optimism_package = {
     "event_signature": "VoteCast(address,uint256,uint8,uint256,string)",
 }
 
-@pytest.mark.skip(reason="This test is runs an API Call")
+# @pytest.mark.skip(reason="This test is runs an API Call")
 @pytest.mark.parametrize("test_package", [optimism_package])
 def test_get_paginated_logs(test_package):
     print("\n")
@@ -119,7 +119,7 @@ def test_get_paginated_logs(test_package):
         proposal_id = log['args']['proposalId']
         assert proposal_id== 105196850607896626370893604768027381433548036180811365072963268567142002370039
 
-@pytest.mark.skip(reason="This test is runs an API Call")
+# @pytest.mark.skip(reason="This test is runs an API Call")
 @pytest.mark.parametrize("test_package", [optimism_package])
 def test_get_paginated_logs_block_range_over_2000(test_package):
     print("\n")
@@ -127,9 +127,6 @@ def test_get_paginated_logs_block_range_over_2000(test_package):
 
     # Use correct Transfer event signature
     hash_of_event_sig = '0x' + keccak(test_package['event_signature'].encode()).hex()
-
-    # Test connection first
-    w3 = jrhhc.connect()
 
     # Define block range for Optimism token events
     start_block = 135252530
@@ -150,5 +147,5 @@ def test_get_paginated_logs_block_range_over_2000(test_package):
     )
 
     print(f"Found {len(logs)} CastVote events")
-
+    assert len(logs) == 87
 
