@@ -552,10 +552,17 @@ def decode_create_event(event) -> Proposal:
             obj = obj.replace('"', '')
             obj = obj[1:-1]
             obj = obj.split(',')
-        if isinstance(obj, bytes):
+        elif isinstance(obj, bytes):
             obj = [obj.hex()]
-        if isinstance(obj, (list, tuple)):
-            obj = [o.hex() for o in obj]
+        elif isinstance(obj, (list, tuple)):
+            out = []
+            for o in obj:
+                try:
+                    o = o.hex()
+                except:
+                    assert isinstance(o, str)
+                out.append(o)
+            obj = out
         logr.info(f"calldata -> {obj}")
         event['calldatas'] = obj
 
