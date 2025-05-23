@@ -1,3 +1,4 @@
+import logging
 from warnings import warn
 from pathlib import Path
 import csv
@@ -229,7 +230,7 @@ class JsonRpcHistHttpClient:
             logr.info(f"No block older than {days_back} days found.")
             return 0
 
-    def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi):
+    def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi, max_recursion_depth=10):
 
         all_logs = []
 
@@ -245,9 +246,9 @@ class JsonRpcHistHttpClient:
 
             # Fetch the logs for the current block range
             try:
-                logs = self.get_logs_by_block_range(w3, contract_address, event_signature_hash, from_block, to_block)
+                logs = self.get_logs_by_block_range(w3, contract_address, event_signature_hash, from_block, to_block, max_recursion_depth=max_recursion_depth)
             except Exception as e:
-                print(f"Failed to get logs {e}")
+                logging.error(f"Failed to get logs {e}")
                 raise e
 
             EVENT_NAME = abi['name']            
