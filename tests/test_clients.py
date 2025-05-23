@@ -87,13 +87,15 @@ optimism_package = {
     "event_signature": "VoteCast(address,uint256,uint8,uint256,string)",
 }
 
-def test_get_paginated_logs():
+@pytest.mark.skip(reason="This test is runs an API Call")
+@pytest.mark.parametrize("test_package", [optimism_package])
+def test_get_paginated_logs(test_package):
     print("\n")
 
     jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
 
     # Use the correct Transfer event signature
-    hash_of_event_sig = '0x' + keccak(optimism_package['event_signature'].encode()).hex()
+    hash_of_event_sig = '0x' + keccak(test_package['event_signature'].encode()).hex()
 
     # Define block range for Optimism token events
     start_block = 135262515
@@ -104,12 +106,12 @@ def test_get_paginated_logs():
     # Query transfer logs from Optimism token contract
     logs = jrhhc.get_paginated_logs(
         jrhhc.connect(),
-        optimism_package['gov_contract_address'],
+        test_package['gov_contract_address'],
         hash_of_event_sig,
         start_block,
         end_block,
         block_count_span,
-        optimism_package['vote_cast_abi'],
+        test_package['vote_cast_abi'],
     )
 
     print(f"Found {len(logs)} CastVote events")
@@ -117,12 +119,14 @@ def test_get_paginated_logs():
         proposal_id = log['args']['proposalId']
         assert proposal_id== 105196850607896626370893604768027381433548036180811365072963268567142002370039
 
-def test_get_paginated_logs_block_range_over_2000():
+@pytest.mark.skip(reason="This test is runs an API Call")
+@pytest.mark.parametrize("test_package", [optimism_package])
+def test_get_paginated_logs_block_range_over_2000(test_package):
     print("\n")
     jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
 
     # Use correct Transfer event signature
-    hash_of_event_sig = '0x' + keccak(optimism_package['event_signature'].encode()).hex()
+    hash_of_event_sig = '0x' + keccak(test_package['event_signature'].encode()).hex()
 
     # Test connection first
     w3 = jrhhc.connect()
@@ -137,12 +141,12 @@ def test_get_paginated_logs_block_range_over_2000():
     # Query transfer logs from Optimism token contract
     logs = jrhhc.get_paginated_logs(
         jrhhc.connect(),
-        optimism_package['gov_contract_address'],
+        test_package['gov_contract_address'],
         hash_of_event_sig,
         start_block,
         end_block,
         block_count_span,
-        optimism_package['vote_cast_abi'],
+        test_package['vote_cast_abi'],
     )
 
     print(f"Found {len(logs)} CastVote events")
