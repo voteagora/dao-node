@@ -214,6 +214,7 @@ def test_get_paginated_logs(test_package):
 
     print(f"Found {len(logs)} CastVote events")
     for log in logs:
+        # Should return the same proposal
         proposal_id = log['args']['proposalId']
         assert proposal_id== 105196850607896626370893604768027381433548036180811365072963268567142002370039
 
@@ -246,4 +247,58 @@ def test_get_paginated_logs_block_range_over_2000(test_package):
 
     print(f"Found {len(logs)} CastVote events")
     assert len(logs) == 87
+
+# @pytest.mark.skip(reason="This test is runs an API Call")
+@pytest.mark.parametrize("test_package", [optimism_package])
+def test_get_paginated_logs_are_in_chronological_order(test_package):
+    print("\n")
+    jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
+
+    # Use correct Transfer event signature
+    hash_of_event_sig = '0x' + keccak(test_package['event_signature'].encode()).hex()
+
+    # Define block range for Optimism token events
+    start_block = 135252530
+    end_block = 135262530
+
+
+    block_count_span = resolve_block_count_span(10)
+
+    # Query transfer logs from Optimism token contract
+    logs = jrhhc.get_paginated_logs(
+        jrhhc.connect(),
+        test_package['gov_contract_address'],
+        hash_of_event_sig,
+        start_block,
+        end_block,
+        block_count_span,
+        test_package['vote_cast_abi'],
+    )
+
+    curr_high_bn = start_block
+    curr_high_tran_idx = 0
+    curr_high_log_idx = 0
+    for log in logs:
+        current_block_number = log['blockNumber']
+        # blockNumber should always be ascending
+        assert current_block_number >= curr_high_bn
+        if current_block_number == curr_high_bn:
+            current_tran_idx = log['transactionIndex']
+            # If the same blockNumber, transactionIndex should be ascending
+            assert current_tran_idx >= curr_high_tran_idx
+            if current_tran_idx == curr_high_tran_idx:
+                current_log_idx = log['logIndex']
+                # If the same transactionIndex, logIndex should be ascending
+                assert current_log_idx > curr_high_log_idx
+                curr_high_log_idx = current_log_idx
+
+        # Set the new highs
+        # Reset to 0 if assert and if statements pass.
+        # -1 Allows the index to be 0
+            else:
+                curr_high_tran_idx = current_tran_idx
+                curr_high_log_idx = -1
+        else:
+            curr_high_bn = current_block_number
+            curr_high_tran_idx = -1
 
