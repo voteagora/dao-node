@@ -265,6 +265,23 @@ class JsonRpcHistHttpClient:
         return all_logs
 
     def get_logs_by_block_range(self, w3, contract_address, event_signature_hash, from_block, to_block, current_recursion_depth = 0, max_recursion_depth=10):
+        """
+This is a recursive function that will split itself apart to handle block ranges that exceed the block limit of the external API.
+
+It is unlikely that this function will ever be called directly, and is instead called by
+    the :py:meth:`~.clients.JsonRpcHistHttpClient.get_paginated_logs` function, where additional
+    processing is performed.
+
+:param w3: The web3 object used to interact with the external API.
+:param contract_address: The address of the contract to which the event is emitted.
+:param event_signature_hash: The hash of the event signature.
+:param from_block: The starting block number for the block range.
+:param to_block: The ending block number for the block range.
+:param current_recursion_depth: The current recursion depth of the function. Used for tracking recursion depth.
+:param max_recursion_depth: The maximum recursion depth allowed for the function. If the recursion depth exceeds this value, an exception will be raised. This prevents infinite recursion.
+:returns: A list of logs from the specified block range.
+           """
+
         # Set filter parameters for each range
         event_filter = {
             "fromBlock": from_block,
