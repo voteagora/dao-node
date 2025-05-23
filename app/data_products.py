@@ -547,6 +547,7 @@ def decode_create_event(event) -> Proposal:
 
     obj = event.get('calldatas', Ellipsis)
     if obj is not Ellipsis:
+        logr.info(f"calldata <- {type(obj)} : {obj}")
         if isinstance(obj, str):
             obj = obj.replace('"', '')
             obj = obj[1:-1]
@@ -555,6 +556,7 @@ def decode_create_event(event) -> Proposal:
             obj = [obj.hex()]
         if isinstance(obj, [list, tuple])
             obj = [o.hex() for o in obj]
+        logr.info(f"calldata -> {obj}")
         event['calldatas'] = obj
 
     obj = event.get('signatures', Ellipsis)
