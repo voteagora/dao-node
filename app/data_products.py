@@ -550,6 +550,17 @@ def decode_create_event(event) -> Proposal:
             obj = obj.replace('"', '')
             obj = obj[1:-1]
             obj = obj.split(',')
+        elif isinstance(obj, bytes):
+            obj = [obj.hex()]
+        elif isinstance(obj, (list, tuple)):
+            out = []
+            for o in obj:
+                try:
+                    o = o.hex()
+                except:
+                    assert isinstance(o, str)
+                out.append(o)
+            obj = out
         event['calldatas'] = obj
 
     obj = event.get('signatures', Ellipsis)
