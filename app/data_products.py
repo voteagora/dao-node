@@ -552,7 +552,7 @@ def decode_create_event(event) -> Proposal:
             obj = obj[1:-1]
             obj = obj.split(',')
         if isinstance(obj, bytes):
-            obj = obj.hex()
+            obj = [obj.hex()]
         if isinstance(obj, [list, tuple])
             obj = [o.hex() for o in obj]
         event['calldatas'] = obj
