@@ -522,6 +522,13 @@ async def proposals_handler(app, request):
     if sort_key:
         proposals.sort(key=lambda x: x[sort_key], reverse=True)
 
+    for prop in proposals:
+        try:
+            check = json.dumps(prop)
+        except Exception as e:
+            print(e)
+            print(f"Problem withProposal: {prop}")
+
     return json({'proposals' : proposals})
 
 ##################################################################################################################################################

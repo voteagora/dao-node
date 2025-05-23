@@ -581,6 +581,8 @@ class Proposals(DataProduct):
     
     def handle(self, event):
 
+        print(f"Proposal Event: {event}")
+
         try:
             signature = event['signature']
         except:
@@ -599,6 +601,7 @@ class Proposals(DataProduct):
                 proposal = decode_create_event(event)
 
                 proposal_data = proposal.create_event.get('proposal_data', None)
+                print(f"Proposal Data: {proposal_data}")
 
                 if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1:
                     raise ToDo("Old Govenors are using newer PTCs, and so using gov version here doesn't work perfectly for this check.  So the first one that upgrades, is going to trip this reminder.  Plus, PTC upgrades happen without changing gov versions Eg. Optimism.")
