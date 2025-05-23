@@ -524,7 +524,7 @@ async def proposals_handler(app, request):
 
     for prop in proposals:
         try:
-            check = json.dumps(prop)
+            check = json(prop)
         except Exception as e:
             print(e)
             print(f"Problem withProposal: {prop}")
