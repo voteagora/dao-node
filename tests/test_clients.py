@@ -137,37 +137,15 @@ def test_web_socket_response_serialization_2(scroll_token_abi, ws_payload, signa
     assert out == expected_event
 
 
+load_dotenv()
+DAO_NODE_ARCHIVE_NODE_HTTP = "https://opt-mainnet.g.alchemy.com/v2/"
+ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('ALCHEMY_API_KEY', '')
+
 mock_logs = [{x: f"Test Log {x}" for x in range(100)}]
 
-def test_get_paginated_logs():
-    print("\n")
-    load_dotenv()
-    DAO_NODE_ARCHIVE_NODE_HTTP = "https://opt-mainnet.g.alchemy.com/v2/"
-    ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('ALCHEMY_API_KEY', '')
-    jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-
-    # Use correct Transfer event signature
-    event_sig = "VoteCast(address,uint256,uint8,uint256,string)"
-    hash_of_event_sig = '0x' + keccak(event_sig.encode()).hex()
-
-    # Test connection first
-    w3 = jrhhc.connect()
-    print(f"Connected to network. Chain ID: {w3.eth.chain_id}")
-    print(f"Current block: {w3.eth.block_number}")
-
-    # Define block range for Optimism token events
-    start_block = 135262515
-    end_block = 135262530
-    print(f"Scanning blocks {start_block} to {end_block}")
-
-
-
-    optimisim_gov_contract_address = "0xcDF27F107725988f2261Ce2256bDfCdE8B382B10"
-
-    block_count_span = resolve_block_count_span(10)
-
-    # Load Optimism Gov VoteCast ABI
-    abi = {
+optimism_package = {
+    "gov_contract_address": "0xcDF27F107725988f2261Ce2256bDfCdE8B382B10",
+    "vote_cast_abi": {
         "type": "event",
         "name": "VoteCast",
         "inputs": [
@@ -203,18 +181,33 @@ def test_get_paginated_logs():
             }
         ],
         "anonymous": False
-    }
+    },
+    "event_signature": "VoteCast(address,uint256,uint8,uint256,string)",
+}
 
+def test_get_paginated_logs():
+    print("\n")
+
+    jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
+
+    # Use the correct Transfer event signature
+    hash_of_event_sig = '0x' + keccak(optimism_package['event_signature'].encode()).hex()
+
+    # Define block range for Optimism token events
+    start_block = 135262515
+    end_block = 135262530
+
+    block_count_span = resolve_block_count_span(10)
 
     # Query transfer logs from Optimism token contract
     logs = jrhhc.get_paginated_logs(
         jrhhc.connect(),
-        optimisim_gov_contract_address,
+        optimism_package['gov_contract_address'],
         hash_of_event_sig,
         start_block,
         end_block,
         block_count_span,
-        abi
+        optimism_package['vote_cast_abi'],
     )
 
     print(f"Found {len(logs)} CastVote events")
@@ -224,77 +217,30 @@ def test_get_paginated_logs():
 
 def test_get_paginated_logs_block_range_over_2000():
     print("\n")
-    load_dotenv()
-    DAO_NODE_ARCHIVE_NODE_HTTP = "https://opt-mainnet.g.alchemy.com/v2/"
-    ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('ALCHEMY_API_KEY', '')
     jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
 
     # Use correct Transfer event signature
-    event_sig = "VoteCast(address,uint256,uint8,uint256,string)"
-    hash_of_event_sig = '0x' + keccak(event_sig.encode()).hex()
+    hash_of_event_sig = '0x' + keccak(optimism_package['event_signature'].encode()).hex()
 
     # Test connection first
     w3 = jrhhc.connect()
-    print(f"Connected to network. Chain ID: {w3.eth.chain_id}")
-    print(f"Current block: {w3.eth.block_number}")
 
     # Define block range for Optimism token events
     start_block = 135252530
     end_block = 135262530
-    print(f"Scanning blocks {start_block} to {end_block}")
 
-    optimisim_gov_contract_address = "0xcDF27F107725988f2261Ce2256bDfCdE8B382B10"
 
     block_count_span = resolve_block_count_span(10)
-
-    # Load Optimism Gov VoteCast ABI
-    abi = {
-        "type": "event",
-        "name": "VoteCast",
-        "inputs": [
-            {
-                "name": "voter",
-                "type": "address",
-                "indexed": True,
-                "internalType": "address"
-            },
-            {
-                "name": "proposalId",
-                "type": "uint256",
-                "indexed": False,
-                "internalType": "uint256"
-            },
-            {
-                "name": "support",
-                "type": "uint8",
-                "indexed": False,
-                "internalType": "uint8"
-            },
-            {
-                "name": "weight",
-                "type": "uint256",
-                "indexed": False,
-                "internalType": "uint256"
-            },
-            {
-                "name": "reason",
-                "type": "string",
-                "indexed": False,
-                "internalType": "string"
-            }
-        ],
-        "anonymous": False
-    }
 
     # Query transfer logs from Optimism token contract
     logs = jrhhc.get_paginated_logs(
         jrhhc.connect(),
-        optimisim_gov_contract_address,
+        optimism_package['gov_contract_address'],
         hash_of_event_sig,
         start_block,
         end_block,
         block_count_span,
-        abi
+        optimism_package['vote_cast_abi'],
     )
 
     print(f"Found {len(logs)} CastVote events")
