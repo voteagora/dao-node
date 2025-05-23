@@ -3,6 +3,7 @@ from collections import defaultdict
 from sortedcontainers import SortedDict
 from abc import ABC, abstractmethod
 import json, time
+from sanic.log import logger as logr
 
 from eth_abi.abi import decode as decode_abi
 from .utils import camel_to_snake
@@ -581,7 +582,7 @@ class Proposals(DataProduct):
     
     def handle(self, event):
 
-        print(f"Proposal Event: {event}")
+        logr.info(f"Proposal Event: {event}")
 
         try:
             signature = event['signature']
@@ -619,7 +620,12 @@ class Proposals(DataProduct):
 
                     if voting_module_name in ('approval', 'optimistic'):
                         proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)                
-                    
+                
+                try:
+                    logr.info(f"Decoded Proposal Event: {proposal.to_dict()}")
+                except:
+                    logr.info(f"Couldn't decode object of type {type(proposal)}: {proposal}")
+
                 self.proposals[proposal_id] = proposal
 
             elif 'ProposalQueued' == signature[:LQUEUED]:
