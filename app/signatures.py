@@ -25,6 +25,54 @@ SCOPE_CREATED  = 'ScopeCreated(uint8,bytes24,bytes4,string)'
 SCOPE_DELETED  = 'ScopeDeleted(uint8,bytes24)'
 SCOPE_DISABLED = 'ScopeDisabled(uint8,bytes24)'
 
+from .utils import camel_to_snake
+
+INT_TYPES = [f"uint{i}" for i in range(8, 257, 8)]
+INT_TYPES.append("uint")
+
+class CSVClientCaster:
+    
+    def __init__(self, abis):
+        self.abis = abis
+    
+    def lookup(self, signature):
+
+        abi_frag = self.abis.get_by_signature(signature)
+
+        def caster_maker():
+
+            int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
+
+            def caster_fn(event):
+                for int_field in int_fields:
+                    try:
+                        event[int_field] = int(event[int_field])
+                    except ValueError:
+                        print(f"E182250323 - Problem with casting {int_field} to int, from file {fname}.")
+                    except KeyError:
+                        print(f"E184250323 - Problem with getting {int_field} from file {fname}.")
+                return event
+
+            return caster_fn
+        
+        if signature == TRANSFER:
+
+            amount_field = abi_frag.fields[2]
+            def caster_fn(event):
+                event[amount_field] = int(event[amount_field])
+                return event
+
+            return caster_fn
+
+        else:
+            caster_fn = caster_maker()
+
+        return caster_fn
+
+        
+
+        
+
 if __name__ == '__main__':
 
     from web3 import Web3 as w3
