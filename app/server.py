@@ -25,10 +25,10 @@ from sanic.blueprints import Blueprint
 from sanic.log import logger as logr
 
 from .middleware import start_timer, add_server_timing_header, measure
-from .clients import JsonRpcHistHttpClient, JsonRpcRTWsClient
 from .profiling import Profiler
 
 from .clients_csv import CSVClient
+from .clients_httpjson import JsonRpcHistHttpClient
 
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
 from .signatures import *
@@ -219,7 +219,7 @@ class Feed:
 
                 logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client)} from block {self.block}")
 
-                reader = client.read()
+                reader = client.read(after=self.block)
 
                 cnt = 0
 
@@ -236,7 +236,7 @@ class Feed:
 
                 #self.profiler.report()
 
-                logr.info(f"{emoji} Done reading {cnt} blocks and events as of block {self.block}.  Took {dur:.2f} seconds.")
+                logr.info(f"{emoji} Done reading {cnt} block-headers and event-logs as of block {self.block}.  Took {dur:.2f} seconds.")
 
 
     async def realtime_async_read(self):

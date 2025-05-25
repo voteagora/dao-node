@@ -69,17 +69,9 @@ class CSVClientCaster:
 
         return caster_fn
 
+class SubscriptionPlannerMixin:
 
-class CSVClient:
-    timeliness = 'archive'
-
-    def __init__(self, path):
-
-        if not isinstance(path, Path):
-            self.path = Path(path)
-        else:
-            self.path = path
-        
+    def init(self):
         self.subscription_meta = []
 
         self.abis_set = False
@@ -90,8 +82,52 @@ class CSVClient:
 
         self.abis_set = True
         self.abis = abi_set
-        self.casterCls = CSVClientCaster(self.abis)
+        self.caster = self.casterCls(self.abis)
+    
+    def plan(self, signal_type, signal_meta):
 
+        if signal_type == 'event':
+            self.plan_event(*signal_meta)
+        elif signal_type == 'block':
+            self.plan_block(*signal_meta)
+        else:
+            raise Exception(f"Unknown signal type: {signal_type}")
+        
+
+class CSVClient(SubscriptionPlannerMixin):
+    timeliness = 'archive'
+
+    def __init__(self, path):
+
+        if not isinstance(path, Path):
+            self.path = Path(path)
+        else:
+            self.path = path
+        self.init()
+        self.casterCls = CSVClientCaster
+        
+    def plan_event(self, chain_id, address, signature):
+
+        fname = self.events_fname(chain_id, address, signature)
+
+        abi_frag = self.abis.get_by_signature(signature)
+
+        caster_fn = self.caster.lookup(signature)
+
+        if not os.path.exists(fname):
+            raise FileNotFoundError(f"CSV file not found: {fname}")
+        else:
+            self.subscription_meta.append(('event', (fname, chain_id, address, signature, abi_frag, caster_fn)))
+
+    def plan_block(self, chain_id):
+
+        fname = self.blocks_fname(chain_id)
+
+        if not os.path.exists(fname):
+            raise FileNotFoundError(f"CSV file not found: {fname}")
+        else:
+            self.subscription_meta.append(('block', fname))
+    
     def is_valid(self):
         
         if os.path.exists(self.path):
@@ -116,7 +152,7 @@ class CSVClient:
 
         abi_frag = self.abis.get_by_signature(signature)
 
-        caster_fn = self.casterCls.lookup(signature)
+        caster_fn = self.caster.lookup(signature)
 
         if not os.path.exists(fname):
             raise FileNotFoundError(f"CSV file not found: {fname}")
@@ -133,7 +169,9 @@ class CSVClient:
             self.subscription_meta.append(('block', fname))
 
 
-    def read(self):
+    def read(self, after):
+
+        assert after == 0
         
         for event_or_block, subscription_meta in self.subscription_meta:
 
