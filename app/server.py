@@ -223,18 +223,18 @@ class Feed:
 
                 cnt = 0
 
-                for event in reader:
+                for event, signal, new_signal in reader:
                     cnt += 1
                     self.block = max(self.block, int(event['block_number']))
 
-                    with self.profiler(event['signal']):
-                        yield event
+                    # with self.profiler(signal):
+                    yield event, signal, new_signal
 
                 end = time.perf_counter()
 
                 dur = end - start
 
-                self.profiler.report()
+                #self.profiler.report()
 
                 logr.info(f"{emoji} Done reading {cnt} blocks and events as of block {self.block}.  Took {dur:.2f} seconds.")
 
@@ -325,15 +325,25 @@ class DataProductContext:
 
         setattr(self, data_product.name, data_product)
 
+
+    def set_signal_context(self, chain_id_contract_signature):
+
+        self.signal_context = self.dps[chain_id_contract_signature]
+
+
+    def dispatch_from_archive(self, event):
+
+        for data_product in self.signal_context:
+            data_product.handle(event)
+
+
     async def dispatch(self, event):
         
         chain_id_contract_signature = event['signal']
         del event['signal']
 
-        method = 'handle_block' if 'blocks' in chain_id_contract_signature else 'handle'
-
         for data_product in self.dps[chain_id_contract_signature]:
-            getattr(data_product, method)(event)
+            await data_product.handle(event)  
 
 
         # queue = self.queues[chain_id_contract_signature]
@@ -966,8 +976,12 @@ async def read_archive(app, dcqs):
     
     app.ctx.feed.set_client_sequencer(dcqs)
 
-    for event in app.ctx.feed.read_archive():
-        await app.ctx.dispatch(event)
+    for event, signal, new_signal in app.ctx.feed.read_archive():
+
+        if new_signal:
+            app.ctx.set_signal_context(signal)
+
+        app.ctx.dispatch_from_archive(event)
 
 # @app.after_server_start
 # async def subscribe_feeds(app):

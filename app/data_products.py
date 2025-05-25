@@ -214,6 +214,10 @@ class Delegations(DataProduct):
 
     def handle(self, event):
 
+        if 'timestamp' in event:
+            self.handle_block(event)
+            return
+
         signature = event['signature']
         block_number = event['block_number']
         transaction_index = event['transaction_index']

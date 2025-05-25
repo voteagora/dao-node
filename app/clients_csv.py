@@ -137,19 +137,25 @@ class CSVClient:
         
         for event_or_block, subscription_meta in self.subscription_meta:
 
+            new_signal = True
+
             if event_or_block == 'event':
                 fname, chain_id, address, signature, abi_frag, caster_fn = subscription_meta
 
+                signal = f"{chain_id}.{address}.{signature}"
+
                 for event in self.read_events(fname, signature, abi_frag, caster_fn):
-                    event['signal'] = f"{chain_id}.{address}.{signature}"
-                    yield event
+                    yield event, signal, new_signal
+                    new_signal = False
 
             elif event_or_block == 'block':
                 fname = subscription_meta
 
+                signal = f"{chain_id}.blocks"
+
                 for block in self.read_blocks(fname):
-                    block['signal'] = f"{chain_id}.blocks"
-                    yield block
+                    yield block, signal, new_signal
+                    new_signal = False
             else:
                 raise Exception(f"Unknown event_or_block: {event_or_block}")
 
