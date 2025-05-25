@@ -25,7 +25,11 @@ from sanic.blueprints import Blueprint
 from sanic.log import logger as logr
 
 from .middleware import start_timer, add_server_timing_header, measure
-from .clients import CSVClient, JsonRpcHistHttpClient, JsonRpcRTWsClient
+from .clients import JsonRpcHistHttpClient, JsonRpcRTWsClient
+from .profiling import Profiler
+
+from .clients_csv import CSVClient
+
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
 from .signatures import *
 from . import __version__
@@ -139,6 +143,10 @@ class ClientSequencer:
         self.num = len(clients)
         self.pos = 0
         self.lock = asyncio.Lock()
+
+    def set_abis(self, abis):
+        for client in self.clients:
+            client.set_abis(abis)
     
     def __iter__(self):
         self.pos = 0
@@ -171,51 +179,65 @@ class ClientSequencer:
     def get_async_iterator(self):
         return self 
     
-class EventFeed:
-    def __init__(self, chain_id, address, signature, abis, client_sequencer):
-        self.chain_id = chain_id
-        self.address = address
-        self.signature = signature
-        self.abis = abis
-        self.cs = client_sequencer
+    def plan(self, *signal_meta):
+        for client in self.clients:
+            client.plan(*signal_meta)
+
+    
+class Feed:
+    def __init__(self):
         self.block = 0
         self.booting = True
+        self.meta = []
+        self.profiler = Profiler()
+    
+    def set_client_sequencer(self, client_sequencer):
+        self.cs = client_sequencer
 
-    @property
-    def name(self):
-        return f"EventFeed({self.chain_id}, {self.address}, {self.signature})"
+        for signal_meta in self.meta:
+            self.cs.plan(*signal_meta)
+    
+    def plan_block(self, chain_id):
+        self.meta.append(('block', (chain_id,)))
 
-    def archive_read(self):
-        previous_csv_client_failed_filenotfound = False 
+    def plan_event(self, chain_id, address, signature):
+        self.meta.append(('event', (chain_id, address, signature)))
+    
+    def set_abis(self, abis):
+        self.cs.set_abis(abis)
+
+    def read_archive(self):
 
         for i, client in enumerate(self.cs):
 
+
             if client.timeliness == 'archive':
 
-                if i > 0 and not previous_csv_client_failed_filenotfound:
-                    self.block = max(self.block, client.get_fallback_block(self.signature))
-                if previous_csv_client_failed_filenotfound:
-                    previous_csv_client_failed_filenotfound = False
+                start = time.perf_counter()
 
                 emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
 
                 logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client)} from block {self.block}")
 
-                try:
-                    reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
+                reader = client.read()
 
-                    cnt = 0
-                    for event in reader:
-                        cnt += 1
-                        self.block = max(self.block, int(event['block_number']))
+                cnt = 0
+
+                for event in reader:
+                    cnt += 1
+                    self.block = max(self.block, int(event['block_number']))
+
+                    with self.profiler(event['signal']):
                         yield event
 
-                    logr.info(f"{emoji} Done reading {cnt} {self.signature} events as block {self.block}")
+                end = time.perf_counter()
 
-                except FileNotFoundError as e:
-                    logr.warn(f"{emoji} File not found for {self.signature} by {type(client).__name__}: {e}. Skipping to next client.")
-                    previous_csv_client_failed_filenotfound = isinstance(client, CSVClient)
-                    continue
+                dur = end - start
+
+                self.profiler.report()
+
+                logr.info(f"{emoji} Done reading {cnt} blocks and events as of block {self.block}.  Took {dur:.2f} seconds.")
+
 
     async def realtime_async_read(self):
 
@@ -278,132 +300,54 @@ class EventFeed:
             # sig = f"{self.chain_id}.{self.address}.{self.signature}"
             # await app.dispatch("data.model." + sig, context=event)
 
-class BlockFeed:
-    def __init__(self, chain_id, client_sequencer):
-        self.chain_id = chain_id
-        self.cs = client_sequencer
-        self.block = 0
-        self.booting = True
-
-    @property
-    def name(self):
-        return f"BlockFeed({self.chain_id})"
-
-    def archive_read(self):
-        previous_csv_client_failed_filenotfound = False 
-
-        for i, client in enumerate(self.cs):
-
-            if client.timeliness == 'archive':
-
-                emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
-
-                logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client)} from block {self.block}")
-
-                try:
-                    reader = client.read_blocks(self.chain_id, self.block)
-
-                    cnt = 0
-                    for event in reader:
-                        cnt += 1
-                        self.block = max(self.block, int(event['block_number']))
-                        yield event
-
-                    logr.info(f"{emoji} Done reading {cnt} blocks, latest is {self.block}")
-
-                except FileNotFoundError as e:
-                    logr.warn(f"{emoji} File not found for {self.signature} by {type(client).__name__}: {e}. Skipping to next client.")
-                    previous_csv_client_failed_filenotfound = isinstance(client, CSVClient)
-                    continue
-
-    async def realtime_async_read(self):
-
-        async for client in self.cs.get_async_iterator():
-
-            if client.timeliness == 'realtime':
-
-                logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
-
-                if self.block is None:
-                    raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
-
-                reader = client.read_blocks(self.chain_id, self.block)
-
-                async for event in reader:
-                    self.block = max(self.block, event['block_number'])
-                    yield event
-
-    async def boot(self, app):
-        
-        cnt = 0
-
-        start = dt.datetime.now()
-
-        logr.info(f"Loading {self.chain_id}")
-
-        data_product_dispatchers = app.ctx.dps[f"{self.chain_id}"]
-
-        for event in self.archive_read():
-            cnt += 1
-            for data_product_dispatcher in data_product_dispatchers:
-                data_product_dispatcher.handle_block(event)
-
-            if (cnt % 1_000_000) == 0:
-                logr.info(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}")
-        
-        end = dt.datetime.now()
-        
-        await asyncio.sleep(.01)
-
-        self.booting = False
-
-        logr.info(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.")
-
-        return 
-    
-    async def run(self, app):
-
-        data_product_event_dispatchers = app.ctx.dps[f"{self.chain_id}"]
-
-        async for block in self.realtime_async_read():
-            for data_product_event_dispatcher in data_product_event_dispatchers:
-                data_product_event_dispatcher.handle_block(block)
 
 
 class DataProductContext:
     def __init__(self):
 
+        self.queues = {}
         self.dps = defaultdict(list)
-        self.feeds = []
-        self.feed_meta = defaultdict(list)
-    
-    def handle_dispatch(self, chain_id_contract_signature, context):
-
-        logr.info(f"Handle Dispatch Called : {chain_id_contract_signature}")
-
-        data_product_dispatchers = self.dps[chain_id_contract_signature]
-
-        if len(data_product_dispatchers):
-            raise Exception(f"No data products registered for {chain_id_contract_signature}")
-
-        for data_product in self.dps[chain_id_contract_signature]:
-            data_product.handle(context)
+        self.dps_names = defaultdict(list)
+        self.feed = Feed()
 
     def register(self, chain_id_contract_signature, data_product):
 
-        if "." in chain_id_contract_signature:
-            
-            _, contract, signature = chain_id_contract_signature.split(".")
+        if 'blocks' in chain_id_contract_signature:
+            self.feed.plan_block(chain_id=int(chain_id_contract_signature.split('.')[0]))
+        else:
+            chain_id, address, signature = chain_id_contract_signature.split('.')
+            self.feed.plan_event(chain_id=int(chain_id), address=address, signature=signature)
 
-            self.feed_meta[contract].append(signature)
+        if chain_id_contract_signature not in self.queues:
+            self.queues[chain_id_contract_signature] = asyncio.Queue()
 
         self.dps[chain_id_contract_signature].append(data_product)
 
         setattr(self, data_product.name, data_product)
 
+    async def dispatch(self, event):
+        
+        chain_id_contract_signature = event['signal']
+        del event['signal']
 
-    def add_feed(self, feed):
-        self.feeds.append(feed)
+        method = 'handle_block' if 'blocks' in chain_id_contract_signature else 'handle'
+
+        for data_product in self.dps[chain_id_contract_signature]:
+            getattr(data_product, method)(event)
+
+
+        # queue = self.queues[chain_id_contract_signature]
+        # queue.put_nowait(event)
+    
+    """
+    async def process(self, chain_id_contract_signature):
+
+        while True:
+            event = await self.queues[chain_id_contract_signature].get()
+            for data_product in self.dps[chain_id_contract_signature]:
+                await data_product.handle(event)
+    """
+
     
 app = Sanic('DaoNode', ctx=DataProductContext())
 app.middleware('request')(start_timer)
@@ -903,7 +847,7 @@ async def voting_power(request):
 ################################################################################
 
 @app.before_server_start(priority=0)
-async def bootstrap_event_feeds(app, loop):
+async def bootstrap_data_feeds(app, loop):
 
     #################################################################################
     # ⚡️ 📀 Client Setup
@@ -957,6 +901,7 @@ async def bootstrap_event_feeds(app, loop):
         abi_list.append(ptc_abi)
 
     abis = ABISet('daonode', abi_list)
+    dcqs.set_abis(abis)
 
     #################################################################################
     # 🎪 🧠 Instantiate "Data Products".  These are the singletons that store data 
@@ -967,7 +912,7 @@ async def bootstrap_event_feeds(app, loop):
         app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     delegations = Delegations()
-    app.ctx.register(f'{chain_id}', delegations)
+    app.ctx.register(f'{chain_id}.blocks', delegations)
     app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
 
     if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):
@@ -1014,30 +959,23 @@ async def bootstrap_event_feeds(app, loop):
     for VOTE_EVENT in VOTE_EVENTS:
         app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
 
-    #################################################################################
-    # 🎪 🍔 Instantiate an "Event Feed" for every network, contract, and relevant 
-    #       event signature.  Then register each one with the client sequencer so it
-    #       can know to read in the past and subscribe to the future.
-    #       This has been automatically handled, by picking up metadata from
-    #       the data product registration step.  
 
-    cf = BlockFeed(chain_id, dcqs)
-    app.ctx.add_feed(cf)
-    app.add_task(cf.boot(app))
+    app.add_task(read_archive(app, dcqs))
 
-    for address, signatures in app.ctx.feed_meta.items():
-        for signature in signatures:
-            ef = EventFeed(chain_id, address, signature, abis, dcqs)
-            app.ctx.add_feed(ef)
-            app.add_task(ef.boot(app))
+async def read_archive(app, dcqs):
+    
+    app.ctx.feed.set_client_sequencer(dcqs)
 
-@app.after_server_start
-async def subscribe_feeds(app):
+    for event in app.ctx.feed.read_archive():
+        await app.ctx.dispatch(event)
 
-    logr.info("Adding signal handler for each feed.")
-    for feed in app.ctx.feeds:
-        logr.info(f"Invoking feed.run(app) for {feed.name}")
-        app.add_task(feed.run(app))
+# @app.after_server_start
+# async def subscribe_feeds(app):
+#
+#    logr.info("Adding signal handler for each feed.")
+#    for feed in app.ctx.feeds:
+#        logr.info(f"Invoking feed.run(app) for {feed.name}")
+#        app.add_task(feed.run(app))
 
 ##################################
 #
