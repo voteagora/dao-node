@@ -871,6 +871,7 @@ async def bootstrap_data_feeds(app, loop):
     AGORA_GOV = public_config['governor_spec']['name'] == 'agora'
 
     abi_list = []
+    logr.info(f"deployment={deployment}")
 
     if 'token' in deployment:
         token_addr = deployment['token']['address'].lower()
