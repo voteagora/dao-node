@@ -1,19 +1,11 @@
 
-from warnings import warn
-from pathlib import Path
-import csv
 import os
-import sys
-import json
 from datetime import datetime, timedelta
-import websocket, websockets
-import asyncio
-from eth_abi.abi import decode as decode_abi
 from collections import defaultdict
 
-from web3 import Web3, AsyncWeb3, WebSocketProvider
+from web3 import Web3
 from web3.middleware import ExtraDataToPOAMiddleware
-from sanic.log import logger as logr, error_logger as errlogr
+from sanic.log import logger as logr
 
 from .utils import camel_to_snake
 from .clients_csv import SubscriptionPlannerMixin
