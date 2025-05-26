@@ -1,15 +1,19 @@
 import os, json, asyncio, websocket, websockets
 from eth_abi.abi import decode as decode_abi
 from collections import defaultdict
+from pprint import pprint
 
 from web3 import Web3
 from sanic.log import logger as logr
 
 from .utils import camel_to_snake
 from .clients_httpjson import SubscriptionPlannerMixin
+from .signatures import DELEGATE_CHANGED_2
 
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
 
+class Reset(Exception):
+    pass
 
 class JsonRpcRtWsClientCaster:
     
@@ -70,6 +74,38 @@ class JsonRpcRtWsClientCaster:
 
             return out
         
+        if signature == DELEGATE_CHANGED_2:
+            # THIS FUNCTION IS SOoooo close to the one in clients_httpjson, we should be able to collapse, 
+            # if we could figure out a rig to test the diffs.
+
+            abi_frag = self.abis.get_by_signature(signature)
+            EVENT_NAME = abi_frag.name       
+            contract_events = Web3().eth.contract(abi=[abi_frag.literal]).events
+            processor = getattr(contract_events, EVENT_NAME)().process_log
+
+            def parse_delegates(array):
+                return [(x['_delegatee'].lower(), x['_numerator']) for x in array]
+                
+            def caster_fn(log):
+
+                tmp = processor(log)
+                args = dict(tmp['args'])
+                
+                args['old_delegatees'] = parse_delegates(args['oldDelegatees'])
+                args['new_delegatees'] = parse_delegates(args['newDelegatees'])
+
+                del args['oldDelegatees']
+                del args['newDelegatees']
+                
+                out = {
+                    "block_number": str(int(log["blockNumber"], 16)),
+                    "log_index": int(log["logIndex"], 16),
+                    "transaction_index": int(log["transactionIndex"], 16),
+                }
+                out.update(args)
+
+                return out
+
         return caster_fn
 
 
@@ -195,64 +231,68 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
                     else:
                         error = response.get('error', {})
                         logr.error(f"Failed to subscribe to event logs: {error.get('message', 'Unknown error')}")
+                        raise Reset("Failed to subscribe to event logs")
 
 
 
     async def read(self):
 
-        async with websockets.connect(self.url) as ws:
-            self.ws = ws
+        while True:
+            try:
+                async with websockets.connect(self.url) as ws:
+                    self.ws = ws
 
-            await self._subscribe_to_block_headers()
-            await self._subscribe_to_event_logs()
+                    await self._subscribe_to_block_headers()
+                    await self._subscribe_to_event_logs()
 
-            async for message in self.ws:
-                payload = json.loads(message)
-                
-                method = payload.get("method", "no-method")
+                    async for message in self.ws:
+                        payload = json.loads(message)
+                        
+                        method = payload.get("method", "no-method")
 
-                out = {}
+                        out = {}
 
-                if method == "eth_subscription":
-                    sub_id = payload["params"]["subscription"]
-                    event = payload["params"]["result"]
+                        if method == "eth_subscription":
+                            sub_id = payload["params"]["subscription"]
+                            event = payload["params"]["result"]
 
 
-                    log_type, meta = self.sub_ids[sub_id]
+                            log_type, meta = self.sub_ids[sub_id]
 
-                    if log_type == "blocks":
+                            if log_type == "blocks":
 
-                        chain_id = meta[0]
+                                chain_id = meta[0]
 
-                        block_number = int(event['number'], 16)
+                                block_number = int(event['number'], 16)
 
-                        # log_type = self.sub_ids.get(sub_id, "unknown")
-                        logr.info(f"Received event for subscription {sub_id} : BLOCK: {block_number}")
+                                # logr.info(f"Received event for subscription {sub_id} : BLOCK: {block_number}")
 
-                        out['block_number'] = block_number
-                        out['timestamp'] = int(event['timestamp'], 16)
-                        out['signal'] = f"{chain_id}.blocks"
+                                out['block_number'] = block_number
+                                out['timestamp'] = int(event['timestamp'], 16)
+                                out['signal'] = f"{chain_id}.blocks"
 
-                        yield out
+                                yield out
 
-                    elif log_type == "event":
+                            elif log_type == "event":
 
-                        chain_id, cs_address, topic = meta
+                                chain_id, cs_address, topic = meta
 
-                        caster_fn, signature = self.event_subsription_meta[chain_id][cs_address][topic]
+                                caster_fn, signature = self.event_subsription_meta[chain_id][cs_address][topic]
 
-                        out = caster_fn(event)
+                                out = caster_fn(event)
 
-                        block_number = out['block_number']
+                                block_number = out['block_number']
 
-                        logr.info(f"Received event for subscription {sub_id} : EVENT: {block_number}-{topic}")
+                                logr.info(f"Received event for subscription {sub_id} : EVENT: {block_number}-{topic}")
 
-                        out['sighash'] = topic.replace("0x", "")
-                        out['signature'] = signature
-                        out['signal'] = f"{chain_id}.{cs_address.lower()}.{signature}"
+                                out['sighash'] = topic.replace("0x", "")
+                                out['signature'] = signature
+                                out['signal'] = f"{chain_id}.{cs_address.lower()}.{signature}"
 
-                        yield out
-                else:
-                    logr.error(f"Unknown payload, skipping:")
-                    logr.error(payload)
+                                yield out
+                        else:
+                            logr.error(f"Unknown payload, skipping:")
+                            logr.error(payload)
+            except Exception as e:
+                logr.error(f"Failed to setup or read from websocket: {e}")
                 

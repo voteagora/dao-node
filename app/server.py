@@ -253,42 +253,29 @@ class Feed:
     def capture_output(self, event, client_type):
 
         if 'timestamp' in event:
-
             loc = f"tests/client_outputs/blocks/{client_type.__name__}"
-
-            if self.capture_counter[loc] > 10:
-                return
-
-            os.makedirs(loc, exist_ok=True)
-
-            self.capture_counter[loc] += 1
-            
-            with open(f"{loc}/{event['block_number']}.json", "w") as f:
-                j.dump(event, f, indent=2)
-
+            fname = f"{loc}/{event['block_number']}.json"
         else:
-
             signature = event.get('signature')
-
             loc = f"tests/client_outputs/{signature}/{client_type.__name__}"
+            fname = f"{loc}/{event['block_number']}-{event['transaction_index']}-{event['log_index']}.json"
 
-            if self.capture_counter[loc] > 10:
-                return
-
-            os.makedirs(loc, exist_ok=True)
-
-            number_of_events = len(os.listdir(loc))
-
-            self.capture_counter[loc] = number_of_events
-
+        if self.capture_counter[loc] > 10:
+            return
             
-            with open(f"{loc}/{event['block_number']}-{event['transaction_index']}-{event['log_index']}.json", "w") as f:
-                try:
-                    j.dump(event, f, indent=2)
-                except:
-                    print("Couldn't serialize this object:")
-                    print(event)
-                    pass
+        os.makedirs(loc, exist_ok=True)
+
+        self.capture_counter[loc] +=1
+
+        logr.info(f"Writing to {fname}")
+       
+        with open(fname, "w") as f:
+            try:
+                j.dump(event, f, indent=2)
+            except:
+                logr.info("Couldn't serialize this object:")
+                print(event)
+                pass
 
 
     async def realtime_async_read(self):
@@ -305,6 +292,9 @@ class Feed:
                 async for event in client.read():
 
                     self.block = max(self.block, int(event['block_number']))
+
+                    if CAPTURE_CLIENT_OUTPUTS:
+                        self.capture_output(event, client_type=type(client))
 
                     yield event
 

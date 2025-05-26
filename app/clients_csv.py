@@ -1,4 +1,4 @@
-import csv, os, sys
+import csv, os, sys, json
 
 from pathlib import Path
 from collections import defaultdict
@@ -6,7 +6,7 @@ from collections import defaultdict
 from abifsm import ABISet
 
 from .utils import camel_to_snake
-from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4
+from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4, DELEGATE_CHANGED_2
 
 
 INT_TYPES = [f"uint{i}" for i in range(8, 257, 8)]
@@ -68,6 +68,25 @@ class CSVClientCaster:
                 return event
             
             return caster_fn
+        
+        if signature == DELEGATE_CHANGED_2:
+
+            def _parse_delegate_array(array_str):
+
+                array_str = array_str.strip('"')
+                if not array_str or array_str == '[]':
+                    return []
+                
+                delegates = json.loads(array_str)
+                return [[addr.lower(), int(amount)] for addr, amount in delegates]
+
+            def caster_fn(event):
+                event['old_delegatees'] = _parse_delegate_array(event['old_delegatees'])
+                event['new_delegatees'] = _parse_delegate_array(event['new_delegatees'])
+                return event
+
+            return caster_fn
+
 
         if signature in [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]:
             

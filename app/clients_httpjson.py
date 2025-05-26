@@ -10,6 +10,7 @@ from sanic.log import logger as logr
 from .utils import camel_to_snake
 from .clients_csv import SubscriptionPlannerMixin
 from .dev_modes import CAPTURE_CLIENT_OUTPUTS
+from .signatures import DELEGATE_CHANGED_2
 
 def resolve_block_count_span(chain_id=None):
 
@@ -90,6 +91,26 @@ class JsonRpcHistHttpClientCaster:
             tmp = processor(log)
             args = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in tmp['args'].items()}
             return args
+        
+        if signature == DELEGATE_CHANGED_2:
+
+            def parse_delegates(array):
+                return [(x['_delegatee'].lower(), x['_numerator']) for x in array]
+
+            def caster_fn(log):
+
+                print(log)
+                
+                tmp = processor(log)
+                args = dict(tmp['args'])
+                
+                args['old_delegatees'] = parse_delegates(args['oldDelegatees'])
+                args['new_delegatees'] = parse_delegates(args['newDelegatees'])
+
+                del args['oldDelegatees']
+                del args['newDelegatees']
+                
+                return args
         
         return caster_fn
 

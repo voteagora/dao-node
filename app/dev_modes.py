@@ -2,5 +2,9 @@
 
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 CAPTURE_CLIENT_OUTPUTS = bool(os.getenv('CAPTURE_CLIENT_OUTPUTS', False))
 PROFILE_ARCHIVE_CLIENT = bool(os.getenv('PROFILE_ARCHIVE_CLIENT', False))

@@ -162,27 +162,6 @@ class Delegations(DataProduct):
         self.seven_day_ts = 0
 
         self.cached_seven_day_vp = defaultdict(lambda: (0, 0))
-
-    def _parse_delegate_array(self, array_str):
-
-        try:
-            # This is indirectly checking to see if this is string-like
-            array_str = array_str.strip('"')
-        except AttributeError:
-            # "SO THIS SUCKS...  
-            # it appears as if the JSON-RPC selectively decodes these arrays of tuples willy nilly...
-            # and returns them as an attribute dict like this:
-            # [AttributeDict({'_delegatee': '0x7B0befc5B043148Cd7bD5cFeEEf7BC63D28edEC0', '_numerator': 302}), 
-            #  AttributeDict({'_delegatee': '0x9870DE32a48f4F721D8e866b23F7E9D4581FCc2f', '_numerator': 155})]
-            if isinstance(array_str, list):
-                return [(x['_delegatee'].lower(), x['_numerator']) for x in array_str]
-            raise
-    
-        if not array_str or array_str == '[]':
-            return []
-        
-        delegates = json.loads(array_str)
-        return [[addr.lower(), int(amount)] for addr, amount in delegates]
         
     def handle_block(self, event):
 
@@ -263,8 +242,8 @@ class Delegations(DataProduct):
             delegator = event['delegator'].lower()
             
             # Parse old and new delegations
-            old_delegatees = self._parse_delegate_array(event.get('old_delegatees', '[]'))
-            new_delegatees = self._parse_delegate_array(event.get('new_delegatees', '[]'))
+            old_delegatees = event.get('old_delegatees')
+            new_delegatees = event.get('new_delegatees')
             
             # Handle old delegations removal
             for old_delegation in old_delegatees:
