@@ -130,8 +130,6 @@ def round_and_seven_days_ago(ts):
 
 class Delegations(DataProduct):
     def __init__(self):
-        self.delegator = defaultdict(None) # owner, doing the delegation
-        
         # Data about the delegatee (ie, the delegate's influence)
         self.delegatee_list = defaultdict(SortedDict) #  list of delegators
         self.delegatee_cnt = defaultdict(int) #  dele
@@ -150,6 +148,8 @@ class Delegations(DataProduct):
         # Track the oldest and latest delegation events for each delegate
         self.delegatee_oldest = {}
         self.delegatee_latest = {}
+
+        self.delegator_delegate = defaultdict(set)
 
         self.timestamp_to_block = SortedDict()
         self.delegatee_vp_recent_history = defaultdict(SortedDict)
@@ -224,8 +224,14 @@ class Delegations(DataProduct):
             to_delegate = event['to_delegate'].lower()
             from_delegate = event['from_delegate'].lower()
 
-            self.delegator[delegator] = to_delegate
             self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
+
+            if to_delegate != '0x0000000000000000000000000000000000000000':
+                self.delegator_delegate[delegator] = {to_delegate}
+            else:
+                if delegator in self.delegator_delegate:
+                    del self.delegator_delegate[delegator]
+
 
             if not self.delegatee_oldest_event.get(to_delegate):
                 self.delegatee_oldest_event[to_delegate] = {
@@ -279,6 +285,11 @@ class Delegations(DataProduct):
                     
                     # Update voting power
                     self.delegatee_vp[old_delegate] -= amount
+                
+                if delegator in self.delegator_delegate:
+                    self.delegator_delegate[delegator].discard(old_delegate)
+                    if not self.delegator_delegate[delegator]:
+                        del self.delegator_delegate[delegator]
 
             # Handle new delegations addition
             for new_delegation in new_delegatees:
@@ -302,6 +313,9 @@ class Delegations(DataProduct):
                 
                 # Update voting power
                 self.delegatee_vp[to_delegate] += amount
+
+                if to_delegate != '0x0000000000000000000000000000000000000000':
+                    self.delegator_delegate[delegator].add(to_delegate)
                 
 
         elif signature == DELEGATE_VOTES_CHANGE:
