@@ -58,7 +58,7 @@ def test_Delegations_from_dict():
         delegations.handle(record)
 
 
-    assert delegations.delegator['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == '0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'
+    assert delegations.delegator_delegate['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == {'0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'}
     assert delegations.delegatee_cnt['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0'] == 1
     assert delegations.delegatee_list['0x7b0befc5b043148cd7bd5cfeeef7bc63d28edec0']['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == (126484128, 21)
 
@@ -74,7 +74,7 @@ def test_Delegations_with_vote_events():
     for event in delegation_events:
         delegations.handle(event)
 
-    assert delegations.delegator['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == '0xded7e867cc42114f1cffa1c5572f591e8711771d'
+    assert delegations.delegator_delegate['0xded7e867cc42114f1cffa1c5572f591e8711771d'] == {'0xded7e867cc42114f1cffa1c5572f591e8711771d'}
     
     # Create a Votes data product to test vote tracking
     votes = Votes(governor_spec={'name': 'compound'})

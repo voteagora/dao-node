@@ -609,9 +609,35 @@ Total = O(n) + O(page_size) + O(n * log(n)) + O(page_size) + Opr = O(n) + O(n * 
     default='DC,PR',
     description="Comma separated list of other dimensions to include, beyond the sort-by criteria. Use 'VP' for voting power, 'DC' for delegator count, 'PR' for participation rate, and 'VPC' for 7-day voting power change."
 )
+@openapi.parameter(
+    "delegator",
+    str,
+    location="query",
+    required=False,
+    description="Filter the list to show only the delegate to whom the specified delegator address has delegated their votes. If provided, the list will typically contain zero or one delegate or more if partial delegation is used."
+)
 @measure
 async def delegates(request):
     return await delegates_handler(app, request)
+
+# Helper function to get the sort value for a single delegate
+def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str, pm=None):
+    if sort_by == 'VP':
+        return app_ctx.delegations.delegatee_vp.get(delegate_address, 0)
+    elif sort_by == 'MRD':
+        event = app_ctx.delegations.delegatee_latest_event.get(delegate_address)
+        return int(event['block_number']) if event else 0
+    elif sort_by == 'PR':
+        return pm.calculate(delegate_address) if delegate_address in app_ctx.votes.voter_history else 0.0
+    elif sort_by == 'OLD':
+        event = app_ctx.delegations.delegatee_oldest_event.get(delegate_address)
+        return int(event['block_number']) if event else 0
+    elif sort_by == 'DC':
+        return app_ctx.delegations.delegatee_cnt.get(delegate_address, 0)
+    elif sort_by == 'LVB':
+        return int(app_ctx.votes.latest_vote_block.get(delegate_address, 0))
+    elif sort_by == 'VPC':
+        return app_ctx.delegations.delegate_seven_day_vp_change(delegate_address)
 
 async def delegates_handler(app, request):
 
@@ -637,6 +663,7 @@ async def delegates_handler(app, request):
     reverse = request.args.get("reverse", "true").lower() == "true"
 
     include = request.args.get("include", 'DC,PR').split(",")
+    delegator_address_filter = request.args.get("delegator")
 
     add_delegator_count = 'DC' in include or sort_by_dc
     add_participation_rate = 'PR' in include or sort_by_pr
@@ -649,29 +676,44 @@ async def delegates_handler(app, request):
     if sort_by_pr or add_participation_rate:
         pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
 
+    out = []
+    if delegator_address_filter:
+        delegator_address_filter_lower = delegator_address_filter.lower()
+        target_delegatee_addresses = app.ctx.delegations.delegator_delegate[delegator_address_filter_lower]
+        
+        if target_delegatee_addresses:
+            for delegate_addr in target_delegatee_addresses:
+                delegate_addr_lower = delegate_addr
+                sort_val = _get_delegate_sort_value(app.ctx, delegate_addr_lower, sort_by, pm if sort_by_pr else None)
+                
+                # Apply LVB specific pruning if sorting by LVB
+                if sort_by_lvb and sort_val == 0:
+                    continue
+                out.append((delegate_addr, sort_val))
     # Get the initial list based on sort criteria
-    if sort_by_vp:
-        out = list(app.ctx.delegations.delegatee_vp.items())
-    elif sort_by_mrd:
-        out = [(addr, int(event['block_number'])) 
-               for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
-    elif sort_by_pr:
-        out = [(addr, pm.calculate(addr))
-               for addr in app.ctx.votes.voter_history.keys()]
-    elif sort_by_old:
-        out = [(addr, int(event['block_number'])) 
-               for addr, event in app.ctx.delegations.delegatee_oldest_event.items()]
-    elif sort_by_dc:
-        out = list(app.ctx.delegations.delegatee_cnt.items())
-    elif sort_by_lvb:
-        out = [(addr, int(app.ctx.votes.latest_vote_block.get(addr, 0)))
-               for addr in app.ctx.delegations.delegatee_vp.keys()]
-        out  = [obj for obj in out if obj[1] > 0] # TODO This should not be necessary. The data model should prune zeros.
-    elif sort_by_vpc:
-        out = [(addr, app.ctx.delegations.delegate_seven_day_vp_change(addr))
-               for addr in app.ctx.delegations.delegatee_vp.keys()]
     else:
-        raise Exception(f"Sort by '{sort_by}' not implemented.")
+        if sort_by_vp:
+            out = list(app.ctx.delegations.delegatee_vp.items())
+        elif sort_by_mrd:
+            out = [(addr, int(event['block_number'])) 
+                   for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
+        elif sort_by_pr:
+            out = [(addr, pm.calculate(addr))
+                   for addr in app.ctx.votes.voter_history.keys()]
+        elif sort_by_old:
+            out = [(addr, int(event['block_number'])) 
+                   for addr, event in app.ctx.delegations.delegatee_oldest_event.items()]
+        elif sort_by_dc:
+            out = list(app.ctx.delegations.delegatee_cnt.items())
+        elif sort_by_lvb:
+            out = [(addr, int(app.ctx.votes.latest_vote_block.get(addr, 0)))
+                   for addr in app.ctx.delegations.delegatee_vp.keys()]
+            out  = [obj for obj in out if obj[1] > 0] # TODO This should not be necessary. The data model should prune zeros.
+        elif sort_by_vpc:
+            out = [(addr, app.ctx.delegations.delegate_seven_day_vp_change(addr))
+                   for addr in app.ctx.delegations.delegatee_vp.keys()]
+        else:
+            raise Exception(f"Sort by '{sort_by}' not implemented.")
 
     out.sort(key=lambda x: x[1], reverse=reverse)    
 
