@@ -310,48 +310,6 @@ class Feed:
 
                     yield event
 
-    async def boot(self, app):
-        
-        cnt = 0
-
-        start = dt.datetime.now()
-
-        logr.info(f"Loading {self.chain_id}.{self.address}.{self.signature}")
-
-        data_product_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
-
-        for event in self.archive_read():
-            cnt += 1
-            for data_product_dispatcher in data_product_dispatchers:
-                data_product_dispatcher.handle(event)
-
-            if (cnt % 1_000_000) == 0:
-                logr.info(f"loaded {cnt} so far {( dt.datetime.now() - start).total_seconds()}")
-        
-        end = dt.datetime.now()
-        
-        await asyncio.sleep(.01)
-
-        self.booting = False
-
-        logr.info(f"Done booting {cnt} records in {(end - start).total_seconds()} seconds.")
-
-        return 
-    
-    async def run(self, app):
-
-        data_product_event_dispatchers = app.ctx.dps[f"{self.chain_id}.{self.address}.{self.signature}"]
-
-        async for event in self.realtime_async_read():
-            for data_product_event_dispatcher in data_product_event_dispatchers:
-                event['signature'] = self.signature
-                data_product_event_dispatcher.handle(event)
-
-            # See note below about Sanic Signals
-
-            # sig = f"{self.chain_id}.{self.address}.{self.signature}"
-            # await app.dispatch("data.model." + sig, context=event)
-
 
 
 class DataProductContext:

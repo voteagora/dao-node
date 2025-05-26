@@ -285,8 +285,6 @@ class JsonRpcRTWsClient(SubscriptionPlannerMixin):
                         out['signature'] = signature
                         out['signal'] = f"{chain_id}.{cs_address.lower()}.{signature}"
 
-                        print(out)
-
                         yield out
                 else:
                     logr.error(f"Unknown payload, skipping:")
