@@ -2,7 +2,7 @@ import pytest
 from app.utils import camel_to_snake
 from app.signatures import DELEGATE_VOTES_CHANGE, DELEGATE_CHANGED_1
 from eth_abi.abi import decode as decode_abi
-from app.clients import JsonRpcRTWsClient
+from app.clients_wsjson import JsonRpcRtWsClientCaster
 
 delegate_changed_ws_payload = {'address': '0x27b0031c64f4231f0aff28e668553d73f48125f3', 'topics': ['0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f', '0x000000000000000000000000c950b9f32259860f4731d318cb5a28b2db892f88', '0x000000000000000000000000c950b9f32259860f4731d318cb5a28b2db892f88', '0x0000000000000000000000000000000000000000000000000000000000000000'], 'data': '0x', 'blockNumber': '0x7ce8d9', 'transactionHash': '0x6ee9de9644f6c75d83d598240067d1f20466b10c8721a61a8870a040efbafad8', 'transactionIndex': '0x1f', 'blockHash': '0x81f0810aa58f1f30ac28e10aa9680c9b4247fc38a8b6a273f847f1fc06c92365', 'logIndex': '0x32', 'removed': False}
 delegate_votes_changed_ws_payload = {'address': '0x27b0031c64f4231f0aff28e668553d73f48125f3', 'topics': ['0xdec2bacdd2f05b59de34da9b523dff8be42e5e38e818c82fdb0bae774387a724', '0x000000000000000000000000c950b9f32259860f4731d318cb5a28b2db892f88'], 'data': '0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000', 'blockNumber': '0x7ce8d9', 'transactionHash': '0x6ee9de9644f6c75d83d598240067d1f20466b10c8721a61a8870a040efbafad8', 'transactionIndex': '0x1f', 'blockHash': '0x81f0810aa58f1f30ac28e10aa9680c9b4247fc38a8b6a273f847f1fc06c92365', 'logIndex': '0x33', 'removed': False}
@@ -27,6 +27,12 @@ def test_web_socket_response_serialization(pguild_token_abi, ws_payload, signatu
 
     topic = event.topic 
     
-    out = JsonRpcRTWsClient.decode_payload(ws_payload, inputs, signature, topic)
+    caster = JsonRpcRtWsClientCaster(pguild_token_abi) 
+    
+    out = caster.lookup(signature)(ws_payload)
+
+    # These are added by the client...not the caster.  Meh.
+    out['signature'] = signature
+    out['sighash'] = topic.replace("0x", "")
 
     assert out == expected_event

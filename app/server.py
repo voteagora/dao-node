@@ -31,7 +31,7 @@ from .profiling import Profiler
 
 from .clients_csv import CSVClient
 from .clients_httpjson import JsonRpcHistHttpClient
-from .clients_wsjson import JsonRpcRTWsClient
+from .clients_wsjson import JsonRpcRtWsClient
 
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
 from .signatures import *
@@ -859,12 +859,12 @@ async def bootstrap_data_feeds(app, loop):
     csvc = CSVClient(DAO_NODE_DATA_PATH)
     if csvc.is_valid():
         clients.append(csvc)
-    
+
     rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
     if rpcc.is_valid():
        clients.append(rpcc)
-
-    jwsc = JsonRpcRTWsClient(REALTIME_NODE_WS_URL)
+    
+    jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL)
     if jwsc.is_valid():
        clients.append(jwsc)
 

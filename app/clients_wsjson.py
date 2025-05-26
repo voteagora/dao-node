@@ -20,7 +20,7 @@ from .clients_httpjson import SubscriptionPlannerMixin
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
 
 
-class JsonRpcHistWsClientCaster:
+class JsonRpcRtWsClientCaster:
     
     def __init__(self, abis):
         self.abis = abis
@@ -82,7 +82,7 @@ class JsonRpcHistWsClientCaster:
         return caster_fn
 
 
-class JsonRpcRTWsClient(SubscriptionPlannerMixin):
+class JsonRpcRtWsClient(SubscriptionPlannerMixin):
     timeliness = 'realtime'
 
     def __init__(self, url):
@@ -93,7 +93,7 @@ class JsonRpcRTWsClient(SubscriptionPlannerMixin):
 
         self.init()
 
-        self.casterCls = JsonRpcHistWsClientCaster
+        self.casterCls = JsonRpcRtWsClientCaster
 
         self.event_subsription_meta = defaultdict(lambda: defaultdict(dict))
         self.block_subsription_meta = []
@@ -281,7 +281,7 @@ class JsonRpcRTWsClient(SubscriptionPlannerMixin):
 
                         logr.info(f"Received event for subscription {sub_id} : EVENT: {block_number}-{topic}")
 
-                        out['topic'] = topic.replace("0x", "")
+                        out['sighash'] = topic.replace("0x", "")
                         out['signature'] = signature
                         out['signal'] = f"{chain_id}.{cs_address.lower()}.{signature}"
 
