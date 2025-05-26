@@ -151,6 +151,8 @@ class Delegations(DataProduct):
         self.delegatee_oldest = {}
         self.delegatee_latest = {}
 
+        self.delegator_delegate = defaultdict(set)
+
         self.timestamp_to_block = SortedDict()
         self.delegatee_vp_recent_history = defaultdict(SortedDict)
 
@@ -227,6 +229,13 @@ class Delegations(DataProduct):
             self.delegator[delegator] = to_delegate
             self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
 
+            if to_delegate != '0x0000000000000000000000000000000000000000':
+                self.delegator_delegate[delegator] = {to_delegate}
+            else:
+                if delegator in self.delegator_delegate:
+                    del self.delegator_delegate[delegator]
+
+
             if not self.delegatee_oldest_event.get(to_delegate):
                 self.delegatee_oldest_event[to_delegate] = {
                     'block_number': block_number,
@@ -279,6 +288,11 @@ class Delegations(DataProduct):
                     
                     # Update voting power
                     self.delegatee_vp[old_delegate] -= amount
+                
+                if delegator in self.delegator_delegate:
+                    self.delegator_delegate[delegator].discard(old_delegate)
+                    if not self.delegator_delegate[delegator]:
+                        del self.delegator_delegate[delegator]
 
             # Handle new delegations addition
             for new_delegation in new_delegatees:
@@ -302,6 +316,9 @@ class Delegations(DataProduct):
                 
                 # Update voting power
                 self.delegatee_vp[to_delegate] += amount
+
+                if to_delegate != '0x0000000000000000000000000000000000000000':
+                    self.delegator_delegate[delegator].add(to_delegate)
                 
 
         elif signature == DELEGATE_VOTES_CHANGE:
