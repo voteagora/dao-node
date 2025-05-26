@@ -741,11 +741,11 @@ async def delegates_handler(app, request):
     out = []
     if delegator_address_filter:
         delegator_address_filter_lower = delegator_address_filter.lower()
-        target_delegatee_addresses = app.ctx.delegations.delegator_delegate.get(delegator_address_filter_lower, set())
+        target_delegatee_addresses = app.ctx.delegations.delegator_delegate[delegator_address_filter_lower]
         
         if target_delegatee_addresses:
             for delegate_addr in target_delegatee_addresses:
-                delegate_addr_lower = delegate_addr.lower()
+                delegate_addr_lower = delegate_addr
                 sort_val = _get_delegate_sort_value(app.ctx, delegate_addr_lower, sort_by, pm if sort_by_pr else None)
                 
                 # Apply LVB specific pruning if sorting by LVB

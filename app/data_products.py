@@ -130,8 +130,6 @@ def round_and_seven_days_ago(ts):
 
 class Delegations(DataProduct):
     def __init__(self):
-        self.delegator = defaultdict(None) # owner, doing the delegation
-        
         # Data about the delegatee (ie, the delegate's influence)
         self.delegatee_list = defaultdict(SortedDict) #  list of delegators
         self.delegatee_cnt = defaultdict(int) #  dele
@@ -226,7 +224,6 @@ class Delegations(DataProduct):
             to_delegate = event['to_delegate'].lower()
             from_delegate = event['from_delegate'].lower()
 
-            self.delegator[delegator] = to_delegate
             self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
 
             if to_delegate != '0x0000000000000000000000000000000000000000':
