@@ -974,6 +974,7 @@ async def bootstrap_data_feeds(app, loop):
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'])
+    votes = Votes(governor_spec=public_config['governor_spec'])
 
     gov_spec_name = public_config['governor_spec']['name']
     if gov_spec_name in ('compound', 'ENSGovernor'):
@@ -996,10 +997,14 @@ async def bootstrap_data_feeds(app, loop):
         if not (public_config['governor_spec']['name'] in ('compound', 'ENSGovernor')):
             VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
 
-        votes = Votes(governor_spec=public_config['governor_spec'])
         for VOTE_EVENT in VOTE_EVENTS:
             app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
 
+    # This is so certain endpoints can access empty data-products
+    # without a bunch of gymnastics.
+    for data_product in [proposals, votes]:
+        if not hasattr(app.ctx, data_product.name):
+            setattr(app.ctx, data_product.name, data_product)
 
     app.add_task(read_archive(app, dcqs))
 
