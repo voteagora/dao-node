@@ -17,6 +17,7 @@ from sanic.log import logger as logr, error_logger as errlogr
 
 from .utils import camel_to_snake
 from .clients_csv import SubscriptionPlannerMixin
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS
 
 def resolve_block_count_span(chain_id=None):
 
@@ -62,7 +63,24 @@ class JsonRpcHistHttpClientCaster:
         abi_frag = self.abis.get_by_signature(signature)
         EVENT_NAME = abi_frag.name       
         contract_events = Web3().eth.contract(abi=[abi_frag.literal]).events
-        caster = getattr(contract_events, EVENT_NAME)().process_log
+        processor = getattr(contract_events, EVENT_NAME)().process_log
+
+        """
+        
+        # This patch was needed for the proposal-create events when we were brute forcing types by data-product.
+
+        elif isinstance(obj, bytes):
+            obj = [obj.hex()] <- This was likely a bad idea, it turned something that was not an array into an array.
+        elif isinstance(obj, (list, tuple)):
+            out = []
+            for o in obj:
+                try:
+                    o = o.hex()
+                except:
+                    assert isinstance(o, str)
+                out.append(o)
+            obj = out
+        """
 
         def bytes_to_str(x):
             if isinstance(x, bytes):
@@ -77,9 +95,9 @@ class JsonRpcHistHttpClientCaster:
             return x
 
         def caster_fn(log):
-            out = caster(log)
-            out = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in out.items()}
-            return out
+            tmp = processor(log)
+            args = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in tmp['args'].items()}
+            return args
         
         return caster_fn
 
@@ -153,7 +171,12 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             raise Exception(f"Could not connect to {self.url}")
 
         now = datetime.utcnow()
-        days_back = 1 # TODO: Change back to 4, after we get infra stable.
+
+        if CAPTURE_CLIENT_OUTPUTS:
+            days_back = 30 
+        else:
+            days_back = 1 # TODO: Change back to 4, after we get infra stable.
+
         target_date = now - timedelta(days=days_back)
 
         latest_block = w3.eth.block_number
@@ -189,9 +212,10 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             "fromBlock": from_block,
             "toBlock": to_block,
             "address": contract_address,
-            "topics": topics
+            "topics": [topics]
         }
 
+        # logr.info(f"Fetching logs for {contract_address} from block {from_block} to {to_block}, for topics={topics}")
         # Fetch the logs for the current block range
         try:
             logs = w3.eth.get_logs(event_filter)
@@ -211,7 +235,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
         topics = chunk_list(list(topics), 4)
 
-        logr.info(f"Fetching logs for {len(topics)} topic chunk(s) for {contract_address} from block {start_block}")
+        logr.info(f"👉 Fetching {len(topics)} topic chunk(s) for {contract_address} from block {start_block}")
 
         from_block = start_block
 
@@ -228,8 +252,9 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             for topic_chunk in topics:
                 chunk_logs = self.get_logs_unsafe(w3, contract_address, topic_chunk, from_block, to_block)
                 logs.extend(chunk_logs)
-                
-            logr.info(f"Fetched {len(logs)} logs from block {from_block} to {to_block}")
+            
+            if len(logs):
+                logr.info(f"Fetched {len(logs)} logs from block {from_block} to {to_block}")
             
             all_logs.extend(logs)
 
@@ -305,24 +330,23 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
                 for log in logs:
 
-                    out = {}
-                    out['block_number'] = str(log['blockNumber'])
-                    out['transaction_index'] = log['transactionIndex']
-                    out['log_index'] = log['logIndex']
 
                     topic = "0x" + log['topics'][0].hex()
 
                     caster_fn, signature = self.event_subsription_meta[chain_id][address][topic]
 
-            
-                    tmp = caster_fn(log)
+                    args = caster_fn(log)
 
-                    args = tmp['args']
-                
+                    out = {}
+
+                    out['block_number'] = str(log['blockNumber'])
+                    out['transaction_index'] = log['transactionIndex']
+                    out['log_index'] = log['logIndex']
+
                     out.update(**args)
 
                     out['signature'] = signature
-                    out['sighash'] = topic
+                    out['sighash'] = topic.replace("0x", "")
 
                     all_logs.append((out, signature, new_signal))
 

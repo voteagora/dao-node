@@ -16,6 +16,8 @@ from bisect import bisect_left
 import yaml
 from google.cloud import storage
 from copy import copy
+import json as j
+import random
 
 from sanic_ext import openapi
 from sanic.worker.manager import WorkerManager
@@ -34,8 +36,8 @@ from .data_products import Balances, ProposalTypes, Delegations, Proposals, Vote
 from .signatures import *
 from . import __version__
 from .logsetup import get_logger 
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT
 
-import random
 
 glogr = get_logger('global')
 
@@ -190,6 +192,7 @@ class Feed:
         self.booting = True
         self.meta = []
         self.profiler = Profiler()
+        self.capture_counter = defaultdict(int)
     
     def set_client_sequencer(self, client_sequencer):
         self.cs = client_sequencer
@@ -210,33 +213,83 @@ class Feed:
 
         for i, client in enumerate(self.cs):
 
-
             if client.timeliness == 'archive':
+
+                self.block = client.get_fallback_block()
 
                 start = time.perf_counter()
 
                 emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
 
-                logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client)} from block {self.block}")
+                logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client).__name__} from block {self.block}")
 
                 reader = client.read(after=self.block)
 
                 cnt = 0
-
+ 
                 for event, signal, new_signal in reader:
                     cnt += 1
                     self.block = max(self.block, int(event['block_number']))
 
-                    # with self.profiler(signal):
-                    yield event, signal, new_signal
+                    if CAPTURE_CLIENT_OUTPUTS:
+                        self.capture_output(event, client_type=type(client))
+
+                    if PROFILE_ARCHIVE_CLIENT:
+                        with self.profiler(signal):
+                            yield event, signal, new_signal
+                    else:
+                        yield event, signal, new_signal
 
                 end = time.perf_counter()
 
                 dur = end - start
 
-                #self.profiler.report()
+                if PROFILE_ARCHIVE_CLIENT:
+                    self.profiler.report()
 
                 logr.info(f"{emoji} Done reading {cnt} block-headers and event-logs as of block {self.block}.  Took {dur:.2f} seconds.")
+            
+            self.block = self.block + 1
+    
+    def capture_output(self, event, client_type):
+
+        if 'timestamp' in event:
+
+            loc = f"tests/client_outputs/blocks/{client_type.__name__}"
+
+            if self.capture_counter[loc] > 10:
+                return
+
+            os.makedirs(loc, exist_ok=True)
+
+            self.capture_counter[loc] += 1
+            
+            with open(f"{loc}/{event['block_number']}.json", "w") as f:
+                j.dump(event, f, indent=2)
+
+        else:
+
+            signature = event.get('signature')
+
+            loc = f"tests/client_outputs/{signature}/{client_type.__name__}"
+
+            if self.capture_counter[loc] > 10:
+                return
+
+            os.makedirs(loc, exist_ok=True)
+
+            number_of_events = len(os.listdir(loc))
+
+            self.capture_counter[loc] = number_of_events
+
+            
+            with open(f"{loc}/{event['block_number']}-{event['transaction_index']}-{event['log_index']}.json", "w") as f:
+                try:
+                    j.dump(event, f, indent=2)
+                except:
+                    print("Couldn't serialize this object:")
+                    print(event)
+                    pass
 
 
     async def realtime_async_read(self):

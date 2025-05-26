@@ -1,6 +1,6 @@
 import pytest
 from app.data_products import Balances, Delegations, Proposals, Votes, ProposalTypes
-from app.clients import CSVClient
+from app.clients_csv import CSVClient
 import csv
 import os
 import heapq
@@ -197,9 +197,12 @@ def test_Proposals_for_compound_governor_from_csv(compound_governor_abis):
     proposals = Proposals(governor_spec={'name': 'compound'})
         
     csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
+    csvc.set_abis(compound_governor_abis)
     chain_id = 1
-    for row in csvc.read(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', compound_governor_abis):
-        proposals.handle(row)
+    csvc.plan_event(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)')
+
+    for event, signature, signal_edge in csvc.read(after=0):
+        proposals.handle(event)
     
     # Get the first proposal from the data product
     first_proposal = next(proposals.unfiltered())
@@ -210,6 +213,7 @@ def test_Proposals_for_compound_governor_from_csv(compound_governor_abis):
     assert 'description' in first_proposal.create_event
 
     assert 'targets' in first_proposal.create_event
+
     assert first_proposal.create_event['targets'][0] == '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984'
     
     assert 'values' in first_proposal.create_event
@@ -240,9 +244,13 @@ def test_Proposals_one_op_approval_from_csv(op_governor_abis):
     proposals = Proposals(gov_spec, modules)
         
     csvc = CSVClient('tests/data/3000-op-approval-PID31049')
+    csvc.set_abis(op_governor_abis)
+
     chain_id = 10
-    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)', op_governor_abis):
-        proposals.handle(row)
+    csvc.plan_event(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)')
+
+    for event, _, _ in csvc.read(after=0):
+        proposals.handle(event)
     
     # Get the first proposal from the data product
     first_proposal = next(proposals.unfiltered())
@@ -269,16 +277,16 @@ def test_Proposals_op_proposal_module_names(op_governor_abis):
     proposals = Proposals(gov_spec, modules)
         
     csvc = CSVClient('tests/data/5000-all-optimism-proposalcreated-to-20250425')
+    csvc.set_abis(op_governor_abis)
+
     chain_id = 10
+    address = '0xcdf27f107725988f2261ce2256bdfcde8b382b10'
+
+    for signature in [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]:
+        csvc.plan_event(chain_id, address, signature)
     
-    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_1, op_governor_abis):
-        proposals.handle(row)
-    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_2, op_governor_abis):
-        proposals.handle(row)
-    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_3, op_governor_abis):
-        proposals.handle(row)
-    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', PROPOSAL_CREATED_4, op_governor_abis):
-        proposals.handle(row)
+    for event, _, _ in csvc.read(after=0):
+        proposals.handle(event)
 
     module_types = [p.voting_module_name for p in proposals.proposals.values()]
 
@@ -304,12 +312,14 @@ def test_Votes_one_op_approval_from_csv(op_governor_abis):
     votes = Votes(gov_spec)
         
     csvc = CSVClient('tests/data/3000-op-approval-PID31049')
-    chain_id = 10
-    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', 'VoteCast(address,uint256,uint8,uint256,string)', op_governor_abis):
-        votes.handle(row)
+    csvc.set_abis(op_governor_abis)
 
-    for row in csvc.read(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)', op_governor_abis):
-       votes.handle(row)
+    chain_id = 10
+    csvc.plan_event(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', 'VoteCast(address,uint256,uint8,uint256,string)')
+    csvc.plan_event(chain_id, '0xcdf27f107725988f2261ce2256bdfcde8b382b10', 'VoteCastWithParams(address,uint256,uint8,uint256,string,bytes)')
+
+    for event, _, _ in csvc.read(after=0):
+        votes.handle(event)
 
     aggregations = votes.proposal_aggregations['31049359136632781771607732021569520613741907517136820917236339424553298132866']
      
@@ -324,12 +334,16 @@ def test_ProposalTypes_proposal_type_set_with_one_scope_created(pguild_ptc_abi):
     pt = ProposalTypes()
 
     csvc = CSVClient('tests/data/4000-pguild-ptc-w-scopes')
-    chain_id = 1115511
+    csvc.set_abis(pguild_ptc_abi)
 
-    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', PROP_TYPE_SET_4, pguild_ptc_abi):
-        pt.handle(row)
-    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', SCOPE_CREATED, pguild_ptc_abi):
-        pt.handle(row)
+    chain_id = 1115511
+    address = '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602'
+
+    csvc.plan_event(chain_id, address, PROP_TYPE_SET_4)
+    csvc.plan_event(chain_id, address, SCOPE_CREATED)
+
+    for event, _, _ in csvc.read(after=0):
+        pt.handle(event)
     
     assert len(pt.proposal_types) == 3
     assert pt.proposal_types[2]['quorum'] == 3300

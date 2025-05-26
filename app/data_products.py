@@ -475,6 +475,10 @@ def decode_proposal_data(proposal_type, proposal_data):
 class Proposal:
     def __init__(self, create_event):
         self.create_event = create_event
+
+        assert isinstance(self.create_event['description'], str)
+        # self.create_event['description'] = str(self.create_event['description']) # <- not sure if we really need this, but it was in the old code.
+
         self.canceled = False
         self.queued = False
         self.executed = False
@@ -526,45 +530,6 @@ class Proposal:
         if addr:
             return addr.lower()
 
-    
-
-def decode_create_event(event) -> Proposal:
-
-    event['description'] = str(event['description']) # Some proposals are just bytes.
-
-    obj = event.get('values', Ellipsis)
-    if obj is not Ellipsis:
-        if isinstance(obj, str):
-            obj = obj[1:-1]
-            obj = obj.split(',')
-            obj = [int(x) for x in obj]
-        event['values'] = obj
-
-    obj = event.get('targets', Ellipsis)
-    if obj is not Ellipsis:
-        if isinstance(obj, str):
-            obj = obj.replace('"', '')
-            obj = obj[1:-1]
-            obj = obj.split(',')
-        event['targets'] = obj
-
-    obj = event.get('calldatas', Ellipsis)
-    if obj is not Ellipsis:
-        if isinstance(obj, str):
-            obj = obj.replace('"', '')
-            obj = obj[1:-1]
-            obj = obj.split(',')
-        event['calldatas'] = obj
-
-    obj = event.get('signatures', Ellipsis)
-    if obj is not Ellipsis:
-        if isinstance(obj, str):
-            obj = obj[2:-2]
-            obj = obj.split('","')
-        event['signatures'] = obj
-    
-    return Proposal(event)
-
 
 class Proposals(DataProduct):
 
@@ -600,7 +565,7 @@ class Proposals(DataProduct):
 
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
-                proposal = decode_create_event(event)
+                proposal = Proposal(event)
 
                 proposal_data = proposal.create_event.get('proposal_data', None)
 

@@ -17,17 +17,32 @@ from abifsm import ABISet
 from collections import defaultdict
 from .utils import camel_to_snake
 
-from .signatures import TRANSFER
-
-# from .profiling import Profiler
+from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4
 
 
-csv.field_size_limit(sys.maxsize)
 
-from .utils import camel_to_snake
 
 INT_TYPES = [f"uint{i}" for i in range(8, 257, 8)]
 INT_TYPES.append("uint")
+
+BYTE_TYPES = [f"bytes{i}" for i in range(1, 33)]
+BYTE_TYPES.append("bytes")
+
+csv.field_size_limit(sys.maxsize)
+
+
+def cast(event, fields, func):
+
+    for field in fields:
+        try:
+            event[field] = func(event[field])
+        except ValueError:
+            print(f"E182250323 - Problem with casting {field} to {func.__name__}.")
+        except KeyError:
+            print(f"E184250323 - Problem with getting {field} to {func.__name__}.")
+    
+    return event
+
 
 class CSVClientCaster:
     
@@ -38,21 +53,24 @@ class CSVClientCaster:
 
         abi_frag = self.abis.get_by_signature(signature)
 
+        int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
+
+        # bytes_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in BYTE_TYPES]
+
+        # DEFAULT CASE...
+
         def caster_maker():
 
-            int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
-
             def caster_fn(event):
-                for int_field in int_fields:
-                    try:
-                        event[int_field] = int(event[int_field])
-                    except ValueError:
-                        print(f"E182250323 - Problem with casting {int_field} to int, from file {fname}.")
-                    except KeyError:
-                        print(f"E184250323 - Problem with getting {int_field} from file {fname}.")
+
+                event = cast(event, int_fields, int)
+                # event = cast(event, bytes_fields, lambda x: x.hex())
+                
                 return event
 
             return caster_fn
+        
+        # SPECIFIC CASES...
         
         if signature == TRANSFER:
             
@@ -62,6 +80,50 @@ class CSVClientCaster:
                 event[amount_field] = int(event[amount_field])
                 return event
             
+            return caster_fn
+
+        if signature in [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]:
+            
+            def caster_fn(event):
+
+                event = cast(event, int_fields, int)
+                # event = cast(event, bytes_fields, str)
+            
+                # This was in the old implementation, but it should be caught in the above.
+
+                obj = event.get('values', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = obj[1:-1]
+                        obj = obj.split(',')
+                        obj = [int(x) for x in obj]
+                    event['values'] = obj
+
+                obj = event.get('targets', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = obj.replace('"', '')
+                        obj = obj[1:-1]
+                        obj = obj.split(',')
+                    event['targets'] = obj
+
+                obj = event.get('calldatas', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = obj.replace('"', '')
+                        obj = obj[1:-1]
+                        obj = obj.split(',')
+                    event['calldatas'] = obj
+
+                obj = event.get('signatures', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = obj[2:-2]
+                        obj = obj.split('","')
+                    event['signatures'] = obj
+
+                return event
+
             return caster_fn
 
         else:
@@ -199,7 +261,7 @@ class CSVClient(SubscriptionPlannerMixin):
 
 
 
-    def get_fallback_block(self, signature):
+    def get_fallback_block(self):
         return 0
 
     def events_fname(self, chain_id, address, signature):
