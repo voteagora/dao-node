@@ -7,7 +7,7 @@ from sanic import Sanic
 from sanic.response import json
 from app.server import proposals_handler, proposal_types_handler, delegates_handler, delegate_handler, ParticipationModel
 from app.data_products import Proposals, Votes, Delegations, ProposalTypes, Balances
-from app.clients import CSVClient
+from app.clients_csv import CSVClient
 from app.signatures import *
 import json
 
@@ -42,18 +42,22 @@ def test_client(app):
 async def test_proposals_endpoint(app, test_client, compound_governor_abis):
 
     proposals = Proposals(governor_spec={'name': 'compound'})
-    csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
-    chain_id = 1
-    for row in csvc.read(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)', compound_governor_abis):
-            proposals.handle(row)
-
     votes = Votes(governor_spec={'name': 'compound'})
-    csvc = CSVClient('tests/data/2000-uniswap-PID83-only')
+
     chain_id = 1
-    for row in csvc.read(chain_id, '0x408ed6354d4973f66138c91495f2f2fcbd8724c3', 'VoteCast(address,uint256,uint8,uint256,string)', compound_governor_abis):
-        if 'block_number' in row and isinstance(row['block_number'], str):
-            row['block_number'] = int(row['block_number'])
-        votes.handle(row)
+    address = '0x408ed6354d4973f66138c91495f2f2fcbd8724c3'
+
+    csvc = CSVClient('tests/data/1000-all-uniswap-to-PID83')
+    csvc.set_abis(compound_governor_abis)
+    csvc.plan_event(chain_id, address, 'ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)')
+    for event, _, _ in csvc.read(after=0):
+        proposals.handle(event)
+
+    csvc = CSVClient('tests/data/2000-uniswap-PID83-only')
+    csvc.set_abis(compound_governor_abis)
+    csvc.plan_event(chain_id, address, 'VoteCast(address,uint256,uint8,uint256,string)')
+    for event, _, _ in csvc.read(after=0):
+        votes.handle(event)
 
     # Attach mock proposals to app context
     app.ctx.proposals = proposals

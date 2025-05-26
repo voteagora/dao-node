@@ -162,27 +162,6 @@ class Delegations(DataProduct):
         self.seven_day_ts = 0
 
         self.cached_seven_day_vp = defaultdict(lambda: (0, 0))
-
-    def _parse_delegate_array(self, array_str):
-
-        try:
-            # This is indirectly checking to see if this is string-like
-            array_str = array_str.strip('"')
-        except AttributeError:
-            # "SO THIS SUCKS...  
-            # it appears as if the JSON-RPC selectively decodes these arrays of tuples willy nilly...
-            # and returns them as an attribute dict like this:
-            # [AttributeDict({'_delegatee': '0x7B0befc5B043148Cd7bD5cFeEEf7BC63D28edEC0', '_numerator': 302}), 
-            #  AttributeDict({'_delegatee': '0x9870DE32a48f4F721D8e866b23F7E9D4581FCc2f', '_numerator': 155})]
-            if isinstance(array_str, list):
-                return [(x['_delegatee'].lower(), x['_numerator']) for x in array_str]
-            raise
-    
-        if not array_str or array_str == '[]':
-            return []
-        
-        delegates = json.loads(array_str)
-        return [[addr.lower(), int(amount)] for addr, amount in delegates]
         
     def handle_block(self, event):
 
@@ -213,6 +192,10 @@ class Delegations(DataProduct):
                 pass # print("No timestamp found that is older than 7 days.")
 
     def handle(self, event):
+
+        if 'timestamp' in event:
+            self.handle_block(event)
+            return
 
         signature = event['signature']
         block_number = event['block_number']
@@ -265,8 +248,8 @@ class Delegations(DataProduct):
             delegator = event['delegator'].lower()
             
             # Parse old and new delegations
-            old_delegatees = self._parse_delegate_array(event.get('old_delegatees', '[]'))
-            new_delegatees = self._parse_delegate_array(event.get('new_delegatees', '[]'))
+            old_delegatees = event.get('old_delegatees')
+            new_delegatees = event.get('new_delegatees')
             
             # Handle old delegations removal
             for old_delegation in old_delegatees:
@@ -485,6 +468,10 @@ def decode_proposal_data(proposal_type, proposal_data):
 class Proposal:
     def __init__(self, create_event):
         self.create_event = create_event
+
+        assert isinstance(self.create_event['description'], str)
+        # self.create_event['description'] = str(self.create_event['description']) # <- not sure if we really need this, but it was in the old code.
+
         self.canceled = False
         self.queued = False
         self.executed = False
@@ -536,56 +523,6 @@ class Proposal:
         if addr:
             return addr.lower()
 
-    
-
-def decode_create_event(event) -> Proposal:
-
-    event['description'] = str(event['description']) # Some proposals are just bytes.
-
-    obj = event.get('values', Ellipsis)
-    if obj is not Ellipsis:
-        if isinstance(obj, str):
-            obj = obj[1:-1]
-            obj = obj.split(',')
-            obj = [int(x) for x in obj]
-        event['values'] = obj
-
-    obj = event.get('targets', Ellipsis)
-    if obj is not Ellipsis:
-        if isinstance(obj, str):
-            obj = obj.replace('"', '')
-            obj = obj[1:-1]
-            obj = obj.split(',')
-        event['targets'] = obj
-
-    obj = event.get('calldatas', Ellipsis)
-    if obj is not Ellipsis:
-        if isinstance(obj, str):
-            obj = obj.replace('"', '')
-            obj = obj[1:-1]
-            obj = obj.split(',')
-        elif isinstance(obj, bytes):
-            obj = [obj.hex()]
-        elif isinstance(obj, (list, tuple)):
-            out = []
-            for o in obj:
-                try:
-                    o = o.hex()
-                except:
-                    assert isinstance(o, str)
-                out.append(o)
-            obj = out
-        event['calldatas'] = obj
-
-    obj = event.get('signatures', Ellipsis)
-    if obj is not Ellipsis:
-        if isinstance(obj, str):
-            obj = obj[2:-2]
-            obj = obj.split('","')
-        event['signatures'] = obj
-    
-    return Proposal(event)
-
 
 class Proposals(DataProduct):
 
@@ -621,7 +558,7 @@ class Proposals(DataProduct):
 
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
-                proposal = decode_create_event(event)
+                proposal = Proposal(event)
 
                 proposal_data = proposal.create_event.get('proposal_data', None)
 

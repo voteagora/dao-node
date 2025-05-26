@@ -9,9 +9,12 @@ from argh import arg, dispatch_commands
 import yaml
 from pprint import pprint
 from pathlib import Path
+from dotenv import load_dotenv
 
 @arg('dir', help='Disk or RAM directory to download blobs into.')
 def sync_from_gcs(dir: str, multi_processing=False, strict=False):
+
+    load_dotenv()
 
     agora_config_file = os.environ.get('AGORA_CONFIG_FILE')
     dao_node_gcloud_bucket = os.environ.get('DAO_NODE_GCLOUD_BUCKET')
