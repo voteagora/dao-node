@@ -31,6 +31,7 @@ from .profiling import Profiler
 
 from .clients_csv import CSVClient
 from .clients_httpjson import JsonRpcHistHttpClient
+from .clients_wsjson import JsonRpcRTWsClient
 
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
 from .signatures import *
@@ -215,7 +216,7 @@ class Feed:
 
             if client.timeliness == 'archive':
 
-                self.block = client.get_fallback_block()
+                self.block = max(self.block, client.get_fallback_block())
 
                 start = time.perf_counter()
 
@@ -303,9 +304,7 @@ class Feed:
                 if self.block is None:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
-                reader = client.read(self.chain_id, self.address, self.signature, self.abis, after=self.block)
-
-                async for event in reader:
+                async for event in client.read():
 
                     self.block = max(self.block, int(event['block_number']))
 
@@ -358,7 +357,6 @@ class Feed:
 class DataProductContext:
     def __init__(self):
 
-        self.queues = {}
         self.dps = defaultdict(list)
         self.dps_names = defaultdict(list)
         self.feed = Feed()
@@ -371,45 +369,28 @@ class DataProductContext:
             chain_id, address, signature = chain_id_contract_signature.split('.')
             self.feed.plan_event(chain_id=int(chain_id), address=address, signature=signature)
 
-        if chain_id_contract_signature not in self.queues:
-            self.queues[chain_id_contract_signature] = asyncio.Queue()
-
         self.dps[chain_id_contract_signature].append(data_product)
-
+        
         setattr(self, data_product.name, data_product)
 
 
     def set_signal_context(self, chain_id_contract_signature):
-
         self.signal_context = self.dps[chain_id_contract_signature]
 
-
     def dispatch_from_archive(self, event):
-
         for data_product in self.signal_context:
             data_product.handle(event)
 
 
-    async def dispatch(self, event):
-        
+    async def dispatch_from_realtime(self, event):
+
         chain_id_contract_signature = event['signal']
         del event['signal']
 
-        for data_product in self.dps[chain_id_contract_signature]:
-            await data_product.handle(event)  
+        dps = self.dps[chain_id_contract_signature]
 
-
-        # queue = self.queues[chain_id_contract_signature]
-        # queue.put_nowait(event)
-    
-    """
-    async def process(self, chain_id_contract_signature):
-
-        while True:
-            event = await self.queues[chain_id_contract_signature].get()
-            for data_product in self.dps[chain_id_contract_signature]:
-                await data_product.handle(event)
-    """
+        for data_product in dps:
+            data_product.handle(event)  
 
     
 app = Sanic('DaoNode', ctx=DataProductContext())
@@ -1036,13 +1017,15 @@ async def read_archive(app, dcqs):
 
         app.ctx.dispatch_from_archive(event)
 
-# @app.after_server_start
-# async def subscribe_feeds(app):
-#
-#    logr.info("Adding signal handler for each feed.")
-#    for feed in app.ctx.feeds:
-#        logr.info(f"Invoking feed.run(app) for {feed.name}")
-#        app.add_task(feed.run(app))
+@app.after_server_start
+async def subscribe_feeds(app):
+
+    app.add_task(read_realtime(app))
+
+async def read_realtime(app):
+    
+    async for event in app.ctx.feed.realtime_async_read():
+        await app.ctx.dispatch_from_realtime(event)
 
 ##################################
 #
