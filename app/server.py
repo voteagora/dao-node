@@ -872,21 +872,24 @@ async def bootstrap_data_feeds(app, loop):
 
     abi_list = []
 
-    token_addr = deployment['token']['address'].lower()
-    logr.info(f"Using {token_addr=}")
-    token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
-    abi_list.append(token_abi)
+    if 'token' in deployment:
+        token_addr = deployment['token']['address'].lower()
+        logr.info(f"Using {token_addr=}")
+        token_abi = ABI.from_internet('token', token_addr, chain_id=chain_id, implementation=True)
+        abi_list.append(token_abi)
 
-    gov_addr = deployment['gov']['address'].lower()
-    logr.info(f"Using {gov_addr=}")
+    
+    if 'gov' in deployment:
+        gov_addr = deployment['gov']['address'].lower()
+        logr.info(f"Using {gov_addr=}")
 
-    GOV_ABI_OVERRIDE_URL = os.getenv('GOV_ABI_OVERRIDE_URL', None)
-    if GOV_ABI_OVERRIDE_URL:
-        logr.info("Overriding Gov ABI")
-        gov_abi = ABI.from_url('gov', GOV_ABI_OVERRIDE_URL)
-    else:
-        gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
-    abi_list.append(gov_abi)
+        GOV_ABI_OVERRIDE_URL = os.getenv('GOV_ABI_OVERRIDE_URL', None)
+        if GOV_ABI_OVERRIDE_URL:
+            logr.info("Overriding Gov ABI")
+            gov_abi = ABI.from_url('gov', GOV_ABI_OVERRIDE_URL)
+        else:
+            gov_abi = ABI.from_internet('gov', gov_addr, chain_id=chain_id, implementation=True)
+        abi_list.append(gov_abi)
 
     if 'ptc' in deployment:
         ptc_addr = deployment['ptc']['address'].lower()
@@ -905,24 +908,22 @@ async def bootstrap_data_feeds(app, loop):
         balances = Balances(token_spec=public_config['token_spec'])
         app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
-    delegations = Delegations()
-    app.ctx.register(f'{chain_id}.blocks', delegations)
-    app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
+    if 'token' in deployment:
+        delegations = Delegations()
+        app.ctx.register(f'{chain_id}.blocks', delegations)
+        app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
 
-    if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):
-        app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_2}', delegations)
-    else:
-        app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_1}', delegations)
+        if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):
+            app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_2}', delegations)
+        else:
+            app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_1}', delegations)
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
 
-        PROP_TYPE_SET_SIGNATURE = None
-
         for prop_type_set_signature in [PROP_TYPE_SET_1, PROP_TYPE_SET_2, PROP_TYPE_SET_3, PROP_TYPE_SET_4]:
             if abis.get_by_signature(prop_type_set_signature):
                 app.ctx.register(f'{chain_id}.{ptc_addr}.{prop_type_set_signature}', proposal_types)
-                PROP_TYPE_SET_SIGNATURE = prop_type_set_signature
         
         if AGORA_GOV and public_config['governor_spec']['version'] >= 1.1:
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
@@ -938,20 +939,23 @@ async def bootstrap_data_feeds(app, loop):
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
     elif gov_spec_name == 'agora':
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_4]
+    elif gov_spec_name == 'none':
+        PROPOSAL_CREATED_EVENTS = []
     else:
         raise Exception(f"Govenor Unsupported: {gov_spec_name}")
 
-    PROPOSAL_LIFECYCLE_EVENTS = PROPOSAL_CREATED_EVENTS + [PROPOSAL_CANCELED, PROPOSAL_QUEUED, PROPOSAL_EXECUTED]
-    for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
+    if PROPOSAL_CREATED_EVENTS:
+        PROPOSAL_LIFECYCLE_EVENTS = PROPOSAL_CREATED_EVENTS + [PROPOSAL_CANCELED, PROPOSAL_QUEUED, PROPOSAL_EXECUTED]
+        for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
+            app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
 
-    VOTE_EVENTS = [VOTE_CAST_1]    
-    if not (public_config['governor_spec']['name'] in ('compound', 'ENSGovernor')):
-        VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
+        VOTE_EVENTS = [VOTE_CAST_1]    
+        if not (public_config['governor_spec']['name'] in ('compound', 'ENSGovernor')):
+            VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
 
-    votes = Votes(governor_spec=public_config['governor_spec'])
-    for VOTE_EVENT in VOTE_EVENTS:
-        app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
+        votes = Votes(governor_spec=public_config['governor_spec'])
+        for VOTE_EVENT in VOTE_EVENTS:
+            app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
 
 
     app.add_task(read_archive(app, dcqs))
