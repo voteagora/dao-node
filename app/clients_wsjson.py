@@ -130,31 +130,6 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
         
         return ans
 
-    """
-    async def ensure_connection(self):
-        async with self.ws_lock:
-            # First check if we need to clean up old connection
-            if self.ws is not None:
-                
-                try:
-                
-                    pong = await self.ws.ping()
-                    await asyncio.wait_for(pong, timeout=1)
-                    return  # Connection is good
-                
-                except Exception:
-                    
-                    # Connection is bad, clean it up
-                    try:
-                        await self.ws.close()
-                    except Exception:
-                        pass
-                   
-                    self.ws = None
-            # Create new connection
-            self.ws = await websockets.connect(self.url, ping_interval=5, ping_timeout=3)
-    """    
-
     async def _subscribe_to_block_headers(self):
 
         for chain_id in self.block_subsription_meta:
@@ -281,57 +256,3 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
                     logr.error(f"Unknown payload, skipping:")
                     logr.error(payload)
                 
-            
-        
- 
-    @staticmethod
-    def decode_payload(ws_payload, inputs, signature, topic):
-
-        def bytes_to_str(x):
-            if isinstance(x, bytes):
-                return x.hex()
-            return x
-
-        def array_of_bytes_to_str(x):
-            if isinstance(x, list):
-                return [bytes_to_str(i) for i in x]
-            elif isinstance(x, bytes):
-                return bytes_to_str(x)
-            return x
-            
-        log_data = ws_payload["data"]
-        log_topics = ws_payload["topics"]
-
-        # Extract indexed vs non-indexed inputs
-        indexed_inputs = [i for i in inputs if i['indexed']]
-        non_indexed_inputs = [i for i in inputs if not i['indexed']]
-
-        # Decode indexed topics (skip topic[0] which is event sig hash)
-        indexed_values = [
-            decode_abi([i["type"]], bytes.fromhex(t[2:]))[0]
-            for i, t in zip(indexed_inputs, log_topics[1:])
-        ]
-        non_indexed_values = list(decode_abi(
-            [i["type"] for i in non_indexed_inputs],
-            bytes.fromhex(log_data[2:])
-        ))
-
-        decoded = {}
-        for i, arg in enumerate(indexed_inputs + non_indexed_inputs):
-            decoded[arg["name"]] = (indexed_values + non_indexed_values)[i]
-
-        out = {
-            "block_number": str(int(ws_payload["blockNumber"], 16)),
-            "log_index": int(ws_payload["logIndex"], 16),
-            "transaction_index": int(ws_payload["transactionIndex"], 16),
-            "signature": signature,
-            "sighash": topic,
-        }
-        out.update(decoded)
-
-        out = {
-            camel_to_snake(k): array_of_bytes_to_str(v)
-            for k, v in out.items()
-        }
-
-        return out
