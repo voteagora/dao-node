@@ -228,7 +228,11 @@ class Feed:
  
                 for event, signal, new_signal in reader:
                     cnt += 1
-                    self.block = max(self.block, int(event['block_number']))
+
+                    # TODO - make the archive produce a block-history, per tenant, not per chain
+                    # as is, the event-feed won't line up.
+                    if 'blocks' not in signal:
+                        self.block = max(self.block, int(event['block_number']))
 
                     if CAPTURE_CLIENT_OUTPUTS:
                         self.capture_output(event, client_type=type(client))
