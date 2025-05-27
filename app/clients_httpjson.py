@@ -264,7 +264,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             to_block = min(from_block + step - 1, end_block)  # Ensure we don't exceed the end_block
 
             for topic_chunk in topics:
-                chunk_logs = self.get_logs_unsafe(w3, contract_address, topic_chunk, from_block, to_block)
+                chunk_logs = self.get_logs_by_block_range(w3, contract_address, topic_chunk, from_block, to_block)
                 logs.extend(chunk_logs)
             
             if len(logs):
