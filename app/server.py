@@ -642,7 +642,6 @@ def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str, pm=No
 async def delegates_handler(app, request):
 
     sort_by = request.args.get("sort_by", 'VP')
-    print(sort_by)
     
     sort_by_vp  = sort_by == 'VP'  # Voting Power
     sort_by_dc  = sort_by == 'DC'  # Delegator Count
