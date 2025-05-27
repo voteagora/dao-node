@@ -266,13 +266,12 @@ def test_get_paginated_logs_are_in_chronological_order(test_package):
 
     # Query transfer logs from Optimism token contract
     logs = jrhhc.get_paginated_logs(
-        jrhhc.connect(),
-        test_package['gov_contract_address'],
-        hash_of_event_sig,
-        start_block,
-        end_block,
-        block_count_span,
-        test_package['vote_cast_abi'],
+        w3=jrhhc.connect(),
+        contract_address=test_package['gov_contract_address'],
+        topics=[hash_of_event_sig],
+        start_block=start_block,
+        end_block=end_block,
+        step=1,
     )
 
     curr_high_bn = start_block
