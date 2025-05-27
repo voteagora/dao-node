@@ -234,17 +234,14 @@ def test_get_paginated_logs_block_range_over_2000(test_package):
     end_block = 135262530
 
 
-    block_count_span = resolve_block_count_span(10)
-
     # Query transfer logs from Optimism token contract
     logs = jrhhc.get_paginated_logs(
-        jrhhc.connect(),
-        test_package['gov_contract_address'],
-        hash_of_event_sig,
-        start_block,
-        end_block,
-        block_count_span,
-        test_package['vote_cast_abi'],
+        w3=jrhhc.connect(),
+        contract_address=test_package['gov_contract_address'],
+        topics=[hash_of_event_sig],
+        start_block=start_block,
+        end_block=end_block,
+        step=1,
     )
 
     print(f"Found {len(logs)} CastVote events")
