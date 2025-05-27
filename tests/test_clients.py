@@ -14,7 +14,8 @@ from pprint import pprint
 from app.utils import camel_to_snake
 from app.signatures import DELEGATE_VOTES_CHANGE, DELEGATE_CHANGED_1
 from eth_abi.abi import decode as decode_abi
-from app.clients import JsonRpcRTWsClient, JsonRpcHistHttpClient, resolve_block_count_span
+from app.clients import JsonRpcRTWsClient
+from app.clients_httpjson import JsonRpcHistHttpClient, resolve_block_count_span
 from dotenv import load_dotenv
 
 delegate_changed_ws_payload = {'address': '0x27b0031c64f4231f0aff28e668553d73f48125f3', 'topics': ['0x3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f', '0x000000000000000000000000c950b9f32259860f4731d318cb5a28b2db892f88', '0x000000000000000000000000c950b9f32259860f4731d318cb5a28b2db892f88', '0x0000000000000000000000000000000000000000000000000000000000000000'], 'data': '0x', 'blockNumber': '0x7ce8d9', 'transactionHash': '0x6ee9de9644f6c75d83d598240067d1f20466b10c8721a61a8870a040efbafad8', 'transactionIndex': '0x1f', 'blockHash': '0x81f0810aa58f1f30ac28e10aa9680c9b4247fc38a8b6a273f847f1fc06c92365', 'logIndex': '0x32', 'removed': False}
@@ -210,18 +211,18 @@ def test_get_paginated_logs(test_package):
 
     # Query transfer logs from Optimism token contract
     logs = jrhhc.get_paginated_logs(
-        jrhhc.connect(),
-        test_package['gov_contract_address'],
-        hash_of_event_sig,
-        start_block,
-        end_block,
-        block_count_span,
-        test_package['vote_cast_abi'],
+        w3 = jrhhc.connect(),
+        contract_address = test_package['gov_contract_address'],
+        topics = [hash_of_event_sig],
+        start_block=start_block,
+        end_block=end_block,
+        step=1,
     )
 
     print(f"Found {len(logs)} CastVote events")
     for log in logs:
         # Should return the same proposal
+        print(log)
         proposal_id = log['args']['proposalId']
         assert proposal_id== 105196850607896626370893604768027381433548036180811365072963268567142002370039
 
