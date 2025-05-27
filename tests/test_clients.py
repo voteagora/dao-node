@@ -218,13 +218,14 @@ def test_get_paginated_logs(test_package):
         end_block=end_block,
         step=1,
     )
+    # Just grab block numbers
+    # Could look at token contract and do token transfer events
 
     print(f"Found {len(logs)} CastVote events")
-    for log in logs:
-        # Should return the same proposal
-        print(log)
-        proposal_id = log['args']['proposalId']
-        assert proposal_id== 105196850607896626370893604768027381433548036180811365072963268567142002370039
+    assert len(logs) == 2
+    # Check first and second block numbers for logs are as expected
+    assert logs[0]['blockNumber']== 135262518
+    assert logs[1]['blockNumber'] == 135262521
 
 @pytest.mark.skipif(
     not ALCHEMY_API_KEY,
