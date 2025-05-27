@@ -46,174 +46,6 @@ def test_web_socket_response_serialization_1(pguild_token_abi, ws_payload, signa
 
     assert out == expected_event
 
-
-load_dotenv()
-DAO_NODE_ARCHIVE_NODE_HTTP = "https://opt-mainnet.g.alchemy.com/v2/"
-ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('ALCHEMY_API_KEY', '')
-
-mock_logs = [{x: f"Test Log {x}" for x in range(100)}]
-
-optimism_package = {
-    "gov_contract_address": "0xcDF27F107725988f2261Ce2256bDfCdE8B382B10",
-    "vote_cast_abi": {
-        "type": "event",
-        "name": "VoteCast",
-        "inputs": [
-            {
-                "name": "voter",
-                "type": "address",
-                "indexed": True,
-                "internalType": "address"
-            },
-            {
-                "name": "proposalId",
-                "type": "uint256",
-                "indexed": False,
-                "internalType": "uint256"
-            },
-            {
-                "name": "support",
-                "type": "uint8",
-                "indexed": False,
-                "internalType": "uint8"
-            },
-            {
-                "name": "weight",
-                "type": "uint256",
-                "indexed": False,
-                "internalType": "uint256"
-            },
-            {
-                "name": "reason",
-                "type": "string",
-                "indexed": False,
-                "internalType": "string"
-            }
-        ],
-        "anonymous": False
-    },
-    "event_signature": "VoteCast(address,uint256,uint8,uint256,string)",
-}
-
-# @pytest.mark.skip(reason="This test is runs an API Call")
-@pytest.mark.parametrize("test_package", [optimism_package])
-def test_get_paginated_logs(test_package):
-    print("\n")
-
-    jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-
-    # Use the correct Transfer event signature
-    hash_of_event_sig = '0x' + keccak(test_package['event_signature'].encode()).hex()
-
-    # Define block range for Optimism token events
-    start_block = 135262515
-    end_block = 135262530
-
-    block_count_span = resolve_block_count_span(10)
-
-    # Query transfer logs from Optimism token contract
-    logs = jrhhc.get_paginated_logs(
-        jrhhc.connect(),
-        test_package['gov_contract_address'],
-        hash_of_event_sig,
-        start_block,
-        end_block,
-        block_count_span,
-        test_package['vote_cast_abi'],
-    )
-
-    print(f"Found {len(logs)} CastVote events")
-    for log in logs:
-        # Should return the same proposal
-        proposal_id = log['args']['proposalId']
-        assert proposal_id== 105196850607896626370893604768027381433548036180811365072963268567142002370039
-
-# @pytest.mark.skip(reason="This test is runs an API Call")
-@pytest.mark.parametrize("test_package", [optimism_package])
-def test_get_paginated_logs_block_range_over_2000(test_package):
-    print("\n")
-    jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-
-    # Use correct Transfer event signature
-    hash_of_event_sig = '0x' + keccak(test_package['event_signature'].encode()).hex()
-
-    # Define block range for Optimism token events
-    start_block = 135252530
-    end_block = 135262530
-
-
-    block_count_span = resolve_block_count_span(10)
-
-    # Query transfer logs from Optimism token contract
-    logs = jrhhc.get_paginated_logs(
-        jrhhc.connect(),
-        test_package['gov_contract_address'],
-        hash_of_event_sig,
-        start_block,
-        end_block,
-        block_count_span,
-        test_package['vote_cast_abi'],
-    )
-
-    print(f"Found {len(logs)} CastVote events")
-    assert len(logs) == 87
-
-# @pytest.mark.skip(reason="This test is runs an API Call")
-@pytest.mark.parametrize("test_package", [optimism_package])
-def test_get_paginated_logs_are_in_chronological_order(test_package):
-    print("\n")
-    jrhhc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-
-    # Use correct Transfer event signature
-    hash_of_event_sig = '0x' + keccak(test_package['event_signature'].encode()).hex()
-
-    # Define block range for Optimism token events
-    start_block = 135252530
-    end_block = 135262530
-
-
-    block_count_span = resolve_block_count_span(10)
-
-    # Query transfer logs from Optimism token contract
-    logs = jrhhc.get_paginated_logs(
-        jrhhc.connect(),
-        test_package['gov_contract_address'],
-        hash_of_event_sig,
-        start_block,
-        end_block,
-        block_count_span,
-        test_package['vote_cast_abi'],
-    )
-
-    curr_high_bn = start_block
-    curr_high_tran_idx = 0
-    curr_high_log_idx = 0
-    for log in logs:
-        current_block_number = log['blockNumber']
-        # blockNumber should always be ascending
-        assert current_block_number >= curr_high_bn
-        if current_block_number == curr_high_bn:
-            current_tran_idx = log['transactionIndex']
-            # If the same blockNumber, transactionIndex should be ascending
-            assert current_tran_idx >= curr_high_tran_idx
-            if current_tran_idx == curr_high_tran_idx:
-                current_log_idx = log['logIndex']
-                # If the same transactionIndex, logIndex should be ascending
-                assert current_log_idx > curr_high_log_idx
-                curr_high_log_idx = current_log_idx
-
-        # Set the new highs
-        # Reset to 0 if assert and if statements pass.
-        # -1 Allows the index to be 0
-            else:
-                curr_high_tran_idx = current_tran_idx
-                curr_high_log_idx = -1
-        else:
-            curr_high_bn = current_block_number
-            curr_high_tran_idx = -1
-
-
-
 """
 
 Example of an object seen by caster_fn from HTTP:
@@ -310,7 +142,8 @@ def test_web_socket_response_serialization_2(scroll_token_abi, ws_payload, signa
 
 load_dotenv()
 DAO_NODE_ARCHIVE_NODE_HTTP = "https://opt-mainnet.g.alchemy.com/v2/"
-ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + os.getenv('ALCHEMY_API_KEY', '')
+ALCHEMY_API_KEY = os.getenv('ALCHEMY_API_KEY')
+ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + ALCHEMY_API_KEY
 
 mock_logs = [{x: f"Test Log {x}" for x in range(100)}]
 
@@ -356,7 +189,10 @@ optimism_package = {
     "event_signature": "VoteCast(address,uint256,uint8,uint256,string)",
 }
 
-# @pytest.mark.skip(reason="This test is runs an API Call")
+@pytest.mark.skipif(
+    not ALCHEMY_API_KEY,
+    reason="Skipping because ALCHEMY_API_KEY is not set"
+)
 @pytest.mark.parametrize("test_package", [optimism_package])
 def test_get_paginated_logs(test_package):
     print("\n")
@@ -389,7 +225,10 @@ def test_get_paginated_logs(test_package):
         proposal_id = log['args']['proposalId']
         assert proposal_id== 105196850607896626370893604768027381433548036180811365072963268567142002370039
 
-# @pytest.mark.skip(reason="This test is runs an API Call")
+@pytest.mark.skipif(
+    not ALCHEMY_API_KEY,
+    reason="Skipping because ALCHEMY_API_KEY is not set"
+)
 @pytest.mark.parametrize("test_package", [optimism_package])
 def test_get_paginated_logs_block_range_over_2000(test_package):
     print("\n")
@@ -419,7 +258,10 @@ def test_get_paginated_logs_block_range_over_2000(test_package):
     print(f"Found {len(logs)} CastVote events")
     assert len(logs) == 87
 
-# @pytest.mark.skip(reason="This test is runs an API Call")
+@pytest.mark.skipif(
+    not ALCHEMY_API_KEY,
+    reason="Skipping because ALCHEMY_API_KEY is not set"
+)
 @pytest.mark.parametrize("test_package", [optimism_package])
 def test_get_paginated_logs_are_in_chronological_order(test_package):
     print("\n")
