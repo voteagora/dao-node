@@ -230,7 +230,7 @@ class JsonRpcHistHttpClient:
             logr.info(f"No block older than {days_back} days found.")
             return 0
 
-    def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi, max_recursion_depth=10):
+    def get_paginated_logs(self, w3, contract_address, event_signature_hash, start_block, end_block, step, abi, max_recursion_depth=2000):
 
         all_logs = []
 
@@ -264,7 +264,7 @@ class JsonRpcHistHttpClient:
             
         return all_logs
 
-    def get_logs_by_block_range(self, w3, contract_address, event_signature_hash, from_block, to_block, current_recursion_depth = 0, max_recursion_depth=10):
+    def get_logs_by_block_range(self, w3, contract_address, event_signature_hash, from_block, to_block, current_recursion_depth = 0, max_recursion_depth=2000):
         """
 This is a recursive function that will split itself apart to handle block ranges that exceed the block limit of the external API.
 
