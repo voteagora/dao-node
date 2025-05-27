@@ -1,4 +1,4 @@
-
+import json
 import os
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -240,13 +240,13 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
         return logs
 
 
-    def get_paginated_logs(self, w3, contract_address, topics, start_block, step):
+    def get_paginated_logs(self, w3, contract_address, topics, start_block, end_block=None, step=4):
 
         def chunk_list(lst, step):
             """Split a list into chunks of size `step`."""
             return [lst[i:i + step] for i in range(0, len(lst), step)]
 
-        topics = chunk_list(list(topics), 4)
+        topics = chunk_list(list(topics), step)
 
         logr.info(f"👉 Fetching {len(topics)} topic chunk(s) for {contract_address} from block {start_block}")
 
@@ -257,8 +257,9 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
         while True:
 
             logs = []
-            
-            end_block = w3.eth.block_number
+
+            if end_block is None:
+                end_block = w3.eth.block_number
 
             to_block = min(from_block + step - 1, end_block)  # Ensure we don't exceed the end_block
 
@@ -277,7 +278,77 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
                 break
 
         return all_logs
-        
+
+    def get_logs_by_block_range(self, w3, contract_address, event_signature_hash, from_block, to_block,
+                                current_recursion_depth=0, max_recursion_depth=2000):
+        """
+This is a recursive function that will split itself apart to handle block ranges that exceed the block limit of the external API.
+
+It is unlikely that this function will ever be called directly, and is instead called by
+    the :py:meth:`~.clients.JsonRpcHistHttpClient.get_paginated_logs` function, where additional
+    processing is performed.
+
+:param w3: The web3 object used to interact with the external API.
+:param contract_address: The address of the contract to which the event is emitted.
+:param event_signature_hash: The hash of the event signature.
+:param from_block: The starting block number for the block range.
+:param to_block: The ending block number for the block range.
+:param current_recursion_depth: The current recursion depth of the function. Used for tracking recursion depth.
+:param max_recursion_depth: The maximum recursion depth allowed for the function. If the recursion depth exceeds this value, an exception will be raised. This prevents infinite recursion.
+:returns: A list of logs from the specified block range.
+           """
+
+        # Set filter parameters for each range
+        event_filter = {
+            "fromBlock": from_block,
+            "toBlock": to_block,
+            "address": contract_address,
+            "topics": [event_signature_hash]
+        }
+
+        try:
+            logs = w3.eth.get_logs(event_filter)
+        except Exception as e:
+            # catch and attempt to recover block limitation ranges
+            if hasattr(e, 'response'):
+                response_json = json.loads(e.response.text)
+                api_error_code = response_json.get("error", {}).get("code")
+                if api_error_code == -32600 or api_error_code == -32602:
+                    # add one to recursion depth
+                    new_recursion_depth = current_recursion_depth + 1
+                    # split block range in half
+                    mid = (from_block + to_block) // 2
+                    # Get results from both recursive calls
+                    first_half = self.get_logs_by_block_range(
+                        w3=w3,
+                        from_block=from_block,
+                        to_block=mid - 1,
+                        contract_address=contract_address,
+                        event_signature_hash=event_signature_hash,
+                        current_recursion_depth=new_recursion_depth,
+                        max_recursion_depth=max_recursion_depth
+                    )
+
+                    second_half = self.get_logs_by_block_range(
+                        w3=w3,
+                        from_block=mid,
+                        to_block=to_block,
+                        contract_address=contract_address,
+                        event_signature_hash=event_signature_hash,
+                        current_recursion_depth=new_recursion_depth,
+                        max_recursion_depth=max_recursion_depth
+                    )
+
+                    # Combine results, handling potential None values
+                    logs = []
+                    if first_half is not None:
+                        logs.extend(first_half)
+                    if second_half is not None:
+                        logs.extend(second_half)
+                    return logs
+            # Fallback to raising the exception
+            raise e
+        return logs
 
 
         
