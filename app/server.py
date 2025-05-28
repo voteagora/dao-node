@@ -182,7 +182,10 @@ class ClientSequencer:
     
     def plan(self, *signal_meta):
         for client in self.clients:
-            client.plan(*signal_meta)
+            try:
+                client.plan(*signal_meta)
+            except Exception as e:
+                logr.info(f"E188250528 - Failed to plan [{signal_meta}] for {client}: {e}")
 
     
 class Feed:
