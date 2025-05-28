@@ -173,28 +173,6 @@ class CSVClient(SubscriptionPlannerMixin):
             self.path = path
         self.init()
         self.casterCls = CSVClientCaster
-        
-    def plan_event(self, chain_id, address, signature):
-
-        fname = self.events_fname(chain_id, address, signature)
-
-        abi_frag = self.abis.get_by_signature(signature)
-
-        caster_fn = self.caster.lookup(signature)
-
-        if not os.path.exists(fname):
-            raise FileNotFoundError(f"CSV file not found: {fname}")
-        else:
-            self.subscription_meta.append(('event', (fname, chain_id, address, signature, abi_frag, caster_fn)))
-
-    def plan_block(self, chain_id):
-
-        fname = self.blocks_fname(chain_id)
-
-        if not os.path.exists(fname):
-            raise FileNotFoundError(f"CSV file not found: {fname}")
-        else:
-            self.subscription_meta.append(('block', fname))
     
     def is_valid(self):
         
@@ -204,15 +182,6 @@ class CSVClient(SubscriptionPlannerMixin):
         else:
             print(f"The path '{self.path}' does not exist, this client is not valid.")
             return False
-
-    def plan(self, signal_type, signal_meta):
-
-        if signal_type == 'event':
-            self.plan_event(*signal_meta)
-        elif signal_type == 'block':
-            self.plan_block(*signal_meta)
-        else:
-            raise Exception(f"Unknown signal type: {signal_type}")
         
     def plan_event(self, chain_id, address, signature):
 
@@ -234,8 +203,8 @@ class CSVClient(SubscriptionPlannerMixin):
         if not os.path.exists(fname):
             raise FileNotFoundError(f"CSV file not found: {fname}")
         else:
-            self.subscription_meta.append(('block', fname))
-
+            self.subscription_meta.append(('block', (fname, chain_id)))
+    
 
     def read(self, after):
 
@@ -255,7 +224,7 @@ class CSVClient(SubscriptionPlannerMixin):
                     new_signal = False
 
             elif event_or_block == 'block':
-                fname = subscription_meta
+                fname, chain_id = subscription_meta
 
                 signal = f"{chain_id}.blocks"
 
