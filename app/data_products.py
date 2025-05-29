@@ -741,6 +741,14 @@ class ParticipationModel:
         self.relevant_and_active_proposals = [(proposal.create_event['id'], counted) for proposal, counted in self.proposals.counted(head=10)]
         self.tot_considered = -1 * len(self.relevant_and_active_proposals)
     
+    def calculate_rate(self, addr):
+        num, den = self.calculate(addr)
+
+        if den == 0:
+            return 0
+        
+        return num / den
+    
     def calculate(self, addr):
 
         historic_proposal_ids = [vote['proposal_id'] for vote in self.votes.voter_history[addr]]
@@ -760,7 +768,4 @@ class ParticipationModel:
                     num += 1
                     den += 1
 
-        if den == 0:
-            return 0
-
-        return num / den
+        return num, den
