@@ -631,7 +631,7 @@ def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str, pm=No
         event = app_ctx.delegations.delegatee_latest_event.get(delegate_address)
         return int(event['block_number']) if event else 0
     elif sort_by == 'PR':
-        return pm.calculate(delegate_address) if delegate_address in app_ctx.votes.voter_history else 0.0
+        return pm.calculate_rate(delegate_address) if delegate_address in app_ctx.votes.voter_history else 0.0
     elif sort_by == 'OLD':
         event = app_ctx.delegations.delegatee_oldest_event.get(delegate_address)
         return int(event['block_number']) if event else 0
@@ -700,7 +700,7 @@ async def delegates_handler(app, request):
             out = [(addr, int(event['block_number'])) 
                    for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
         elif sort_by_pr:
-            out = [(addr, pm.calculate(addr))
+            out = [(addr, pm.calculate_rate(addr))
                    for addr in app.ctx.votes.voter_history.keys()]
         elif sort_by_old:
             out = [(addr, int(event['block_number'])) 
@@ -732,7 +732,7 @@ async def delegates_handler(app, request):
 
     voting_power_func = lambda x, y: str(app.ctx.delegations.delegatee_vp[x])
     from_cnt_func = lambda x, y: app.ctx.delegations.delegatee_cnt[x]
-    participation_func = lambda x, y: pm.calculate(x)
+    participation_func = lambda x, y: pm.calculate_rate(x)
     last_vote_block_func = lambda x, y: app.ctx.votes.latest_vote_block.get(x, 0)
     most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event[x]['block_number']
     oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event[x]['block_number']
@@ -783,14 +783,14 @@ async def delegate_handler(app, request, addr):
         from_list_with_info.append(row)
 
         pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
-        participation_rate = pm.calculate(addr)
+        participation = pm.calculate(addr)
 
     return json({'delegate' : 
                 {'addr' : addr,
                 'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
                 'from_list' : from_list_with_info,
                 'voting_power' : str(app.ctx.delegations.delegatee_vp[addr]),
-                'participation_rate' : participation_rate}})
+                'participation' : participation}})
 
 @app.route('/v1/delegate/<addr>')
 @openapi.tag("Delegation State")
