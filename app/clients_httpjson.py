@@ -9,7 +9,7 @@ from sanic.log import logger as logr
 
 from .utils import camel_to_snake
 from .clients_csv import SubscriptionPlannerMixin
-from .dev_modes import CAPTURE_CLIENT_OUTPUTS
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK
 from .signatures import DELEGATE_CHANGED_2
 
 def resolve_block_count_span(chain_id=None):
@@ -185,8 +185,8 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
         now = datetime.utcnow()
 
-        if CAPTURE_CLIENT_OUTPUTS:
-            days_back = 30 
+        if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
+            days_back = 15 
         else:
             days_back = 1 # TODO: Change back to 4, after we get infra stable.
 
