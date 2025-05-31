@@ -35,8 +35,10 @@ from .data_products import Balances, ProposalTypes, Delegations, Proposals, Vote
 from .signatures import *
 from . import __version__
 from .logsetup import get_logger 
-from .dev_modes import CAPTURE_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT
 
+if  CAPTURE_WS_CLIENT_OUTPUTS:
+    from copy import deepcopy
 
 glogr = get_logger('global')
 
@@ -195,6 +197,7 @@ class Feed:
         self.meta = []
         self.profiler = Profiler()
         self.capture_counter = defaultdict(int)
+        self.event_history = []
     
     def set_client_sequencer(self, client_sequencer):
         self.cs = client_sequencer
@@ -237,8 +240,8 @@ class Feed:
                     if 'blocks' not in signal:
                         self.block = max(self.block, int(event['block_number']))
 
-                    if CAPTURE_CLIENT_OUTPUTS:
-                        self.capture_output(event, client_type=type(client))
+                    if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
+                        self.capture_client_output_to_disk(event, client_type=type(client))                        
 
                     if PROFILE_ARCHIVE_CLIENT:
                         with self.profiler(signal):
@@ -256,8 +259,11 @@ class Feed:
                 logr.info(f"{emoji} Done reading {cnt} block-headers and event-logs as of block {self.block}.  Took {dur:.2f} seconds.")
             
             self.block = self.block + 1
-    
-    def capture_output(self, event, client_type):
+
+    def capture_ws_client_output(self, event):
+        self.event_history.append(event)
+        
+    def capture_client_output_to_disk(self, event, client_type):
 
         if 'timestamp' in event:
             loc = f"tests/client_outputs/blocks/{client_type.__name__}"
@@ -300,8 +306,16 @@ class Feed:
 
                     self.block = max(self.block, int(event['block_number']))
 
-                    if CAPTURE_CLIENT_OUTPUTS:
-                        self.capture_output(event, client_type=type(client))
+                    if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
+                        self.capture_client_output_to_disk(event, client_type=type(client))
+                    
+                    if CAPTURE_WS_CLIENT_OUTPUTS:
+                        self.capture_ws_client_output(deepcopy(event))
+                        try:
+                            del event['removed']
+                            del event['txhash']
+                        except:
+                            pass
 
                     yield event
 
@@ -849,6 +863,18 @@ async def delegate_vp_handler(app, request, addr, block_number):
                  'delegate' : addr,
                  'block_number' : block_number,
                  'history' : vp_history[1:]})
+
+
+#################################################################################################################################################
+
+@app.route('/v1/diagnostics')
+@openapi.tag("Diagnostics")
+@openapi.summary("Diagnostics")
+@measure
+async def diagnostics(request):
+	return json({'diagnostics' : app.ctx.feed.event_history})
+
+
 
 #################################################################################################################################################
 
