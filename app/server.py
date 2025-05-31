@@ -40,6 +40,12 @@ from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS
 if  CAPTURE_WS_CLIENT_OUTPUTS:
     from copy import deepcopy
 
+from datetime import datetime
+from random import randint
+
+BOOT_TIME = datetime.now().isoformat()
+WORKER_ID = str(randint(0, 100000000000000000)) # just a big number to avoid collissions.
+
 glogr = get_logger('global')
 
 ######################################################################
@@ -872,7 +878,12 @@ async def delegate_vp_handler(app, request, addr, block_number):
 @openapi.summary("Diagnostics")
 @measure
 async def diagnostics(request):
-	return json({'diagnostics' : app.ctx.feed.event_history})
+	return json({
+                 'event_history' : app.ctx.feed.event_history,
+                 'boot_time' : BOOT_TIME,
+                 'worker_id' : WORKER_ID,
+                 'git_commit_sha' : GIT_COMMIT_SHA,
+                 })
 
 
 
