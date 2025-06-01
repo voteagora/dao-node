@@ -48,6 +48,9 @@ WORKER_ID = str(randint(0, 100000000000000000)) # just a big number to avoid col
 
 glogr = get_logger('global')
 
+glogr.info(f"{WORKER_ID=}")
+glogr.info(f"{BOOT_TIME=}")
+
 ######################################################################
 #
 # ABIs need to be available somewhere to be picked up by teh abifsm
