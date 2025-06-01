@@ -335,7 +335,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             
             step = resolve_block_count_span(chain_id) 
 
-            for address in self.event_subsription_meta[chain_id].keys():
+            for cs_address in self.event_subsription_meta[chain_id].keys():
 
                 topics = self.event_subsription_meta[chain_id][address].keys()
 
@@ -346,7 +346,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
                     topic = "0x" + log['topics'][0].hex()
 
-                    caster_fn, signature = self.event_subsription_meta[chain_id][address][topic]
+                    caster_fn, signature = self.event_subsription_meta[chain_id][cs_address][topic]
 
                     args = caster_fn(log)
 
@@ -359,7 +359,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
                     out.update(**args)
 
                     out['signature'] = signature
-                    signal = f"{chain_id}.{address}.{topic}"
+                    signal = f"{chain_id}.{cs_address.lower()}.{signature}"
                     out['sighash'] = topic.replace("0x", "")
 
                     all_logs.append((out, signal, new_signal))
