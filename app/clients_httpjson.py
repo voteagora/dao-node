@@ -359,9 +359,10 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
                     out.update(**args)
 
                     out['signature'] = signature
+                    signal = f"{chain_id}.{address}.{topic}"
                     out['sighash'] = topic.replace("0x", "")
 
-                    all_logs.append((out, signature, new_signal))
+                    all_logs.append((out, signal, new_signal))
 
         all_logs.sort(key=lambda x: (x[0]['block_number'], x[0]['transaction_index'], x[0]['log_index']))   
 
