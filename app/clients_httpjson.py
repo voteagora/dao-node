@@ -337,9 +337,9 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
             for cs_address in self.event_subsription_meta[chain_id].keys():
 
-                topics = self.event_subsription_meta[chain_id][address].keys()
+                topics = self.event_subsription_meta[chain_id][cs_address].keys()
 
-                logs = self.get_paginated_logs(w3, address, topics, start_block, step)
+                logs = self.get_paginated_logs(w3, cs_address, topics, start_block, step)
 
                 for log in logs:
 
