@@ -204,6 +204,10 @@ class Feed:
         self.profiler = Profiler()
         self.capture_counter = defaultdict(int)
         self.event_history = []
+
+        self.archive_signal_counts = defaultdict(int)
+        self.realtime_signal_counts = defaultdict(int)
+        self.total_signal_counts = defaultdict(int)
     
     def set_client_sequencer(self, client_sequencer):
         self.cs = client_sequencer
@@ -245,6 +249,9 @@ class Feed:
                     # as is, the event-feed won't line up.
                     if 'blocks' not in signal:
                         self.block = max(self.block, int(event['block_number']))
+
+                    self.archive_signal_counts[signal] += 1
+                    self.total_signal_counts[signal] += 1
 
                     if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
                         self.capture_client_output_to_disk(event, client_type=type(client))                        
@@ -312,6 +319,9 @@ class Feed:
 
                     self.block = max(self.block, int(event['block_number']))
 
+                    self.realtime_signal_counts[event['signal']] += 1
+                    self.total_signal_counts[event['signal']] += 1
+                    
                     if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
                         self.capture_client_output_to_disk(event, client_type=type(client))
                     
@@ -902,7 +912,21 @@ async def diagnostics(request, safe_mode: bool):
                  'git_commit_sha' : GIT_COMMIT_SHA,
                  })
 
+@app.route('/v1/progress')
+@openapi.tag("Diagnostics")
+@openapi.summary("Current Block Header + Num of Events Processed")
+@measure
+async def progress(request):
 
+    return json({
+                 'block' : app.ctx.feed.block,
+                 'realtime_counts' : app.ctx.feed.realtime_signal_counts,
+                 'archive_counts' : app.ctx.feed.archive_signal_counts,
+                 'total_counts' : app.ctx.feed.total_signal_counts,
+                 'boot_time' : BOOT_TIME,
+                 'worker_id' : WORKER_ID,
+                 'git_commit_sha' : GIT_COMMIT_SHA,
+                 })
 
 #################################################################################################################################################
 
