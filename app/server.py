@@ -873,13 +873,30 @@ async def delegate_vp_handler(app, request, addr, block_number):
 
 #################################################################################################################################################
 
-@app.route('/v1/diagnostics')
+def detect_any_bytes(obj):
+    if isinstance(obj, bytes):
+        return True
+    if isinstance(obj, list):
+        return any(detect_any_bytes(x) for x in obj)
+    if isinstance(obj, dict):
+        return any(detect_any_bytes(x) for x in obj.values())
+    return False
+
+@app.route('/v1/diagnostics/<safe_mode>')
 @openapi.tag("Diagnostics")
 @openapi.summary("Diagnostics")
 @measure
-async def diagnostics(request):
-	return json({
-                 'event_history' : app.ctx.feed.event_history,
+async def diagnostics(request, safe_mode: bool):
+
+    safe_mode = safe_mode == 'true'
+
+    if safe_mode:
+        events = [(str(e), detect_any_bytes(e)) for e in app.ctx.feed.event_history if 'timestamp' not in e]
+    else:
+        events = app.ctx.feed.event_history
+
+    return json({
+                 'event_history' : events,
                  'boot_time' : BOOT_TIME,
                  'worker_id' : WORKER_ID,
                  'git_commit_sha' : GIT_COMMIT_SHA,
