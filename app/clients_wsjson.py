@@ -300,7 +300,7 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
 
                                 block_number = out['block_number']
 
-                                logr.info(f"Received event for subscription {sub_id} : EVENT: {block_number}-{topic}")
+                                # logr.info(f"Received event for subscription {sub_id} : EVENT: {block_number}-{topic}")
 
                                 out['sighash'] = topic.replace("0x", "")
                                 out['signature'] = signature
