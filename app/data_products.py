@@ -87,17 +87,35 @@ class ProposalTypes(DataProduct):
                 event['deleted_event'] = {}
                 self.proposal_types[proposal_type_id]['scopes'].append(event)
             elif 'Disabled' in signature:
-                # Will disable all scopes with the scope_key
-                for scope in self.proposal_types[proposal_type_id]['scopes']:
-                    if scope['scope_key'] == scope_key:
-                        scope['disabled_event'] = event
-                        scope['status'] = 'disabled'
+                if signature == 'ScopeDisabled(uint8,bytes24,uint8)':  # v2
+                    idx = event['idx']
+                    # Find and disable the specific scope at this index
+                    scopes = self.proposal_types[proposal_type_id]['scopes']
+                    for i, scope in enumerate(scopes):
+                        if scope['scope_key'] == scope_key and i == idx:
+                            scope['disabled_event'] = event
+                            scope['status'] = 'disabled'
+                            break
+                else:  # v1 - disable all scopes with the scope_key
+                    for scope in self.proposal_types[proposal_type_id]['scopes']:
+                        if scope['scope_key'] == scope_key:
+                            scope['disabled_event'] = event
+                            scope['status'] = 'disabled'
             elif 'Deleted' in signature:
-                # Will delete all scopes with the scope_key
-                for scope in self.proposal_types[proposal_type_id]['scopes']:
-                    if scope['scope_key'] == scope_key:
-                        scope['deleted_event'] = event
-                        scope['status'] = 'deleted'
+                if signature == 'ScopeDeleted(uint8,bytes24,uint8)':  # v2
+                    idx = event['idx']
+                    # Find and delete the specific scope at this index
+                    scopes = self.proposal_types[proposal_type_id]['scopes']
+                    for i, scope in enumerate(scopes):
+                        if scope['scope_key'] == scope_key and i == idx:
+                            scope['deleted_event'] = event
+                            scope['status'] = 'deleted'
+                            break
+                else:  # v1 - delete all scopes with the scope_key
+                    for scope in self.proposal_types[proposal_type_id]['scopes']:
+                        if scope['scope_key'] == scope_key:
+                            scope['deleted_event'] = event
+                            scope['status'] = 'deleted'
             else:
                 raise Exception(f"Event signature {signature} not handled.")
         
