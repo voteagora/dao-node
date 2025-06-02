@@ -9,7 +9,7 @@ from sanic.log import logger as logr
 
 from .utils import camel_to_snake
 from .clients_csv import SubscriptionPlannerMixin
-from .dev_modes import CAPTURE_CLIENT_OUTPUTS
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK
 from .signatures import DELEGATE_CHANGED_2
 
 def resolve_block_count_span(chain_id=None):
@@ -185,8 +185,8 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
         now = datetime.utcnow()
 
-        if CAPTURE_CLIENT_OUTPUTS:
-            days_back = 30 
+        if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
+            days_back = 15 
         else:
             days_back = 1 # TODO: Change back to 4, after we get infra stable.
 
@@ -335,18 +335,18 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             
             step = resolve_block_count_span(chain_id) 
 
-            for address in self.event_subsription_meta[chain_id].keys():
+            for cs_address in self.event_subsription_meta[chain_id].keys():
 
-                topics = self.event_subsription_meta[chain_id][address].keys()
+                topics = self.event_subsription_meta[chain_id][cs_address].keys()
 
-                logs = self.get_paginated_logs(w3, address, topics, start_block, step)
+                logs = self.get_paginated_logs(w3, cs_address, topics, start_block, step)
 
                 for log in logs:
 
 
                     topic = "0x" + log['topics'][0].hex()
 
-                    caster_fn, signature = self.event_subsription_meta[chain_id][address][topic]
+                    caster_fn, signature = self.event_subsription_meta[chain_id][cs_address][topic]
 
                     args = caster_fn(log)
 
@@ -359,9 +359,10 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
                     out.update(**args)
 
                     out['signature'] = signature
+                    signal = f"{chain_id}.{cs_address.lower()}.{signature}"
                     out['sighash'] = topic.replace("0x", "")
 
-                    all_logs.append((out, signature, new_signal))
+                    all_logs.append((out, signal, new_signal))
 
         all_logs.sort(key=lambda x: (x[0]['block_number'], x[0]['transaction_index'], x[0]['log_index']))   
 

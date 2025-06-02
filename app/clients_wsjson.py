@@ -9,6 +9,7 @@ from sanic.log import logger as logr
 from .utils import camel_to_snake
 from .clients_httpjson import SubscriptionPlannerMixin
 from .signatures import DELEGATE_CHANGED_2
+from .dev_modes import CAPTURE_WS_CLIENT_OUTPUTS
 
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
 
@@ -299,11 +300,16 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
 
                                 block_number = out['block_number']
 
-                                logr.info(f"Received event for subscription {sub_id} : EVENT: {block_number}-{topic}")
+                                # logr.info(f"Received event for subscription {sub_id} : EVENT: {block_number}-{topic}")
 
                                 out['sighash'] = topic.replace("0x", "")
                                 out['signature'] = signature
                                 out['signal'] = f"{chain_id}.{cs_address.lower()}.{signature}"
+                                
+                                if CAPTURE_WS_CLIENT_OUTPUTS:
+                                    out['removed'] = event.get('removed', False)
+                                    out['txhash'] = event['transactionHash']
+
 
                                 yield out
                         else:
