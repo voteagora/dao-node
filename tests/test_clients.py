@@ -134,7 +134,7 @@ def test_web_socket_response_serialization_2(scroll_token_abi, ws_payload, signa
 
 load_dotenv()
 DAO_NODE_ARCHIVE_NODE_HTTP = "https://opt-mainnet.g.alchemy.com/v2/"
-ALCHEMY_API_KEY = os.getenv('ALCHEMY_API_KEY')
+ALCHEMY_API_KEY = os.getenv('ALCHEMY_API_KEY','')
 ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + ALCHEMY_API_KEY
 
 mock_logs = [{x: f"Test Log {x}" for x in range(100)}]
