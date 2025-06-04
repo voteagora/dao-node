@@ -559,6 +559,17 @@ async def proposal_handler(app, request, proposal_id):
 
     return json({'proposal' : proposal})
 
+@app.route('/v1/vote_history/<voter>')
+@openapi.tag("Proposal State")
+@openapi.summary("Voting history for a specific delegate")
+@measure
+async def vote_history(request, voter):
+    return await vote_history_handler(app, request, voter)
+
+async def vote_history_handler(app, request, voter):
+	return json({'voter_history' : app.ctx.votes.voter_history[voter]})
+
+
 @app.route('/v1/proposal_types')
 @openapi.tag("Proposal State")
 @openapi.summary("Latest information all proposal types")
