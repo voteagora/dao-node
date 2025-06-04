@@ -11,11 +11,14 @@ import asyncio
 from collections import defaultdict
 from pathlib import Path
 from bisect import bisect_left
-
+from datetime import datetime
+from random import randint
 import yaml
 from copy import copy
 import json as j
 import random
+
+from pympler import asizeof
 
 from sanic_ext import openapi
 from sanic.worker.manager import WorkerManager
@@ -40,8 +43,6 @@ from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS
 if  CAPTURE_WS_CLIENT_OUTPUTS:
     from copy import deepcopy
 
-from datetime import datetime
-from random import randint
 
 BOOT_TIME = datetime.now().isoformat()
 WORKER_ID = str(randint(0, 100000000000000000)) # just a big number to avoid collissions.
@@ -168,7 +169,7 @@ class ClientSequencer:
 
         self.pos += 1
         if self.pos <= self.num:
-            return self.clients[self.pos - 1]
+            return self.pos, self.clients[self.pos - 1]
 
         self.pos = 0
 
@@ -183,7 +184,7 @@ class ClientSequencer:
             if self.pos < self.num:
                 client = self.clients[self.pos]
                 self.pos += 1
-                return client
+                return self.pos,client
             
             self.pos = 0  # Reset for reuse
             raise StopAsyncIteration
@@ -206,12 +207,16 @@ class Feed:
         self.meta = []
         self.profiler = Profiler()
         self.capture_counter = defaultdict(int)
-        self.event_history = []
 
+        self.event_history = [] # this one is for diagnostics, can be disabled after we're stable.
+
+        self.event_history_dict = defaultdict(list) # this one is for deduplicating events we've heard.  #TODO - prune this if we're stable fore more than a day.
+        self.event_history_tracking_lock = asyncio.Lock()
+    
         self.archive_signal_counts = defaultdict(int)
         self.realtime_signal_counts = defaultdict(int)
         self.total_signal_counts = defaultdict(int)
-    
+
     def set_client_sequencer(self, client_sequencer):
         self.cs = client_sequencer
 
@@ -229,7 +234,7 @@ class Feed:
 
     def read_archive(self):
 
-        for i, client in enumerate(self.cs):
+        for i, client in self.cs:
 
             if client.timeliness == 'archive':
 
@@ -239,7 +244,7 @@ class Feed:
 
                 emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
 
-                logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client).__name__} from block {self.block}")
+                logr.info(f"{emoji} Reading from client #{i} of type {type(client).__name__} from block {self.block}")
 
                 reader = client.read(after=self.block)
 
@@ -307,20 +312,36 @@ class Feed:
                 pass
 
 
-    async def realtime_async_read(self):
+    async def realtime_async_read(self, rt_client_num=0):
 
-        async for client in self.cs.get_async_iterator():
+        async for i, client in self.cs.get_async_iterator():
 
-            if client.timeliness == 'realtime':
+            if client.timeliness == 'realtime' and rt_client_num == i:
 
-                logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
+                logr.info(f"Reading from client #{i} of type {type(client)}")
 
                 if self.block is None:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
                 async for event in client.read():
 
-                    self.block = max(self.block, int(event['block_number']))
+                    block_num = int(event['block_number'])
+                    self.block = max(self.block, block_num)
+
+                    # This right here, makes it possible to have multiple 
+                    # competing web sockets.
+                    # And then, for each block number, we track events
+                    # we've processed.
+                    # If we've heard it once before, we skip it.
+                    try:
+                        pair = event['transaction_index'], event['log_index']
+                    except:
+                        pair = -1, -1 # block
+
+                    async with self.event_history_tracking_lock:
+                        if pair in self.event_history_dict[block_num]:
+                            continue                    
+                        self.event_history_dict[block_num].append(pair)
 
                     self.realtime_signal_counts[event['signal']] += 1
                     self.total_signal_counts[event['signal']] += 1
@@ -329,6 +350,7 @@ class Feed:
                         self.capture_client_output_to_disk(event, client_type=type(client))
                     
                     if CAPTURE_WS_CLIENT_OUTPUTS:
+
                         self.capture_ws_client_output(deepcopy(event))
                         try:
                             del event['removed']
@@ -895,6 +917,40 @@ def detect_any_bytes(obj):
         return any(detect_any_bytes(x) for x in obj.values())
     return False
 
+"""
+
+Optimism (in kb)
+
+{
+"app.ctx.feed": 142,
+"app.ctx.feed.event_history": 0,
+"app.ctx.balances": 441705,
+"app.ctx.delegations": 2191977,
+"app.ctx.proposals": 1079,
+"app.ctx.votes": 858982
+}
+"""
+
+@app.route('/v1/ram/<worker_id>')
+@openapi.tag("Diagnostics")
+@openapi.summary("Diagnostics")
+@measure
+async def ram(request, worker_id):
+
+    if worker_id != WORKER_ID:
+        return json({'error' : 'worker_id required'})
+
+    def sizeof(obj):
+        return int(asizeof.asizeof(obj) / 1024)
+    
+    return json({'app.ctx.feed' : sizeof(app.ctx.feed),
+                 'app.ctx.feed.event_history' : sizeof(app.ctx.feed.event_history),
+                 'app.ctx.balances' : sizeof(app.ctx.balances),
+                 'app.ctx.delegations' : sizeof(app.ctx.delegations),
+                 'app.ctx.proposals' : sizeof(app.ctx.proposals),
+                 'app.ctx.votes' : sizeof(app.ctx.votes)
+                })
+
 @app.route('/v1/diagnostics/<safe_mode>')
 @openapi.tag("Diagnostics")
 @openapi.summary("Diagnostics")
@@ -981,7 +1037,11 @@ async def bootstrap_data_feeds(app, loop):
     if rpcc.is_valid():
        clients.append(rpcc)
     
-    jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL)
+    jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, "RT0")
+    if jwsc.is_valid():
+       clients.append(jwsc)
+
+    jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, "RT1")
     if jwsc.is_valid():
        clients.append(jwsc)
 
@@ -1105,11 +1165,12 @@ async def read_archive(app, dcqs):
 @app.after_server_start
 async def subscribe_feeds(app):
 
-    app.add_task(read_realtime(app))
+    app.add_task(read_realtime(app, 3))
+    app.add_task(read_realtime(app, 4))
 
-async def read_realtime(app):
+async def read_realtime(app, rt_client_num):
     
-    async for event in app.ctx.feed.realtime_async_read():
+    async for event in app.ctx.feed.realtime_async_read(rt_client_num):
         await app.ctx.dispatch_from_realtime(event)
 
 ##################################

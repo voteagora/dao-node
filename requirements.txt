@@ -24,3 +24,4 @@ sanic-ext
 python-dotenv
 pyenvdiff
 sortedcontainers
+pympler

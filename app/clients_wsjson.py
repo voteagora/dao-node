@@ -113,7 +113,8 @@ class JsonRpcRtWsClientCaster:
 class JsonRpcRtWsClient(SubscriptionPlannerMixin):
     timeliness = 'realtime'
 
-    def __init__(self, url):
+    def __init__(self, url, name):
+        self.name = name
         self.url = url
         self.ws = None
         self.next_sub_request_id = 1
@@ -189,10 +190,10 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
             if "result" in response:
                 self.block_header_sub_id = response["result"]
                 self.sub_ids[self.block_header_sub_id] = ("blocks", (chain_id,))
-                logr.info(f"Successfully subscribed to block headers with ID: {self.block_header_sub_id}")
+                logr.info(f"{self.name}: Successfully subscribed to block headers with ID: {self.block_header_sub_id}")
             else:
                 error = response.get('error', {})
-                logr.error(f"Failed to subscribe to block headers: {error.get('message', 'Unknown error')}")
+                logr.error(f"{self.name}: Failed to subscribe to block headers: {error.get('message', 'Unknown error')}")
 
     async def _subscribe_to_event_logs(self):
 
@@ -221,7 +222,7 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
                         ]
                     }
 
-                    logr.info(f"Subscription Req ID: {self.next_sub_request_id} to event logs for {cs_address} with topic {topic}")
+                    logr.info(f"{self.name}: Subscription Req ID: {self.next_sub_request_id} to event logs for {cs_address} with topic {topic}")
 
                     await self.ws.send(json.dumps(subscribe_params))
 
@@ -237,16 +238,16 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
                     sub_id = response["result"]
                     our_id = response["id"]
                     new_sub_ids[sub_id] = "event",mapping_our_id_to_subscription_method[our_id]
-                    logr.info(f"Successfully subscribed to event logs with ID: {our_id}")
+                    logr.info(f"{self.name}: Successfully subscribed to event logs with ID: {our_id}")
                 elif "method" in response and response["method"] == "eth_subscription":
                     sub_id = response["params"]["subscription"]
                     event = response["params"]["result"]
-                    logr.info(f"Received event for subscription {sub_id}, ignoring while in setup mode. TODO: HANDLE THIS BETTER!!!")
+                    logr.info(f"{self.name}: Received event for subscription {sub_id}, ignoring while in setup mode. TODO: HANDLE THIS BETTER!!!")
                 else:
                     error = response.get('error', {})
-                    raise Reset(f"E24720250528: Failed to subscribe to event logs: {error}")
+                    raise Reset(f"{self.name}: E24720250528: Failed to subscribe to event logs: {error}")
             
-            logr.info(f"Successfully subscribed to {len(new_sub_ids)} event logs.")
+            logr.info(f"{self.name}: Successfully subscribed to {len(new_sub_ids)} event logs.")
             self.sub_ids.update(new_sub_ids)
 
 
