@@ -11,11 +11,14 @@ import asyncio
 from collections import defaultdict
 from pathlib import Path
 from bisect import bisect_left
-
+from datetime import datetime
+from random import randint
 import yaml
 from copy import copy
 import json as j
 import random
+
+from pympler import asizeof
 
 from sanic_ext import openapi
 from sanic.worker.manager import WorkerManager
@@ -40,8 +43,6 @@ from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS
 if  CAPTURE_WS_CLIENT_OUTPUTS:
     from copy import deepcopy
 
-from datetime import datetime
-from random import randint
 
 BOOT_TIME = datetime.now().isoformat()
 WORKER_ID = str(randint(0, 100000000000000000)) # just a big number to avoid collissions.
@@ -50,8 +51,6 @@ glogr = get_logger('global')
 
 glogr.info(f"{WORKER_ID=}")
 glogr.info(f"{BOOT_TIME=}")
-
-from pympler import asizeof
 
 ######################################################################
 #
