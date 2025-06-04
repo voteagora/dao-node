@@ -848,8 +848,8 @@ async def delegate_handler(app, request, addr):
 
         from_list_with_info.append(row)
 
-        pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
-        participation = pm.calculate(addr)
+    pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
+    participation = pm.calculate(addr)
 
     return json({'delegate' : 
                 {'addr' : addr,
