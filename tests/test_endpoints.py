@@ -171,6 +171,7 @@ async def test_delegates_endpoint_sort_by_latest(app):
     assert delegates[2]["addr"] == "0x2222222222222222222222222222222222222222"  # Block 2000 (highest)
     assert delegates[2]["MRD"] == 2000
 
+@pytest.mark.asyncio
 async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
 
     pt = ProposalTypes()
@@ -178,10 +179,13 @@ async def test_proposals_types_endpoint(app, test_client, pguild_ptc_abi):
     csvc = CSVClient('tests/data/4000-pguild-ptc-w-scopes')
     chain_id = 1115511
 
-    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', PROP_TYPE_SET_4, pguild_ptc_abi):
-        pt.handle(row)
-    for row in csvc.read(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', SCOPE_CREATED, pguild_ptc_abi):
-        pt.handle(row)
+    csvc.set_abis(pguild_ptc_abi)
+
+    csvc.plan_event(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', PROP_TYPE_SET_4)
+    csvc.plan_event(chain_id, '0xb7687e62d6b2cafb3ed3c3c81b0b6cf0a3884602', SCOPE_CREATED)
+
+    for event, _, _ in csvc.read(after=0):
+        pt.handle(event)
     
     app.ctx.proposal_types = pt
 
@@ -286,14 +290,17 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     assert delegates[0]['addr'] == '0x2222'
     assert delegates[1]['addr'] == '0x1111'
 
+@pytest.mark.asyncio
 async def test_delegate_endpoint(app, test_client, scroll_token_abi):
     delegations = Delegations()
     balances = Balances(token_spec={'name': 'erc20', 'version': '?'})
     
     csvc = CSVClient('tests/data/6000-delegations')
     chain_id = 1
-    for row in csvc.read(chain_id, '0x1234567890123456789012345678901234567890', DELEGATE_CHANGED_2, scroll_token_abi):
-        delegations.handle(row)
+    csvc.set_abis(scroll_token_abi)
+    csvc.plan_event(chain_id, '0x1234567890123456789012345678901234567890', DELEGATE_CHANGED_2)
+    for event, _, _ in csvc.read(after=0):
+        delegations.handle(event)
     
     balances.handle({
         'block_number': 123456,
@@ -306,6 +313,32 @@ async def test_delegate_endpoint(app, test_client, scroll_token_abi):
     
     app.ctx.delegations = delegations
     app.ctx.balances = balances
+
+    class MockProposals:
+        def counted(self, head=10):
+            return []
+
+        def completed(self, head=10):
+            return []
+    
+    class MockVotes:
+        def __init__(self):
+            self.voter_history = {
+                '0xabcdef1234567890123456789012345678901234': [{'block_number': 100, 'proposal_id': '0x1234'}],
+                '0x2222': [{'block_number': 200, 'proposal_id': '0x1234'}],
+                '0x4444': [{'block_number': 400, 'proposal_id': '0x1234'}],
+                '0x5555': [{'block_number': 500, 'proposal_id': '0x1234'}],
+                # 0x3333 has no voting history
+            }
+            self.latest_vote_block = {
+                '0xabcdef1234567890123456789012345678901234': 100,
+                '0x2222': 200,
+                '0x4444': 400,
+                '0x5555': 500,
+            }
+
+    app.ctx.proposals = MockProposals()
+    app.ctx.votes = MockVotes()
     
     req, resp = await test_client.get('/v1/delegate/0xabcdef1234567890123456789012345678901234')
     assert resp.status == 200
