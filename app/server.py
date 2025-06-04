@@ -168,7 +168,7 @@ class ClientSequencer:
 
         self.pos += 1
         if self.pos <= self.num:
-            return self.clients[self.pos - 1]
+            return self.pos, self.clients[self.pos - 1]
 
         self.pos = 0
 
@@ -183,7 +183,7 @@ class ClientSequencer:
             if self.pos < self.num:
                 client = self.clients[self.pos]
                 self.pos += 1
-                return client
+                return self.pos,client
             
             self.pos = 0  # Reset for reuse
             raise StopAsyncIteration
@@ -229,7 +229,7 @@ class Feed:
 
     def read_archive(self):
 
-        for i, client in enumerate(self.cs):
+        for i, client in self.cs:
 
             if client.timeliness == 'archive':
 
@@ -239,7 +239,7 @@ class Feed:
 
                 emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
 
-                logr.info(f"{emoji} Reading from {client.timeliness} client of type {type(client).__name__} from block {self.block}")
+                logr.info(f"{emoji} Reading from client #{i} of type {type(client).__name__} from block {self.block}")
 
                 reader = client.read(after=self.block)
 
@@ -309,11 +309,11 @@ class Feed:
 
     async def realtime_async_read(self):
 
-        async for client in self.cs.get_async_iterator():
+        async for i, client in self.cs.get_async_iterator():
 
             if client.timeliness == 'realtime':
 
-                logr.info(f"Reading from {client.timeliness} client of type {type(client)}")
+                logr.info(f"Reading from client #{i} of type {type(client)}")
 
                 if self.block is None:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
