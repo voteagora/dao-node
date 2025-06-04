@@ -206,12 +206,16 @@ class Feed:
         self.meta = []
         self.profiler = Profiler()
         self.capture_counter = defaultdict(int)
-        self.event_history = []
 
+        self.event_history = [] # this one is for diagnostics, can be disabled after we're stable.
+
+        self.event_history_dict = defaultdict(list) # this one is for deduplicating events we've heard.  #TODO - prune this if we're stable fore more than a day.
+        self.event_history_tracking_lock = asyncio.Lock()
+    
         self.archive_signal_counts = defaultdict(int)
         self.realtime_signal_counts = defaultdict(int)
         self.total_signal_counts = defaultdict(int)
-    
+
     def set_client_sequencer(self, client_sequencer):
         self.cs = client_sequencer
 
@@ -307,11 +311,11 @@ class Feed:
                 pass
 
 
-    async def realtime_async_read(self):
+    async def realtime_async_read(self, rt_client_num=0):
 
         async for i, client in self.cs.get_async_iterator():
 
-            if client.timeliness == 'realtime':
+            if client.timeliness == 'realtime' and rt_client_num == i:
 
                 logr.info(f"Reading from client #{i} of type {type(client)}")
 
@@ -320,7 +324,23 @@ class Feed:
 
                 async for event in client.read():
 
-                    self.block = max(self.block, int(event['block_number']))
+                    block_num = int(event['block_number'])
+                    self.block = max(self.block, block_num)
+
+                    # This right here, makes it possible to have multiple 
+                    # competing web sockets.
+                    # And then, for each block number, we track events
+                    # we've processed.
+                    # If we've heard it once before, we skip it.
+                    try:
+                        pair = event['transaction_index'], event['log_index']
+                    except:
+                        pair = -1, -1 # block
+
+                    async with self.event_history_tracking_lock:
+                        if pair in self.event_history_dict[block_num]:
+                            continue                    
+                        self.event_history_dict[block_num].append(pair)
 
                     self.realtime_signal_counts[event['signal']] += 1
                     self.total_signal_counts[event['signal']] += 1
@@ -329,6 +349,7 @@ class Feed:
                         self.capture_client_output_to_disk(event, client_type=type(client))
                     
                     if CAPTURE_WS_CLIENT_OUTPUTS:
+
                         self.capture_ws_client_output(deepcopy(event))
                         try:
                             del event['removed']
@@ -981,7 +1002,11 @@ async def bootstrap_data_feeds(app, loop):
     if rpcc.is_valid():
        clients.append(rpcc)
     
-    jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL)
+    jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, "RT0")
+    if jwsc.is_valid():
+       clients.append(jwsc)
+
+    jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, "RT1")
     if jwsc.is_valid():
        clients.append(jwsc)
 
@@ -1105,11 +1130,12 @@ async def read_archive(app, dcqs):
 @app.after_server_start
 async def subscribe_feeds(app):
 
-    app.add_task(read_realtime(app))
+    app.add_task(read_realtime(app, 3))
+    app.add_task(read_realtime(app, 4))
 
-async def read_realtime(app):
+async def read_realtime(app, rt_client_num):
     
-    async for event in app.ctx.feed.realtime_async_read():
+    async for event in app.ctx.feed.realtime_async_read(rt_client_num):
         await app.ctx.dispatch_from_realtime(event)
 
 ##################################
