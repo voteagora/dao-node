@@ -51,6 +51,8 @@ glogr = get_logger('global')
 glogr.info(f"{WORKER_ID=}")
 glogr.info(f"{BOOT_TIME=}")
 
+from pympler import asizeof
+
 ######################################################################
 #
 # ABIs need to be available somewhere to be picked up by teh abifsm
@@ -915,6 +917,40 @@ def detect_any_bytes(obj):
     if isinstance(obj, dict):
         return any(detect_any_bytes(x) for x in obj.values())
     return False
+
+"""
+
+Optimism (in kb)
+
+{
+"app.ctx.feed": 142,
+"app.ctx.feed.event_history": 0,
+"app.ctx.balances": 441705,
+"app.ctx.delegations": 2191977,
+"app.ctx.proposals": 1079,
+"app.ctx.votes": 858982
+}
+"""
+
+@app.route('/v1/ram/<worker_id>')
+@openapi.tag("Diagnostics")
+@openapi.summary("Diagnostics")
+@measure
+async def ram(request, worker_id):
+
+    if worker_id != WORKER_ID:
+        return json({'error' : 'worker_id required'})
+
+    def sizeof(obj):
+        return int(asizeof.asizeof(obj) / 1024)
+    
+    return json({'app.ctx.feed' : sizeof(app.ctx.feed),
+                 'app.ctx.feed.event_history' : sizeof(app.ctx.feed.event_history),
+                 'app.ctx.balances' : sizeof(app.ctx.balances),
+                 'app.ctx.delegations' : sizeof(app.ctx.delegations),
+                 'app.ctx.proposals' : sizeof(app.ctx.proposals),
+                 'app.ctx.votes' : sizeof(app.ctx.votes)
+                })
 
 @app.route('/v1/diagnostics/<safe_mode>')
 @openapi.tag("Diagnostics")
