@@ -616,7 +616,7 @@ class Proposals(DataProduct):
     
     def counted(self, head=-1):
         for proposal in reversed(self.proposals.values()):
-            if not proposal.canceled:
+            if (not proposal.canceled) and (proposal.voting_module_name != 'optimistic'):
                 counted = 1 if (proposal.queued or proposal.executed) else 0
                 if head > 0 or head <= -1:
                     yield proposal, counted
