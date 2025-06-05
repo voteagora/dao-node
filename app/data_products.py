@@ -695,10 +695,11 @@ class Proposals(DataProduct):
 
                 proposal_data = proposal.create_event.get('proposal_data', None)
 
-                if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1:
-                    raise ToDo("Old Govenors are using newer PTCs, and so using gov version here doesn't work perfectly for this check.  So the first one that upgrades, is going to trip this reminder.  Plus, PTC upgrades happen without changing gov versions Eg. Optimism.")
-                    proposal.resolve_voting_module_name(self.modules)
-                elif self.gov_spec['name'] == 'agora':
+                # Maybe this is not needed? reverse_engineer_module_name might work for 2.0. TBD
+                # if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1:
+                #     raise ToDo("Old Govenors are using newer PTCs, and so using gov version here doesn't work perfectly for this check.  So the first one that upgrades, is going to trip this reminder.  Plus, PTC upgrades happen without changing gov versions Eg. Optimism.")
+                #     proposal.resolve_voting_module_name(self.modules)
+                if self.gov_spec['name'] == 'agora':
                     # Older PTC Contracts didn't fully describe themselves, so we 
                     # this is a hack.
                     proposal.reverse_engineer_module_name(signature, proposal_data)
