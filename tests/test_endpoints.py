@@ -5,7 +5,7 @@ os.environ['AGORA_CONFIG_FILE'] = 'tests/test_config.yaml'
 from unittest.mock import Mock
 from sanic import Sanic
 from sanic.response import json
-from app.server import proposals_handler, proposal_types_handler, delegates_handler, delegate_handler, ParticipationModel
+from app.server import proposals_handler, proposal_types_handler, delegates_handler, delegate_handler
 from app.data_products import Proposals, Votes, Delegations, ProposalTypes, Balances
 from app.clients_csv import CSVClient
 from app.signatures import *
@@ -320,6 +320,10 @@ async def test_delegate_endpoint(app, test_client, scroll_token_abi):
 
         def completed(self, head=10):
             return []
+
+    class MockParticipationRateModel:
+        def get_fraction(self, addr):
+            return 0, 0
     
     class MockVotes:
         def __init__(self):
@@ -339,6 +343,7 @@ async def test_delegate_endpoint(app, test_client, scroll_token_abi):
 
     app.ctx.proposals = MockProposals()
     app.ctx.votes = MockVotes()
+    app.ctx.participation_rate_model = MockParticipationRateModel()
     
     req, resp = await test_client.get('/v1/delegate/0xabcdef1234567890123456789012345678901234')
     assert resp.status == 200

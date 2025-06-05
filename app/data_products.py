@@ -3,25 +3,15 @@ from collections import defaultdict
 from sortedcontainers import SortedDict
 from abc import ABC, abstractmethod
 import json, time
+from bisect import bisect_left
 
 from eth_abi.abi import decode as decode_abi
-from .utils import camel_to_snake
 
 from .signatures import *
+from .abcs import DataProduct
 
 class ToDo(NotImplementedError):
     pass
-
-class DataProduct(ABC):
-
-    @abstractmethod
-    def handle(self, event):
-        pass
-
-    @property
-    def name(self):
-        return camel_to_snake(self.__class__.__name__)
-    
 
 class Balances(DataProduct):
 
@@ -334,6 +324,22 @@ class Delegations(DataProduct):
     
             self.delegatee_vp_recent_history[delegatee] = recent_history
 
+    def delegatee_vp_at_block(self, addr, block_number, include_history=False):
+        vp_history = [(0, 0)] + self.delegatee_vp_history[addr]
+        index = bisect_left(vp_history, (block_number,)) - 1
+
+        index = max(index, 0)
+
+        try:
+            vp = vp_history[index][1]
+        except:
+            vp = 0
+
+        if include_history:
+            return vp, vp_history[index:]
+        else:
+            return vp
+
     def get_seven_day_vp(self, delegatee):
 
         vp, block_number = self.cached_seven_day_vp[delegatee]
@@ -489,7 +495,7 @@ class Proposal:
     def execute(self, execute_event):
         self.executed = True
         self.execute_event = execute_event
-
+    
     def to_dict(self):
 
         out = self.create_event
@@ -523,11 +529,87 @@ class Proposal:
         if addr:
             return addr.lower()
 
+class ParticipationRateStateTracker:
+
+    def __init__(self):
+        self.ending_in_future_proposals_valid_until_block = float('inf')
+
+        self.flag_ending_in_future_proposals_has_changed = False
+        self.ending_in_future_proposals = [] # list of (proposal_id, block_number)
+
+        self.flag_recently_completed_and_counted_has_changed = False
+        self.recently_completed_and_counted_proposals = [] # list of (proposal_id, block_number)
+
+        self.MAX_RECENTLY_COMPLETED_AND_COUNTED = 10
+
+    def track_new_proposal(self, proposal_id, start_block, end_block):
+        # print(f"track_new_proposal({proposal_id=}, {start_block=}, {end_block=})")
+        self.ending_in_future_proposals.append((proposal_id, start_block, end_block))
+        self.ending_in_future_proposals_valid_until_block = min(self.ending_in_future_proposals_valid_until_block, end_block)
+        self.flag_ending_in_future_proposals_has_changed = True
+
+    def update_recently_completed_and_counted_proposal(self, proposal_ids_and_block_number: list[tuple[str, int]]):
+        #print(f"update_recently_completed_and_counted_proposal({proposal_ids_and_block_number=})")
+        proposal_ids_and_block_number.sort(key=lambda x: x[1])
+
+        if len(proposal_ids_and_block_number) > self.MAX_RECENTLY_COMPLETED_AND_COUNTED:
+            proposal_ids_and_block_number = proposal_ids_and_block_number[-self.MAX_RECENTLY_COMPLETED_AND_COUNTED:]
+        
+        change_detected = self.recently_completed_and_counted_proposals != proposal_ids_and_block_number
+        self.flag_recently_completed_and_counted_has_changed = change_detected or self.flag_recently_completed_and_counted_has_changed
+        self.recently_completed_and_counted_proposals = proposal_ids_and_block_number
+
+    def append_recently_completed_and_counted_proposal(self, proposal_ids_and_block_number: list[tuple[str, int]]):
+        # print(f"append_recently_completed_and_counted_proposal({proposal_ids_and_block_number=})")
+        both = list(set(self.recently_completed_and_counted_proposals + proposal_ids_and_block_number))
+        both.sort(key=lambda x: x[1])
+        if len(both) > self.MAX_RECENTLY_COMPLETED_AND_COUNTED:
+            both = both[-self.MAX_RECENTLY_COMPLETED_AND_COUNTED:]
+    
+        change_detected = self.recently_completed_and_counted_proposals != both
+        self.flag_recently_completed_and_counted_has_changed = change_detected or self.flag_recently_completed_and_counted_has_changed
+        self.recently_completed_and_counted_proposals = both
+
+    
+    def roll_ending_in_future_to_recently_completed_and_counted(self, block_number):
+        # print(f"roll_ending_in_future_to_recently_completed_and_counted({block_number=})")
+
+        if block_number > self.ending_in_future_proposals_valid_until_block:
+
+            new_ending_in_future_proposals = [proposal for proposal in self.ending_in_future_proposals if proposal[1] > block_number]
+            newly_recently_completed_proposals = [proposal for proposal in self.ending_in_future_proposals if proposal[1] <= block_number]
+            
+            if len(new_ending_in_future_proposals):
+                self.ending_in_future_proposals_valid_until_block = min([proposal[1] for proposal in new_ending_in_future_proposals])
+                self.flag_ending_in_future_proposals_has_changed = True
+            else:
+                # There are no more future proposals at the moment
+                self.ending_in_future_proposals_valid_until_block = float('inf')
+            
+            self.ending_in_future_proposals = new_ending_in_future_proposals
+            
+            self.append_recently_completed_and_counted_proposal(newly_recently_completed_proposals)
+    
+    def drop_cancelled_from_future_proposals(self, proposal_id):
+        self.ending_in_future_proposals = [proposal for proposal in self.ending_in_future_proposals if proposal[0] != proposal_id]
+        self.flag_ending_in_future_proposals_has_changed = True
+    
+    def check_integrity(self):
+
+        completed_proposal_ids = set([proposal_id for proposal_id, _, _ in self.recently_completed_and_counted_proposals])
+        future_proposal_ids = set([proposal_id for proposal_id, _, _ in self.ending_in_future_proposals])
+
+        assert completed_proposal_ids.isdisjoint(future_proposal_ids), "Proposal IDs in both recently completed and future proposals"
+
+        assert len(completed_proposal_ids) <= self.MAX_RECENTLY_COMPLETED_AND_COUNTED, "Too many recently completed proposals"
+
 
 class Proposals(DataProduct):
 
     def __init__(self, governor_spec, modules=None):
         self.proposals = {}
+
+        self.block_number = 0
 
         if modules:
             self.modules = modules
@@ -540,8 +622,21 @@ class Proposals(DataProduct):
             self.proposal_id_field_name = 'proposal_id'
 
         self.gov_spec = governor_spec
+
+        self.prst = ParticipationRateStateTracker()
+    
     
     def handle(self, event):
+
+        # handle_block() # equivalent, without the extra lookup.
+        if 'timestamp' in event:
+            block_number = event['block_number']
+            self.block_number = block_number
+            self.prst.roll_ending_in_future_to_recently_completed_and_counted(block_number)
+            return
+        
+        self.block_number = int(event['block_number'])
+        self.prst.roll_ending_in_future_to_recently_completed_and_counted(self.block_number)
 
         try:
             signature = event['signature']
@@ -581,18 +676,36 @@ class Proposals(DataProduct):
                     
                 self.proposals[proposal_id] = proposal
 
+                if proposal.voting_module_name != 'optimistic':
+                    self.prst.track_new_proposal(proposal_id, proposal.create_event['start_block'], proposal.create_event['end_block'])
+
             elif 'ProposalQueued' == signature[:LQUEUED]:
                 self.proposals[proposal_id].queue(event)
-            
+
             elif 'ProposalExecuted' == signature[:LEXECUTED]:
                 self.proposals[proposal_id].execute(event)
 
             elif 'ProposalCanceled' == signature[:LCANCELED]:
                 self.proposals[proposal_id].cancel(event)
+                self.prst.drop_cancelled_from_future_proposals(proposal_id)
+                self.restate_recently_completed_and_counted_proposals()
 
         except KeyError as e:
             print(f"E248250323 - Problem with the following proposal_id {proposal_id} and the {signature} event: {e}")
+            raise
     
+    def restate_recently_completed_and_counted_proposals(self):
+        fresh_completed_proposals = []
+        
+        for proposal_id, proposal in self.proposals.items():
+            end_block = proposal.create_event['end_block']
+            start_block = proposal.create_event['start_block']
+            if (end_block < self.block_number) and (not proposal.canceled) and (not proposal.voting_module_name == 'optimistic'):
+                fresh_completed_proposals.append((proposal_id, start_block, end_block))
+        self.prst.update_recently_completed_and_counted_proposal(fresh_completed_proposals)
+    
+        self.prst.check_integrity()
+
     def unfiltered(self, head=-1):
         for proposal in reversed(self.proposals.values()):
             yield proposal
@@ -613,14 +726,6 @@ class Proposals(DataProduct):
                 if head > 0 or head <= -1:
                     yield proposal
                     head -= 1
-    
-    def counted(self, head=-1):
-        for proposal in reversed(self.proposals.values()):
-            if (not proposal.canceled) and (proposal.voting_module_name != 'optimistic'):
-                counted = 1 if (proposal.queued or proposal.executed) else 0
-                if head > 0 or head <= -1:
-                    yield proposal, counted
-                    head -= counted
 
 
 def nested_default_dict():
@@ -668,6 +773,8 @@ class Votes(DataProduct):
         
         self.latest_vote_block = defaultdict(int)
 
+        self.participated = defaultdict(lambda : defaultdict(lambda : False))
+
         if governor_spec['name'] == 'compound':
             self.proposal_id_field_name = 'id'
         else:
@@ -690,7 +797,11 @@ class Votes(DataProduct):
         del event_cp['signature']
         event_cp['proposal_id'] = str(event_cp['proposal_id'])
 
-        self.voter_history[event['voter']].append(event_cp)
+        voter = event['voter']
+        
+        self.voter_history[voter].append(event_cp)
+
+        self.participated[voter][proposal_id] = True
 
         event_cp = copy(event_cp)
         del event_cp['proposal_id']
@@ -701,71 +812,3 @@ class Votes(DataProduct):
         block_number = int(event['block_number']) if isinstance(event['block_number'], str) else event['block_number']
         if block_number > self.latest_vote_block[voter]:
             self.latest_vote_block[voter] = block_number
-
-class ParticipationModel:
-    """
-    This participation model looks back at the 10 most recent non-cancelled completed proposals, and any active proposals.
-
-    We let T be the # of non-cancelleted completed proposals plus any active propsals.  
-    
-    T >= 10
-    
-    We let NC be the # of not yet completed proposals.
-
-    NC <= T
-
-    And...
-
-    Therefore C = T - NC, ie any completed proposals.
-
-    The model's numerator is the sum of any votes from all T.
-    
-    The model's denominator is the sum of any  checks to see if a specific delegate voted in any of those relevant proposals.
-
-    The numerator of the participation rate is the count of T proposals, if the delegate has voted.
-
-    The denominator of the participation rate is the count of C proposals, plus the count of any NC if the delegated has voted. 
-
-    Such that, numerator >= denominator. 
-
-    A logical enhancement from here, would be creating a DataProduct that calculated 
-    this for all delegates at the time of the completion for any proposal.  
-    
-    This would move the calc from the endpoint to the data product step.
-    """
-
-    def __init__(self, proposals_dp : Proposals, votes_dp : Votes):
-        self.proposals = proposals_dp
-        self.votes = votes_dp
-
-        self.relevant_and_active_proposals = [(proposal.create_event['id'], counted) for proposal, counted in self.proposals.counted(head=10)]
-        self.tot_considered = -1 * len(self.relevant_and_active_proposals)
-    
-    def calculate_rate(self, addr):
-        num, den = self.calculate(addr)
-
-        if den == 0:
-            return 0
-        
-        return num / den
-    
-    def calculate(self, addr):
-
-        historic_proposal_ids = [vote['proposal_id'] for vote in self.votes.voter_history[addr]]
-
-        recent_proposal_ids = set(historic_proposal_ids[self.tot_considered:])
-
-        den = 0
-        num = 0
-
-        for proposal_id, counted in self.relevant_and_active_proposals:
-            if counted:
-                den += 1
-                if (proposal_id in recent_proposal_ids):
-                    num += 1
-            else:
-                if (proposal_id in recent_proposal_ids):
-                    num += 1
-                    den += 1
-
-        return num, den

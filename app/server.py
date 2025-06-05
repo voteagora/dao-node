@@ -10,7 +10,6 @@ import time, os
 import asyncio
 from collections import defaultdict
 from pathlib import Path
-from bisect import bisect_left
 from datetime import datetime
 from random import randint
 import yaml
@@ -34,7 +33,9 @@ from .clients_csv import CSVClient
 from .clients_httpjson import JsonRpcHistHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
 
-from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, ParticipationModel
+from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes
+from .data_models import ParticipationRateModel
+
 from .signatures import *
 from . import __version__
 from .logsetup import get_logger 
@@ -380,7 +381,9 @@ class DataProductContext:
         self.dps[chain_id_contract_signature].append(data_product)
         
         setattr(self, data_product.name, data_product)
-
+    
+    def register_model(self, model):
+        setattr(self, model.name, model)
 
     def set_signal_context(self, chain_id_contract_signature):
         self.signal_context = self.dps[chain_id_contract_signature]
@@ -690,14 +693,14 @@ async def delegates(request):
     return await delegates_handler(app, request)
 
 # Helper function to get the sort value for a single delegate
-def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str, pm=None):
+def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str):
     if sort_by == 'VP':
         return app_ctx.delegations.delegatee_vp.get(delegate_address, 0)
     elif sort_by == 'MRD':
         event = app_ctx.delegations.delegatee_latest_event.get(delegate_address)
         return int(event['block_number']) if event else 0
     elif sort_by == 'PR':
-        return pm.calculate_rate(delegate_address) if delegate_address in app_ctx.votes.voter_history else 0.0
+        return app_ctx.participation_rate_model.get_rate(delegate_address)
     elif sort_by == 'OLD':
         event = app_ctx.delegations.delegatee_oldest_event.get(delegate_address)
         return int(event['block_number']) if event else 0
@@ -715,10 +718,6 @@ async def delegates_handler(app, request):
     sort_by_vp  = sort_by == 'VP'  # Voting Power
     sort_by_dc  = sort_by == 'DC'  # Delegator Count
     sort_by_pr  = sort_by == 'PR'  # Partipcipation Rate ( Not supported yet) 
-
-    if sort_by_pr:
-        print("Sorting by PR is not indended for production use yet.  We need a faster data product.")
-
     sort_by_lvb = sort_by == 'LVB' # Last Vote Block
     sort_by_mrd = sort_by == 'MRD' # Most Recent Delegation
     sort_by_old = sort_by == 'OLD' # Oldest Delegation
@@ -742,7 +741,9 @@ async def delegates_handler(app, request):
     add_seven_day_vp_change = 'VPC' in include or sort_by_vpc
 
     if sort_by_pr or add_participation_rate:
-        pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
+        # TODO - figure out all the edge cases that could require this,
+        # and then call it at the right time, rather than here.
+        app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
 
     out = []
     if delegator_address_filter:
@@ -752,7 +753,7 @@ async def delegates_handler(app, request):
         if target_delegatee_addresses:
             for delegate_addr in target_delegatee_addresses:
                 delegate_addr_lower = delegate_addr
-                sort_val = _get_delegate_sort_value(app.ctx, delegate_addr_lower, sort_by, pm if sort_by_pr else None)
+                sort_val = _get_delegate_sort_value(app.ctx, delegate_addr_lower, sort_by)
                 
                 # Apply LVB specific pruning if sorting by LVB
                 if sort_by_lvb and sort_val == 0:
@@ -766,8 +767,7 @@ async def delegates_handler(app, request):
             out = [(addr, int(event['block_number'])) 
                    for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
         elif sort_by_pr:
-            out = [(addr, pm.calculate_rate(addr))
-                   for addr in app.ctx.votes.voter_history.keys()]
+            out = list(app.ctx.participation_rate_model.rates())
         elif sort_by_old:
             out = [(addr, int(event['block_number'])) 
                    for addr, event in app.ctx.delegations.delegatee_oldest_event.items()]
@@ -798,7 +798,7 @@ async def delegates_handler(app, request):
 
     voting_power_func = lambda x, y: str(app.ctx.delegations.delegatee_vp[x])
     from_cnt_func = lambda x, y: app.ctx.delegations.delegatee_cnt[x]
-    participation_func = lambda x, y: pm.calculate_rate(x)
+    participation_func = lambda x, y: app.ctx.participation_rate_model.get_rate(x)
     last_vote_block_func = lambda x, y: app.ctx.votes.latest_vote_block.get(x, 0)
     most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event[x]['block_number']
     oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event[x]['block_number']
@@ -848,8 +848,7 @@ async def delegate_handler(app, request, addr):
 
         from_list_with_info.append(row)
 
-    pm = ParticipationModel(app.ctx.proposals, app.ctx.votes)
-    participation = pm.calculate(addr)
+    participation = app.ctx.participation_rate_model.get_fraction(addr)
 
     return json({'delegate' : 
                 {'addr' : addr,
@@ -901,20 +900,12 @@ async def delegate_vp(request, addr : str, block_number : str):
 
 async def delegate_vp_handler(app, request, addr, block_number):
 
-    vp_history = [(0, 0)] + app.ctx.delegations.delegatee_vp_history[addr]
-    index = bisect_left(vp_history, (int(block_number),)) - 1
-
-    index = max(index, 0)
-
-    try:
-        vp = vp_history[index][1]
-    except:
-        vp = 0
+    vp, history = app.ctx.delegations.delegatee_vp_at_block(addr, block_number, include_history=True)
 
     return json({'voting_power' : vp,
                  'delegate' : addr,
                  'block_number' : block_number,
-                 'history' : vp_history[1:]})
+                 'history' : history})
 
 
 #################################################################################################################################################
@@ -1153,6 +1144,9 @@ async def bootstrap_data_feeds(app, loop):
 
         for VOTE_EVENT in VOTE_EVENTS:
             app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
+        
+    pr = ParticipationRateModel()
+    app.ctx.register_model(pr)
 
     # This is so certain endpoints can access empty data-products
     # without a bunch of gymnastics.
@@ -1161,6 +1155,13 @@ async def bootstrap_data_feeds(app, loop):
             setattr(app.ctx, data_product.name, data_product)
 
     app.add_task(read_archive(app, dcqs))
+
+async def index_proposals(app):
+
+    start = time.time()
+    app.ctx.proposals.restate_recently_completed_and_counted_proposals()
+    app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
+    logr.info(f"Indexing participation rates [{time.time() - start:.2f}s]")
 
 async def read_archive(app, dcqs):
     
@@ -1178,6 +1179,7 @@ async def subscribe_feeds(app):
 
     app.add_task(read_realtime(app, 3))
     app.add_task(read_realtime(app, 4))
+    app.add_task(index_proposals(app))
 
 async def read_realtime(app, rt_client_num):
     
