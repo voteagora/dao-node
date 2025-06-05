@@ -89,13 +89,15 @@ class ProposalTypes(DataProduct):
             elif 'Disabled' in signature:
                 if signature == 'ScopeDisabled(uint8,bytes24,uint8)':  # v2
                     idx = event['idx']
-                    # Find and disable the specific scope at this index
                     scopes = self.proposal_types[proposal_type_id]['scopes']
-                    for i, scope in enumerate(scopes):
-                        if scope['scope_key'] == scope_key and i == idx:
-                            scope['disabled_event'] = event
-                            scope['status'] = 'disabled'
-                            break
+                    active_count = 0
+                    for scope in scopes:
+                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
+                            if active_count == idx:
+                                scope['disabled_event'] = event
+                                scope['status'] = 'disabled'
+                                break
+                            active_count += 1
                 else:  # v1 - disable all scopes with the scope_key
                     for scope in self.proposal_types[proposal_type_id]['scopes']:
                         if scope['scope_key'] == scope_key:
@@ -104,13 +106,15 @@ class ProposalTypes(DataProduct):
             elif 'Deleted' in signature:
                 if signature == 'ScopeDeleted(uint8,bytes24,uint8)':  # v2
                     idx = event['idx']
-                    # Find and delete the specific scope at this index
                     scopes = self.proposal_types[proposal_type_id]['scopes']
-                    for i, scope in enumerate(scopes):
-                        if scope['scope_key'] == scope_key and i == idx:
-                            scope['deleted_event'] = event
-                            scope['status'] = 'deleted'
-                            break
+                    active_count = 0
+                    for scope in scopes:
+                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
+                            if active_count == idx:
+                                scope['deleted_event'] = event
+                                scope['status'] = 'deleted'
+                                break
+                            active_count += 1
                 else:  # v1 - delete all scopes with the scope_key
                     for scope in self.proposal_types[proposal_type_id]['scopes']:
                         if scope['scope_key'] == scope_key:
