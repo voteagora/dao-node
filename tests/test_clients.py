@@ -204,9 +204,9 @@ def test_get_paginated_logs(test_package):
         w3 = jrhhc.connect(),
         contract_address = test_package['gov_contract_address'],
         topics = [hash_of_event_sig],
+        step=1,
         start_block=start_block,
         end_block=end_block,
-        step=1,
     )
     # Just grab block numbers
     # Could look at token contract and do token transfer events
@@ -239,9 +239,9 @@ def test_get_paginated_logs_block_range_over_2000(test_package):
         w3=jrhhc.connect(),
         contract_address=test_package['gov_contract_address'],
         topics=[hash_of_event_sig],
+        step=1,
         start_block=start_block,
         end_block=end_block,
-        step=1,
     )
 
     print(f"Found {len(logs)} CastVote events")
@@ -269,9 +269,9 @@ def test_get_paginated_logs_are_in_chronological_order(test_package):
         w3=jrhhc.connect(),
         contract_address=test_package['gov_contract_address'],
         topics=[hash_of_event_sig],
+        step=1,
         start_block=start_block,
         end_block=end_block,
-        step=1,
     )
 
     curr_high_bn = start_block

@@ -240,7 +240,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
         return logs
 
 
-    def get_paginated_logs(self, w3, contract_address, topics, start_block, end_block=None, step=4):
+    def get_paginated_logs(self, w3, contract_address, topics, step, start_block, end_block=None):
 
         def chunk_list(lst, step):
             """Split a list into chunks of size `step`."""
@@ -410,7 +410,7 @@ It is unlikely that this function will ever be called directly, and is instead c
 
                 topics = self.event_subsription_meta[chain_id][cs_address].keys()
 
-                logs = self.get_paginated_logs(w3, cs_address, topics, start_block, step=step)
+                logs = self.get_paginated_logs(w3, cs_address, topics, step, start_block)
 
                 for log in logs:
 
