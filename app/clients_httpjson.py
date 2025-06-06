@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 from web3 import Web3
+from web3.exceptions import Web3RPCError
 from web3.middleware import ExtraDataToPOAMiddleware
 from sanic.log import logger as logr
 
@@ -310,9 +311,9 @@ It is unlikely that this function will ever be called directly, and is instead c
             logs = w3.eth.get_logs(event_filter)
         except Exception as e:
             # catch and attempt to recover block limitation ranges
-            if hasattr(e, 'response'):
-                response_json = json.loads(e.response.text)
-                api_error_code = response_json.get("error", {}).get("code")
+            if isinstance(e, Web3RPCError):
+                error_dict = eval(str(e.args[0]))  # Convert string representation to dict
+                api_error_code = error_dict['code']
                 if api_error_code == -32600 or api_error_code == -32602:
                     # add one to recursion depth
                     new_recursion_depth = current_recursion_depth + 1
@@ -370,15 +371,15 @@ It is unlikely that this function will ever be called directly, and is instead c
             yield block
 
     def read_blocks(self, chain_id, after):
-        
+
         w3 = self.connect()
 
         latest_block = w3.eth.block_number
 
         chain_id = w3.eth.chain_id
 
-        step = resolve_block_count_span(chain_id) 
-        
+        step = resolve_block_count_span(chain_id)
+
         blocks = self.get_paginated_blocks(w3, chain_id, start_block=after, end_block=latest_block, step=step)
 
         for block in blocks:
@@ -403,8 +404,8 @@ It is unlikely that this function will ever be called directly, and is instead c
 
         new_signal = True
         for chain_id in self.event_subsription_meta.keys():
-            
-            step = resolve_block_count_span(chain_id) 
+
+            step = resolve_block_count_span(chain_id)
 
             for cs_address in self.event_subsription_meta[chain_id].keys():
 
@@ -435,7 +436,7 @@ It is unlikely that this function will ever be called directly, and is instead c
 
                     all_logs.append((out, signal, new_signal))
 
-        all_logs.sort(key=lambda x: (x[0]['block_number'], x[0]['transaction_index'], x[0]['log_index']))   
+        all_logs.sort(key=lambda x: (x[0]['block_number'], x[0]['transaction_index'], x[0]['log_index']))
 
         for log in all_logs:
             yield log
