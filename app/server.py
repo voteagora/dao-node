@@ -1023,6 +1023,9 @@ async def voting_power(request):
 #
 ################################################################################
 
+NUM_ARCHIVE_CLIENTS = 2
+NUM_REALTIME_CLIENTS = 3
+
 @app.before_server_start(priority=0)
 async def bootstrap_data_feeds(app, loop):
 
@@ -1038,14 +1041,11 @@ async def bootstrap_data_feeds(app, loop):
     rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
     if rpcc.is_valid():
        clients.append(rpcc)
-    
-    jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, "RT0")
-    if jwsc.is_valid():
-       clients.append(jwsc)
 
-    jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, "RT1")
-    if jwsc.is_valid():
-       clients.append(jwsc)
+    for i in range(NUM_REALTIME_CLIENTS):
+        jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RT{i}")
+        if jwsc.is_valid():
+           clients.append(jwsc)
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
@@ -1177,8 +1177,8 @@ async def read_archive(app, dcqs):
 @app.after_server_start
 async def subscribe_feeds(app):
 
-    app.add_task(read_realtime(app, 3))
-    app.add_task(read_realtime(app, 4))
+    for i in range(NUM_REALTIME_CLIENTS):
+        app.add_task(read_realtime(app, 1 + NUM_ARCHIVE_CLIENTS + i))
     app.add_task(index_proposals(app))
 
 async def read_realtime(app, rt_client_num):
