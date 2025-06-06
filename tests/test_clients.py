@@ -140,45 +140,8 @@ ARCHIVE_NODE_HTTP_URL = DAO_NODE_ARCHIVE_NODE_HTTP + ALCHEMY_API_KEY
 mock_logs = [{x: f"Test Log {x}" for x in range(100)}]
 
 optimism_package = {
-    "gov_contract_address": "0xcDF27F107725988f2261Ce2256bDfCdE8B382B10",
-    "vote_cast_abi": {
-        "type": "event",
-        "name": "VoteCast",
-        "inputs": [
-            {
-                "name": "voter",
-                "type": "address",
-                "indexed": True,
-                "internalType": "address"
-            },
-            {
-                "name": "proposalId",
-                "type": "uint256",
-                "indexed": False,
-                "internalType": "uint256"
-            },
-            {
-                "name": "support",
-                "type": "uint8",
-                "indexed": False,
-                "internalType": "uint8"
-            },
-            {
-                "name": "weight",
-                "type": "uint256",
-                "indexed": False,
-                "internalType": "uint256"
-            },
-            {
-                "name": "reason",
-                "type": "string",
-                "indexed": False,
-                "internalType": "string"
-            }
-        ],
-        "anonymous": False
-    },
-    "event_signature": "VoteCast(address,uint256,uint8,uint256,string)",
+    "contract_address": "0x4200000000000000000000000000000000000042",
+    "event_signature": "Transfer(address,address,uint256)",
 }
 
 @pytest.mark.skipif(
@@ -202,7 +165,7 @@ def test_get_paginated_logs(test_package):
     # Query transfer logs from Optimism token contract
     logs = jrhhc.get_paginated_logs(
         w3 = jrhhc.connect(),
-        contract_address = test_package['gov_contract_address'],
+        contract_address = test_package['contract_address'],
         topics = [hash_of_event_sig],
         step=1,
         start_block=start_block,
@@ -211,7 +174,7 @@ def test_get_paginated_logs(test_package):
     # Just grab block numbers
     # Could look at token contract and do token transfer events
 
-    print(f"Found {len(logs)} CastVote events")
+    print(f"Found {len(logs)} events")
     assert len(logs) == 2
     # Check first and second block numbers for logs are as expected
     assert logs[0]['blockNumber']== 135262518
@@ -237,14 +200,14 @@ def test_get_paginated_logs_block_range_over_2000(test_package):
     # Query transfer logs from Optimism token contract
     logs = jrhhc.get_paginated_logs(
         w3=jrhhc.connect(),
-        contract_address=test_package['gov_contract_address'],
+        contract_address=test_package['contract_address'],
         topics=[hash_of_event_sig],
         step=1,
         start_block=start_block,
         end_block=end_block,
     )
 
-    print(f"Found {len(logs)} CastVote events")
+    print(f"Found {len(logs)} events")
     assert len(logs) == 87
 
 @pytest.mark.skipif(
