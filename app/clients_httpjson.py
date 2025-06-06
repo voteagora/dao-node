@@ -242,11 +242,11 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
     def get_paginated_logs(self, w3, contract_address, topics, step, start_block, end_block=None):
 
-        def chunk_list(lst, step):
-            """Split a list into chunks of size `step`."""
-            return [lst[i:i + step] for i in range(0, len(lst), step)]
+        def chunk_list(lst, chunk_size):
+            """Split a list into chunks of size `chunk_size`."""
+            return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
-        topics = chunk_list(list(topics), step)
+        topics = chunk_list(list(topics), chunk_size=4)
 
         logr.info(f"👉 Fetching {len(topics)} topic chunk(s) for {contract_address} from block {start_block}")
 
