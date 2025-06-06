@@ -6,28 +6,6 @@ class ParticipationRateModel(DataModel):
         self.completed_participation_fractions = defaultdict(lambda : (0, 0))
         self.future_participation_fractions = defaultdict(int)
 
-    def refresh_one_completed_participation_fractions(self, addr, proposals_dp, votes_dp, delegations_dp):
-        
-        self.completed_participation_fractions[addr] = 0, 0 
-
-        # This should be a loop of no more than 10...
-        for proposal_id, start_block, _ in proposals_dp.prst.recently_completed_and_counted_proposals:
-            # this is a bisect algo 
-            vp = delegations_dp.delegatee_vp_at_block(addr, start_block)
-
-            if vp > 0:
-                    
-                voted = votes_dp.participated[addr][proposal_id]
-                    
-                num, den = self.completed_participation_fractions[addr]
-                
-                if voted:
-                    num += 1
-                
-                den += 1
-                        
-                self.completed_participation_fractions[addr] = (num, den)
-
     def refresh_all_completed_participation_fractions(self, proposals_dp, votes_dp, delegations_dp):
         
         new_fractions = defaultdict(lambda : (0, 0))
@@ -55,27 +33,7 @@ class ParticipationRateModel(DataModel):
                     new_fractions[delegatee_addr] = (num, den)
 
         self.completed_participation_fractions = new_fractions
-
-    def refresh_one_future_participation_fractions(self, delegatee_addr, proposals_dp, votes_dp, delegations_dp):
-        
-        num = 0
-        
-        # This should be a loop of no more than 10...
-        for proposal_id, start_block, end_block in proposals_dp.prst.ending_in_future_proposals:
-            # this is a bisect algo 
-            vp = delegations_dp.delegatee_vp_at_block(delegatee_addr, start_block)
-
-            if vp > 0:
-                
-                voted = votes_dp.participated[delegatee_addr][proposal_id]
-                
-                num = self.future_participation_fractions[delegatee_addr]
-                
-                if voted:
-                    num += 1
-                
-        self.future_participation_fractions[delegatee_addr] = num
-    
+   
 
     def refresh_all_future_participation_fractions(self, proposals_dp, votes_dp, delegations_dp):
         
