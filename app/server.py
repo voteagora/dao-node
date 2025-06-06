@@ -1113,10 +1113,14 @@ async def bootstrap_data_feeds(app, loop):
             if abis.get_by_signature(prop_type_set_signature):
                 app.ctx.register(f'{chain_id}.{ptc_addr}.{prop_type_set_signature}', proposal_types)
         
-        if AGORA_GOV and public_config['governor_spec']['version'] >= 1.1:
+        if AGORA_GOV and public_config['governor_spec']['version'] >= 1.1 and public_config['governor_spec']['version'] < 2.0:
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
+        elif AGORA_GOV and public_config['governor_spec']['version'] >= 2.0:
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED_2}', proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED_2}' , proposal_types)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'])
     votes = Votes(governor_spec=public_config['governor_spec'])
@@ -1126,6 +1130,8 @@ async def bootstrap_data_feeds(app, loop):
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
     elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 0.1:
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
+    elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 2.0:
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
     elif gov_spec_name == 'agora':
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_4]
     elif gov_spec_name == 'none':
