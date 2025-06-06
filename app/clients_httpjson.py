@@ -10,7 +10,7 @@ from sanic.log import logger as logr
 
 from .utils import camel_to_snake
 from .clients_csv import SubscriptionPlannerMixin
-from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS
 from .signatures import DELEGATE_CHANGED_2
 
 def resolve_block_count_span(chain_id=None):
@@ -186,8 +186,8 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
         now = datetime.utcnow()
 
-        if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
-            days_back = 15 
+        if CAPTURE_CLIENT_OUTPUTS:
+            days_back = 30 
         else:
             days_back = 1 # TODO: Change back to 4, after we get infra stable.
 
@@ -371,15 +371,15 @@ It is unlikely that this function will ever be called directly, and is instead c
             yield block
 
     def read_blocks(self, chain_id, after):
-
+        
         w3 = self.connect()
 
         latest_block = w3.eth.block_number
 
         chain_id = w3.eth.chain_id
 
-        step = resolve_block_count_span(chain_id)
-
+        step = resolve_block_count_span(chain_id) 
+        
         blocks = self.get_paginated_blocks(w3, chain_id, start_block=after, end_block=latest_block, step=step)
 
         for block in blocks:
@@ -407,18 +407,18 @@ It is unlikely that this function will ever be called directly, and is instead c
 
             step = resolve_block_count_span(chain_id)
 
-            for cs_address in self.event_subsription_meta[chain_id].keys():
+            for address in self.event_subsription_meta[chain_id].keys():
 
-                topics = self.event_subsription_meta[chain_id][cs_address].keys()
+                topics = self.event_subsription_meta[chain_id][address].keys()
 
-                logs = self.get_paginated_logs(w3, cs_address, topics, step, start_block)
+                logs = self.get_paginated_logs(w3, address, topics, start_block, step)
 
                 for log in logs:
 
 
                     topic = "0x" + log['topics'][0].hex()
 
-                    caster_fn, signature = self.event_subsription_meta[chain_id][cs_address][topic]
+                    caster_fn, signature = self.event_subsription_meta[chain_id][address][topic]
 
                     args = caster_fn(log)
 
@@ -431,12 +431,11 @@ It is unlikely that this function will ever be called directly, and is instead c
                     out.update(**args)
 
                     out['signature'] = signature
-                    signal = f"{chain_id}.{cs_address.lower()}.{signature}"
                     out['sighash'] = topic.replace("0x", "")
 
-                    all_logs.append((out, signal, new_signal))
+                    all_logs.append((out, signature, new_signal))
 
-        all_logs.sort(key=lambda x: (x[0]['block_number'], x[0]['transaction_index'], x[0]['log_index']))
+        all_logs.sort(key=lambda x: (x[0]['block_number'], x[0]['transaction_index'], x[0]['log_index']))   
 
         for log in all_logs:
             yield log
