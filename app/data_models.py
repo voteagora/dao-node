@@ -4,7 +4,7 @@ from .abcs import DataModel
 class ParticipationRateModel(DataModel):
     def __init__(self):
         self.completed_participation_fractions = defaultdict(lambda : (0, 0))
-        self.future_participation_fractions = defaultdict(lambda : (0, 0))
+        self.future_participation_fractions = defaultdict(int)
 
     def refresh_one_completed_participation_fractions(self, addr, proposals_dp, votes_dp, delegations_dp):
         
@@ -58,7 +58,7 @@ class ParticipationRateModel(DataModel):
 
     def refresh_one_future_participation_fractions(self, delegatee_addr, proposals_dp, votes_dp, delegations_dp):
         
-        self.future_participation_fractions[delegatee_addr] = 0, 0
+        num = 0
         
         # This should be a loop of no more than 10...
         for proposal_id, start_block, end_block in proposals_dp.prst.ending_in_future_proposals:
@@ -69,18 +69,17 @@ class ParticipationRateModel(DataModel):
                 
                 voted = votes_dp.participated[delegatee_addr][proposal_id]
                 
-                num, den = self.future_participation_fractions[delegatee_addr]
+                num = self.future_participation_fractions[delegatee_addr]
                 
                 if voted:
                     num += 1
-                    den += 1
                 
-                self.future_participation_fractions[delegatee_addr] = (num, den)
+        self.future_participation_fractions[delegatee_addr] = num
     
 
     def refresh_all_future_participation_fractions(self, proposals_dp, votes_dp, delegations_dp):
         
-        new_fractions = defaultdict(lambda : (0, 0))
+        new_fractions = defaultdict(int)
         
         # This should be a loop of no more than 10...
         for proposal_id, start_block, end_block in proposals_dp.prst.ending_in_future_proposals:
@@ -88,7 +87,7 @@ class ParticipationRateModel(DataModel):
             # this is a giant loop, but ~200K for Optimism...
             for delegatee_addr in delegations_dp.delegatee_vp_history.keys():
 
-                num, den = new_fractions[delegatee_addr]
+                num = new_fractions[delegatee_addr]
 
                 # this is a bisect algo 
                 vp = delegations_dp.delegatee_vp_at_block(delegatee_addr, start_block)
@@ -99,16 +98,14 @@ class ParticipationRateModel(DataModel):
                     
                     if voted:
                         num += 1
-                        den += 1
 
-                new_fractions[delegatee_addr] = (num, den)
+                new_fractions[delegatee_addr] = num
                                 
         self.future_participation_fractions = new_fractions
 
 
     def refresh_if_necessary(self, proposal_dp, votes_dp, delegations_dp):
-        print(f"{proposal_dp.prst.flag_recently_completed_and_counted_has_changed=}")
-        print(f"{proposal_dp.prst.flag_ending_in_future_proposals_has_changed=}")
+        print(f"{proposal_dp.prst.flag_recently_completed_and_counted_has_changed=}, {proposal_dp.prst.flag_ending_in_future_proposals_has_changed=}")
 
         if proposal_dp.prst.flag_recently_completed_and_counted_has_changed:
             self.refresh_all_completed_participation_fractions(proposal_dp, votes_dp, delegations_dp)
@@ -121,9 +118,9 @@ class ParticipationRateModel(DataModel):
     def get_rate(self, delegatee_addr):
         
         cnum, cden = self.completed_participation_fractions[delegatee_addr]
-        fnum, fden = self.future_participation_fractions[delegatee_addr]
+        fnum       = self.future_participation_fractions[delegatee_addr]
 
-        den = cden + fden
+        den = cden + fnum
 
         if den == 0:
             return 0.0
@@ -135,9 +132,9 @@ class ParticipationRateModel(DataModel):
     def get_fraction(self, delegatee_addr):
         
         cnum, cden = self.completed_participation_fractions[delegatee_addr]
-        fnum, fden = self.future_participation_fractions[delegatee_addr]
+        fnum       = self.future_participation_fractions[delegatee_addr]
 
-        return (cnum + fnum), (cden + fden)
+        return (cnum + fnum), (cden + fnum)
 
     def rates(self):
         for addr in self.completed_participation_fractions.keys():
