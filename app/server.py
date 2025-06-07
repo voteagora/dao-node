@@ -16,6 +16,7 @@ import yaml
 from copy import copy
 import json as j
 import random
+from eth_utils import to_checksum_address
 
 from pympler import asizeof
 
@@ -954,6 +955,72 @@ async def ram(request, worker_id):
                  'app.ctx.proposals' : sizeof(app.ctx.proposals),
                  'app.ctx.votes' : sizeof(app.ctx.votes)
                 })
+
+
+def check_addresses(addr_iter, expecting='lower'):
+
+    cnts = defaultdict(int)
+
+    for addr in addr_iter:
+        if addr == addr.lower():
+            cnts['lower'] += 1
+        elif addr == to_checksum_address(addr):
+            cnts['checksum'] += 1
+        else:
+            cnts['problem'] += 1
+    
+    not_expecting = 'lower' if expecting == 'checksum' else 'checksum'
+
+    test = ('problem' not in cnts) and (not_expecting not in cnts)
+
+    cnts['pass'] = test
+
+    return cnts
+
+def check_uints_as_strs(uint_iter):
+
+    cnts = defaultdict(int)
+
+    for uint in uint_iter:
+        if uint == str(uint):
+            cnts['str'] += 1
+        elif isinstance(uint, int):
+            cnts['int'] += 1
+        else:
+            cnts['problem'] += 1
+    
+    test = ('problem' not in cnts) and ('int' not in cnts)
+
+    cnts['pass'] = test
+        
+    return cnts
+
+@app.route('/v1/integrity')
+@openapi.tag("Diagnostics")
+@openapi.summary("Integrity")
+@measure
+async def integrity(request):
+
+    out = {}
+
+    check = check_uints_as_strs
+    out['votes.proposal_vote_record'] = check(app.ctx.votes.proposal_vote_record)
+    out['votes.proposal_aggregations'] = check(app.ctx.votes.proposal_aggregations)
+
+    check = check_addresses
+    out['votes.participated'] = check(app.ctx.votes.participated)
+    out['votes.voter_history'] = check(app.ctx.votes.voter_history)
+    out['votes.latest_vote_block'] = check(app.ctx.votes.latest_vote_block)
+
+    out['delegations.delegatee_list'] = check(app.ctx.delegations.delegatee_list)
+    out['delegations.delegatee_vp'] = check(app.ctx.delegations.delegatee_vp)
+    out['delegations.delegatee_vp_history'] = check(app.ctx.delegations.delegatee_vp_history)
+    out['delegations.delegatee_cnt'] = check(app.ctx.delegations.delegatee_cnt)
+    out['delegations.delegatee_vp'] = check(app.ctx.delegations.delegatee_vp)
+    
+    out['pass'] = all([v['pass'] for v in out.values()])
+    
+    return json(out)
 
 @app.route('/v1/diagnostics/<safe_mode>')
 @openapi.tag("Diagnostics")
