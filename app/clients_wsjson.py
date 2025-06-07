@@ -8,7 +8,7 @@ from sanic.log import logger as logr
 
 from .utils import camel_to_snake
 from .clients_httpjson import SubscriptionPlannerMixin
-from .signatures import DELEGATE_CHANGED_2
+from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1
 from .dev_modes import CAPTURE_WS_CLIENT_OUTPUTS
 
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
@@ -21,68 +21,24 @@ class JsonRpcRtWsClientCaster:
     def __init__(self, abis):
         self.abis = abis
 
+
     def lookup(self, signature):
 
-        abi = self.abis.get_by_signature(signature)
-        inputs = abi.literal['inputs']
+        abi_frag = self.abis.get_by_signature(signature)
+        EVENT_NAME = abi_frag.name       
+        contract_events = Web3().eth.contract(abi=[abi_frag.literal]).events
+        processor = getattr(contract_events, EVENT_NAME)().process_log
 
-        def caster_fn(log):
+        def cast_log_header(log):
+            return {
+                    "block_number": str(int(log["blockNumber"], 16)),
+                    "log_index": int(log["logIndex"], 16),
+                    "transaction_index": int(log["transactionIndex"], 16),
+                   }
 
-            def bytes_to_str(x):
-                if isinstance(x, bytes):
-                    return x.hex()
-                return x
-
-            def array_of_bytes_to_str(x):
-                if isinstance(x, list):
-                    return [bytes_to_str(i) for i in x]
-                elif isinstance(x, bytes):
-                    return bytes_to_str(x)
-                return x
-                
-            log_data = log["data"]
-            log_topics = log["topics"]
-
-            # Extract indexed vs non-indexed inputs
-            indexed_inputs = [i for i in inputs if i['indexed']]
-            non_indexed_inputs = [i for i in inputs if not i['indexed']]
-
-            # Decode indexed topics (skip topic[0] which is event sig hash)
-            indexed_values = [
-                decode_abi([i["type"]], bytes.fromhex(t[2:]))[0]
-                for i, t in zip(indexed_inputs, log_topics[1:])
-            ]
-            non_indexed_values = list(decode_abi(
-                [i["type"] for i in non_indexed_inputs],
-                bytes.fromhex(log_data[2:])
-            ))
-
-            decoded = {}
-            for i, arg in enumerate(indexed_inputs + non_indexed_inputs):
-                decoded[arg["name"]] = (indexed_values + non_indexed_values)[i]
-
-            out = {
-                "block_number": str(int(log["blockNumber"], 16)),
-                "log_index": int(log["logIndex"], 16),
-                "transaction_index": int(log["transactionIndex"], 16),
-            }
-            out.update(decoded)
-
-            out = {
-                camel_to_snake(k): array_of_bytes_to_str(v)
-                for k, v in out.items()
-            }
-
-            return out
-        
         if signature == DELEGATE_CHANGED_2:
             # THIS FUNCTION IS SOoooo close to the one in clients_httpjson, we should be able to collapse, 
             # if we could figure out a rig to test the diffs.
-
-            abi_frag = self.abis.get_by_signature(signature)
-            EVENT_NAME = abi_frag.name       
-            contract_events = Web3().eth.contract(abi=[abi_frag.literal]).events
-            processor = getattr(contract_events, EVENT_NAME)().process_log
 
             def parse_delegates(array):
                 return [(x['_delegatee'].lower(), x['_numerator']) for x in array]
@@ -90,20 +46,71 @@ class JsonRpcRtWsClientCaster:
             def caster_fn(log):
 
                 tmp = processor(log)
-                args = dict(tmp['args'])
+                args = {camel_to_snake(k) : v for k,v in tmp['args'].items()}
                 
-                args['old_delegatees'] = parse_delegates(args['oldDelegatees'])
-                args['new_delegatees'] = parse_delegates(args['newDelegatees'])
+                args['old_delegatees'] = parse_delegates(args['old_delegatees'])
+                args['new_delegatees'] = parse_delegates(args['new_delegatees'])
+                
+                header = cast_log_header(log)
+                args.update(header)
 
-                del args['oldDelegatees']
-                del args['newDelegatees']
+                return args
+
+        elif signature in (VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1):
+        
+            def caster_fn(log):
+                tmp = processor(log)
+                args = {camel_to_snake(k) : v for k,v in tmp['args'].items()}
+                args['voter'] = args['voter'].lower()
+
+                header = cast_log_header(log)
+                args.update(header)
+
+                return args
+    
+        else:
+
+            abi = self.abis.get_by_signature(signature)
+            inputs = abi.literal['inputs']
                 
-                out = {
-                    "block_number": str(int(log["blockNumber"], 16)),
-                    "log_index": int(log["logIndex"], 16),
-                    "transaction_index": int(log["transactionIndex"], 16),
-                }
-                out.update(args)
+            def caster_fn(log):
+
+                def bytes_to_str(x):
+                    if isinstance(x, bytes):
+                        return x.hex()
+                    return x
+
+                def array_of_bytes_to_str(x):
+                    if isinstance(x, list):
+                        return [bytes_to_str(i) for i in x]
+                    elif isinstance(x, bytes):
+                        return bytes_to_str(x)
+                    return x
+                    
+                log_data = log["data"]
+                log_topics = log["topics"]
+
+                # Extract indexed vs non-indexed inputs
+                indexed_inputs = [i for i in inputs if i['indexed']]
+                non_indexed_inputs = [i for i in inputs if not i['indexed']]
+
+                # Decode indexed topics (skip topic[0] which is event sig hash)
+                indexed_values = [
+                    decode_abi([i["type"]], bytes.fromhex(t[2:]))[0]
+                    for i, t in zip(indexed_inputs, log_topics[1:])
+                ]
+                non_indexed_values = list(decode_abi(
+                    [i["type"] for i in non_indexed_inputs],
+                    bytes.fromhex(log_data[2:])
+                ))
+
+                out = {}
+                for i, arg in enumerate(indexed_inputs + non_indexed_inputs):
+                    field = camel_to_snake(arg["name"])
+                    out[field] = array_of_bytes_to_str((indexed_values + non_indexed_values)[i])
+
+                header = cast_log_header(log)
+                out.update(header)
 
                 return out
 
