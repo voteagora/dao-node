@@ -858,6 +858,7 @@ async def delegate_handler(app, request, addr):
                 'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
                 'from_list' : from_list_with_info,
                 'voting_power' : str(app.ctx.delegations.delegatee_vp[addr]),
+                'history' : app.ctx.delegations.delegatee_vp_history[addr],
                 'participation' : participation}})
 
 @app.route('/v1/delegate/<addr>')
