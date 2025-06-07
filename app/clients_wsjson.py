@@ -48,11 +48,8 @@ class JsonRpcRtWsClientCaster:
                 tmp = processor(log)
                 args = {camel_to_snake(k) : v for k,v in tmp['args'].items()}
                 
-                args['old_delegatees'] = parse_delegates(args['oldDelegatees'])
-                args['new_delegatees'] = parse_delegates(args['newDelegatees'])
-
-                del args['oldDelegatees']
-                del args['newDelegatees']
+                args['old_delegatees'] = parse_delegates(args['old_delegatees'])
+                args['new_delegatees'] = parse_delegates(args['new_delegatees'])
                 
                 header = cast_log_header(log)
                 args.update(header)

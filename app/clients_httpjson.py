@@ -85,11 +85,8 @@ class JsonRpcHistHttpClientCaster:
                 tmp = processor(log)
                 args = dict(tmp['args'])
                 
-                args['old_delegatees'] = parse_delegates(args['oldDelegatees'])
-                args['new_delegatees'] = parse_delegates(args['newDelegatees'])
-
-                del args['oldDelegatees']
-                del args['newDelegatees']
+                args['old_delegatees'] = parse_delegates(args['old_delegatees'])
+                args['new_delegatees'] = parse_delegates(args['new_delegatees'])
                 
                 return args
         
