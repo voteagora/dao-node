@@ -833,6 +833,8 @@ async def delegates_handler(app, request):
 async def delegate_handler(app, request, addr):
     from_list_with_info = []
 
+    addr = addr.lower()
+
     for delegator, (block_number, transaction_index) in app.ctx.delegations.delegatee_list[addr].items():
         
         if addr in app.ctx.delegations.delegation_amounts and delegator in app.ctx.delegations.delegation_amounts[addr]:

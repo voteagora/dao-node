@@ -10,7 +10,7 @@ from sanic.log import logger as logr
 from .utils import camel_to_snake
 from .clients_csv import SubscriptionPlannerMixin
 from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK
-from .signatures import DELEGATE_CHANGED_2
+from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1
 
 def resolve_block_count_span(chain_id=None):
 
@@ -75,23 +75,6 @@ class JsonRpcHistHttpClientCaster:
             obj = out
         """
 
-        def bytes_to_str(x):
-            if isinstance(x, bytes):
-                return x.hex()
-            return x
-
-        def array_of_bytes_to_str(x):
-            if isinstance(x, list):
-                return [bytes_to_str(i) for i in x]
-            elif isinstance(x, bytes):
-                return bytes_to_str(x)
-            return x
-
-        def caster_fn(log):
-            tmp = processor(log)
-            args = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in tmp['args'].items()}
-            return args
-        
         if signature == DELEGATE_CHANGED_2:
 
             def parse_delegates(array):
@@ -99,8 +82,6 @@ class JsonRpcHistHttpClientCaster:
 
             def caster_fn(log):
 
-                print(log)
-                
                 tmp = processor(log)
                 args = dict(tmp['args'])
                 
@@ -112,6 +93,33 @@ class JsonRpcHistHttpClientCaster:
                 
                 return args
         
+        elif signature in (VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1):
+        
+            def caster_fn(log):
+                tmp = processor(log)
+                args = {camel_to_snake(k) : v for k,v in tmp['args'].items()}
+                args['voter'] = args['voter'].lower()
+                return args
+    
+        else: 
+
+            def bytes_to_str(x):
+                if isinstance(x, bytes):
+                    return x.hex()
+                return x
+
+            def array_of_bytes_to_str(x):
+                if isinstance(x, list):
+                    return [bytes_to_str(i) for i in x]
+                elif isinstance(x, bytes):
+                    return bytes_to_str(x)
+                return x
+
+            def caster_fn(log):
+                tmp = processor(log)
+                args = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in tmp['args'].items()}
+                return args
+
         return caster_fn
 
 class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
