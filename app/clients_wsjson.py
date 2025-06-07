@@ -109,13 +109,8 @@ class JsonRpcRtWsClientCaster:
                     field = camel_to_snake(arg["name"])
                     out[field] = array_of_bytes_to_str((indexed_values + non_indexed_values)[i])
 
-                try:
-                    header = cast_log_header(log)
-                    out.update(header)
-                except KeyError as e:
-                    logr.error(f"KeyError: {e}")
-                    logr.error(f"out: {out}")
-                    raise
+                header = cast_log_header(log)
+                out.update(header)
 
                 return out
 
