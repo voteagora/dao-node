@@ -4,6 +4,7 @@ from sortedcontainers import SortedDict
 from abc import ABC, abstractmethod
 import json, time
 from bisect import bisect_left
+from copy import deepcopy
 
 from eth_abi.abi import decode as decode_abi
 
@@ -483,6 +484,12 @@ class Proposal:
         self.executed = False
 
         self.result = defaultdict(nested_default_dict)
+
+    def get_proposal_type(self, proposal_types):
+        prop_type_id = self.create_event['proposal_type']
+        out = deepcopy(proposal_types.get(prop_type_id))
+        out['id'] = prop_type_id
+        return out
     
     def cancel(self, cancel_event):
         self.canceled = True
@@ -763,6 +770,13 @@ class VoteAggregation:
         
         return totals
 
+def check_weight_and_votes_are_int(event):
+    if "weight" in event:
+        return isinstance(event['weight'], int)
+    if 'votes' in event:
+        return isinstance(event['votes'], int)
+    else:
+        raise Exception(f"weight or votes is missing from event: {event}")
 
 class Votes(DataProduct):
     def __init__(self, governor_spec):
@@ -795,8 +809,22 @@ class Votes(DataProduct):
 
         del event_cp['sighash']
         del event_cp['signature']
+
+        if "reason" in event_cp:
+            if event_cp['reason'] == "":
+                del event_cp['reason']
+
+        # This is basically just a RAM & I/O optimization.
+        event_cp['bn'] = event_cp['block_number']
+        del event_cp['block_number']
+        event_cp['tid'] = event_cp['transaction_index']
+        del event_cp['transaction_index']
+        event_cp['lid'] = event_cp['log_index']
+        del event_cp['log_index']
+
         event_cp['proposal_id'] = str(event_cp['proposal_id'])
 
+        assert check_weight_and_votes_are_int(event_cp)
         voter = event['voter']
         
         self.voter_history[voter].append(event_cp)
