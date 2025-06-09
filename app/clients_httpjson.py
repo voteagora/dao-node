@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 from web3 import Web3
+from web3.exceptions import Web3RPCError
 from web3.middleware import ExtraDataToPOAMiddleware
 from sanic.log import logger as logr
 
@@ -191,7 +192,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
         now = datetime.utcnow()
 
         if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
-            days_back = 15 
+            days_back = 30 
         else:
             days_back = 1 # TODO: Change back to 4, after we get infra stable.
 
@@ -315,9 +316,9 @@ It is unlikely that this function will ever be called directly, and is instead c
             logs = w3.eth.get_logs(event_filter)
         except Exception as e:
             # catch and attempt to recover block limitation ranges
-            if hasattr(e, 'response'):
-                response_json = json.loads(e.response.text)
-                api_error_code = response_json.get("error", {}).get("code")
+            if isinstance(e, Web3RPCError):
+                error_dict = eval(str(e.args[0]))  # Convert string representation to dict
+                api_error_code = error_dict['code']
                 if api_error_code == -32600 or api_error_code == -32602:
                     # add one to recursion depth
                     new_recursion_depth = current_recursion_depth + 1
@@ -408,21 +409,21 @@ It is unlikely that this function will ever be called directly, and is instead c
 
         new_signal = True
         for chain_id in self.event_subsription_meta.keys():
-            
-            step = resolve_block_count_span(chain_id) 
 
-            for cs_address in self.event_subsription_meta[chain_id].keys():
+            step = resolve_block_count_span(chain_id)
 
-                topics = self.event_subsription_meta[chain_id][cs_address].keys()
+            for address in self.event_subsription_meta[chain_id].keys():
 
-                logs = self.get_paginated_logs(w3, cs_address, topics, step, start_block)
+                topics = self.event_subsription_meta[chain_id][address].keys()
+
+                logs = self.get_paginated_logs(w3, address, topics, start_block, step)
 
                 for log in logs:
 
 
                     topic = "0x" + log['topics'][0].hex()
 
-                    caster_fn, signature = self.event_subsription_meta[chain_id][cs_address][topic]
+                    caster_fn, signature = self.event_subsription_meta[chain_id][address][topic]
 
                     args = caster_fn(log)
 
@@ -435,10 +436,9 @@ It is unlikely that this function will ever be called directly, and is instead c
                     out.update(**args)
 
                     out['signature'] = signature
-                    signal = f"{chain_id}.{cs_address.lower()}.{signature}"
                     out['sighash'] = topic.replace("0x", "")
 
-                    all_logs.append((out, signal, new_signal))
+                    all_logs.append((out, signature, new_signal))
 
         all_logs.sort(key=lambda x: (x[0]['block_number'], x[0]['transaction_index'], x[0]['log_index']))   
 
