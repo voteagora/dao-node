@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from random import randint
 import yaml
-from copy import copy
+from copy import copy, deepcopy
 import json as j
 import random
 from eth_utils import to_checksum_address
@@ -40,7 +40,7 @@ from .data_models import ParticipationRateModel
 from .signatures import *
 from . import __version__
 from .logsetup import get_logger 
-from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT, ENABLE_BALANCES, ENABLE_DELEGATION
 
 if  CAPTURE_WS_CLIENT_OUTPUTS:
     from copy import deepcopy
@@ -146,7 +146,7 @@ except:
 
 ERC20 = public_config['token_spec']['name'] == 'erc20'
 NORMAL_STYLE = public_config['token_spec'].get('style', 'normal') == 'normal'
-INCLUDE_BALANCES = ERC20 and NORMAL_STYLE
+INCLUDE_BALANCES = ERC20 and NORMAL_STYLE and ENABLE_BALANCES
 
 ########################################################################
 
@@ -558,10 +558,131 @@ async def proposal_handler(app, request, proposal_id):
     totals = app.ctx.votes.proposal_aggregations[proposal_id].totals()
     proposal['totals'] = totals
 
-    voting_record = app.ctx.votes.proposal_vote_record[proposal_id]
-    proposal['voting_record'] = voting_record
+    # We intentionally removed this.  Votes need to be sorted, and cache
+    # behaviour is different.  And there are likeely client
+    # features that do things per-vote, that make consuming this 
+    # entire data set unlikely.
+    
+    # voting_record = app.ctx.votes.proposal_vote_record[proposal_id]
+    # proposal['voting_record'] = voting_record
 
     return json({'proposal' : proposal})
+
+VOTE_RECORD_DEFAULT_PAGE_SIZE = 100
+VOTE_RECORD_DEFAULT_OFFSET = 0
+
+@app.route('/v1/vote_record/<proposal_id>')
+@openapi.tag("Proposal State")
+@openapi.summary("Voting history for a specific delegate")
+@openapi.parameter(
+    "sort_by", 
+    str, 
+    location="query", 
+    required=False, 
+    default='BN',
+    description="Sort by either block number ('BN') or voting power of the vote that was cast ('VP')"
+)
+@openapi.parameter(
+    "page_size", 
+    int, 
+    location="query", 
+    required=False, 
+    default=VOTE_RECORD_DEFAULT_PAGE_SIZE,
+    description="Number of records to return in one response."
+)
+@openapi.parameter(
+    "offset", 
+    int, 
+    location="query", 
+    required=False, 
+    default=VOTE_RECORD_DEFAULT_OFFSET,
+    description="Number of records to skip (ie zero-indexed) from the start."
+)
+@openapi.parameter(
+    "reverse", 
+    bool, 
+    location="query", 
+    required=False, 
+    default=False,
+    description="To sort descending (largest value first) set to true.  Defaults to false."
+)
+@openapi.parameter(
+    "full", 
+    bool, 
+    location="query", 
+    required=False, 
+    default=False,
+    description="Ignore pagination parameters and return the full vote record."
+)
+@measure
+async def vote_record(request, proposal_id):
+
+    return await vote_record_handler(app, request, proposal_id)
+
+async def vote_record_handler(app, request, proposal_id):
+
+    sort_by = request.args.get("sort_by", "BN")
+    reverse = request.args.get("reverse", "false").lower() == "true"
+    full = request.args.get("full", "false").lower() == "true"
+
+    if sort_by == 'BN':
+        if reverse:
+            vr = deepcopy(app.ctx.votes.proposal_vote_record[proposal_id])
+            vr.sort(key=lambda x: int(x['bn']), reverse=True)
+        else:
+            # Since the events are ordered, we don't need to take a 
+            # deep copy nor sort.  This reduces the API call from 35 ms to 1 ms 
+            # when loading a chart in chronological order.
+            vr = app.ctx.votes.proposal_vote_record[proposal_id]
+    elif sort_by == 'VP':
+        vr = deepcopy(app.ctx.votes.proposal_vote_record[proposal_id])
+        key = 'weight' if 'weight' in vr[0] else 'votes'    
+        vr.sort(key=lambda x: x[key], reverse=reverse)
+    else:
+        raise Exception(f"Invalid sort_by: {sort_by}")
+
+    offset = int(request.args.get("offset", VOTE_RECORD_DEFAULT_OFFSET))
+    page_size = int(request.args.get("page_size", VOTE_RECORD_DEFAULT_PAGE_SIZE))
+
+    if full:
+        has_more = False
+    else:
+        vr = vr[offset:]
+        has_more = len(vr) > page_size
+        vr = vr[:page_size]
+
+    proposal_type = app.ctx.proposals.proposals[proposal_id].get_proposal_type(app.ctx.proposal_types.proposal_types)
+    return json({'vote_record' : vr,
+                 'has_more' : has_more,
+                 'proposal_type' : proposal_type})
+
+@app.route('/v1/vote')
+@openapi.tag("Proposal State")
+@openapi.summary("Vote cast by a specific delegate")
+@openapi.parameter(
+    "proposal_id", 
+    str, 
+    location="query", 
+    required=True, 
+)
+@openapi.parameter(
+    "voter", 
+    str, 
+    location="query", 
+    required=True, 
+)
+@measure
+async def vote(request):
+    return await vote_handler(app, request)
+
+async def vote_handler(app, request):
+
+    proposal_id = request.args.get("proposal_id")
+    voter = request.args.get("voter")
+
+    votes = app.ctx.votes.voter_history[voter]
+    vote = [v for v in votes if v['proposal_id'] == proposal_id]
+    return json({'vote' : vote})
 
 @app.route('/v1/voter_history/<voter>')
 @openapi.tag("Proposal State")
@@ -571,7 +692,24 @@ async def voter_history(request, voter):
     return await voter_history_handler(app, request, voter)
 
 async def voter_history_handler(app, request, voter):
-	return json({'voter_history' : app.ctx.votes.voter_history[voter]})
+
+    # Super torn on wether to make the client
+    # do the enrichment or not.
+    # It's sub 2ms for a 12-vote delegate without scopes.
+    # This spares a delegate's page from two lookups,
+    # for something that it may or may not have cached.
+    # While it seems like a waste of compute, if it's
+    # a problem, we we can always move it to the client later.
+    # I don't think it will be, because a delegate's page
+    # doesn't get bombarded with requests.
+    vh = deepcopy(app.ctx.votes.voter_history[voter])
+
+    out = []
+    for v in vh:
+        v['proposal_type'] = app.ctx.proposals.proposals[v['proposal_id']].get_proposal_type(app.ctx.proposal_types.proposal_types)
+        out.append(v)
+    
+    return json({'voter_history' : out})
 
 
 @app.route('/v1/proposal_types')
@@ -744,7 +882,8 @@ async def delegates_handler(app, request):
     if sort_by_pr or add_participation_rate:
         # TODO - figure out all the edge cases that could require this,
         # and then call it at the right time, rather than here.
-        app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
+        if ENABLE_DELEGATION:
+            app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
 
     out = []
     if delegator_address_filter:
@@ -1083,7 +1222,10 @@ None
 """)
 @measure
 async def voting_power(request):
-	return json({'voting_power' : str(app.ctx.delegations.voting_power)})
+    if ENABLE_DELEGATION:
+        return json({'voting_power' : str(app.ctx.delegations.voting_power)})
+    else:
+        return json({'voting_power' : '10000000000000000000'})
 
 
 
@@ -1162,19 +1304,21 @@ async def bootstrap_data_feeds(app, loop):
     # 🎪 🧠 Instantiate "Data Products".  These are the singletons that store data 
     #      in RAM, that need to be maintained for every event.
 
-    if INCLUDE_BALANCES:
+    if ENABLE_BALANCES:
         balances = Balances(token_spec=public_config['token_spec'])
         app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     if 'token' in deployment:
-        delegations = Delegations()
-        app.ctx.register(f'{chain_id}.blocks', delegations)
-        app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
 
-        if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):
-            app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_2}', delegations)
-        else:
-            app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_1}', delegations)
+        if ENABLE_DELEGATION:
+            delegations = Delegations()
+            app.ctx.register(f'{chain_id}.blocks', delegations)
+            app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
+
+            if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):
+                app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_2}', delegations)
+            else:
+                app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_1}', delegations)
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
@@ -1230,7 +1374,10 @@ async def index_proposals(app):
 
     start = time.time()
     app.ctx.proposals.restate_recently_completed_and_counted_proposals()
-    app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
+    
+    if ENABLE_DELEGATION:
+        app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
+
     logr.info(f"Indexing participation rates [{time.time() - start:.2f}s]")
 
 async def read_archive(app, dcqs):
