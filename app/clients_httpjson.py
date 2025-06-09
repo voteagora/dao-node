@@ -416,7 +416,7 @@ It is unlikely that this function will ever be called directly, and is instead c
 
                 topics = self.event_subsription_meta[chain_id][address].keys()
 
-                logs = self.get_paginated_logs(w3, address, topics, start_block, step)
+                logs = self.get_paginated_logs(w3, address, topics, step, start_block)
 
                 for log in logs:
 
