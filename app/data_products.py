@@ -20,14 +20,23 @@ class Balances(DataProduct):
         self.balances = defaultdict(int)
 
         self.erc20 = token_spec['name'] == 'erc20'
+        self.erc721 = token_spec['name'] == 'erc721'
 
-        # U is for uniswap, for lack of a better framing.
-        if token_spec['version'] == 'U':
-            self.value_field_name = 'amount'
-        else:
-            self.value_field_name = 'value'
+        if self.erc20:            
+            if token_spec['version'] == 'U':
+                self.value_field_name = 'amount'
+            else: 
+                self.value_field_name = 'value'
+        
+        elif self.erc721:
+            self.handle = self.handle_erc721
 
-    def handle(self, event):
+    def handle_erc721(self, event):
+
+        self.balances[event['from']] -= 1
+        self.balances[event['to']] += 1
+
+    def handle(self, event): # ERC20
 
         field = self.value_field_name
 

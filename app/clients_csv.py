@@ -61,7 +61,7 @@ class CSVClientCaster:
         
         if signature == TRANSFER:
             
-            amount_field = abi_frag.fields[2]
+            amount_field = camel_to_snake(abi_frag.fields[2])
             
             def caster_fn(event):
                 event[amount_field] = int(event[amount_field])
