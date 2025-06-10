@@ -412,18 +412,18 @@ It is unlikely that this function will ever be called directly, and is instead c
 
             step = resolve_block_count_span(chain_id)
 
-            for address in self.event_subsription_meta[chain_id].keys():
+            for cs_address in self.event_subsription_meta[chain_id].keys():
 
-                topics = self.event_subsription_meta[chain_id][address].keys()
+                topics = self.event_subsription_meta[chain_id][cs_address].keys()
 
-                logs = self.get_paginated_logs(w3, address, topics, step, start_block)
+                logs = self.get_paginated_logs(w3, cs_address, topics, step, start_block)
 
                 for log in logs:
 
 
                     topic = "0x" + log['topics'][0].hex()
 
-                    caster_fn, signature = self.event_subsription_meta[chain_id][address][topic]
+                    caster_fn, signature = self.event_subsription_meta[chain_id][cs_address][topic]
 
                     args = caster_fn(log)
 
@@ -435,10 +435,11 @@ It is unlikely that this function will ever be called directly, and is instead c
 
                     out.update(**args)
 
+                    signal = f"{chain_id}.{cs_address.lower()}.{signature}"
                     out['signature'] = signature
                     out['sighash'] = topic.replace("0x", "")
 
-                    all_logs.append((out, signature, new_signal))
+                    all_logs.append((out, signal, new_signal))
 
         all_logs.sort(key=lambda x: (x[0]['block_number'], x[0]['transaction_index'], x[0]['log_index']))   
 
