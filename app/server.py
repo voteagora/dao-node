@@ -842,7 +842,7 @@ def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str):
         return app_ctx.participation_rate_model.get_rate(delegate_address)
     elif sort_by == 'OLD':
         event = app_ctx.delegations.delegatee_oldest_event.get(delegate_address)
-        return int(event.get('block_number', 0)) if event else 0 # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
+        return int(event.get('block_number', 100000000000000000000000000)) if event else 100000000000000000000000000 # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
     elif sort_by == 'DC':
         return app_ctx.delegations.delegatee_cnt.get(delegate_address, 0)
     elif sort_by == 'LVB':
@@ -941,7 +941,7 @@ async def delegates_handler(app, request):
     participation_func = lambda x, y: app.ctx.participation_rate_model.get_rate(x)
     last_vote_block_func = lambda x, y: app.ctx.votes.latest_vote_block.get(x, 0)
     most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event[x].get('block_number', 0) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
-    oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event[x].get('block_number', 0) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
+    oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event[x].get('block_number', 100000000000000000000000000) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
     seven_day_vp_change_func = lambda x, y: str(app.ctx.delegations.delegate_seven_day_vp_change(x))
 
     use_sort_key = lambda x, y: y
