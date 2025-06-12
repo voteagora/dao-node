@@ -169,9 +169,9 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
                 ans = False
 
         if ans:
-            print(f"The server '{self.url}' is valid.")
+            logr.info(f"The server '{self.url}' is valid for {self.__class__.__name__}")
         else:
-            print(f"The server '{self.url}' is not valid.")
+            logr.info(f"The server '{self.url}' is not valid for {self.__class__.__name__}.")
         
         return ans
 
