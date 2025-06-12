@@ -177,10 +177,10 @@ class CSVClient(SubscriptionPlannerMixin):
     def is_valid(self):
         
         if os.path.exists(self.path):
-            print(f"The path '{self.path}' exists, this client is valid.")
+            print(f"The path '{self.path}' exists, this client is valid for {self.__class__.__name__}")
             return True
         else:
-            print(f"The path '{self.path}' does not exist, this client is not valid.")
+            print(f"The path '{self.path}' does not exist, this client is not valid for {self.__class__.__name__}")
             return False
         
     def plan_event(self, chain_id, address, signature):

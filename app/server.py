@@ -31,7 +31,7 @@ from .middleware import start_timer, add_server_timing_header, measure
 from .profiling import Profiler
 
 from .clients_csv import CSVClient
-from .clients_httpjson import JsonRpcHistHttpClient
+from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcRtHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
 
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes
@@ -318,7 +318,7 @@ class Feed:
 
         async for i, client in self.cs.get_async_iterator():
 
-            if client.timeliness == 'realtime' and rt_client_num == i:
+            if client.timeliness in ('realtime', 'polling') and rt_client_num == i:
 
                 logr.info(f"Reading from client #{i} of type {type(client)}")
 
@@ -1236,7 +1236,8 @@ async def voting_power(request):
 ################################################################################
 
 NUM_ARCHIVE_CLIENTS = 2
-NUM_REALTIME_CLIENTS = 3
+NUM_REALTIME_CLIENTS = 2
+NUM_POLLING_CLIENTS = 1
 
 @app.before_server_start(priority=0)
 async def bootstrap_data_feeds(app, loop):
@@ -1255,9 +1256,14 @@ async def bootstrap_data_feeds(app, loop):
        clients.append(rpcc)
 
     for i in range(NUM_REALTIME_CLIENTS):
-        jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RT{i}")
+        jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RTWS{i}")
         if jwsc.is_valid():
            clients.append(jwsc)
+
+    for i in range(NUM_POLLING_CLIENTS):
+        jwhc = JsonRpcRtHttpClient(ARCHIVE_NODE_HTTP_URL, f"POLL{i}")
+        if jwhc.is_valid():
+           clients.append(jwhc)
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
@@ -1395,13 +1401,44 @@ async def read_archive(app, dcqs):
 async def subscribe_feeds(app):
 
     for i in range(NUM_REALTIME_CLIENTS):
+        logr.info(f"Realtime client {1 + NUM_ARCHIVE_CLIENTS + i} started")
         app.add_task(read_realtime(app, 1 + NUM_ARCHIVE_CLIENTS + i))
+
     app.add_task(index_proposals(app))
+
+    for i in range(NUM_POLLING_CLIENTS):
+        logr.info(f"Polling client {1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i} started")
+        app.add_task(read_polling(app, 1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i))
 
 async def read_realtime(app, rt_client_num):
     
     async for event in app.ctx.feed.realtime_async_read(rt_client_num):
         await app.ctx.dispatch_from_realtime(event)
+
+async def read_polling(app, polling_client_num):
+    """
+    This is a polling client.  It will poll the chain for events, and dispatch them to the data products.
+
+    It's a backup to the web-sockets, in the sense that if the websockets disconnect or miss an event
+    during a resubscription, then, this is the fallback.
+
+    If everything is working, none of the events caught in polling, would ever be needed. 
+
+    Note that the "wait_cycle" needs to match the look back in blocks configured in the JsonRpcRtHttpClient.read().
+
+    Note that this blocks for the duration of the wait_cycle, so it should be as short as possible, TODO - make it fully async.
+    """
+
+    wait_cycle = 120
+    await asyncio.sleep(wait_cycle)
+    while True:
+        start_time = time.perf_counter()
+        cnt = 0
+        async for event in app.ctx.feed.realtime_async_read(polling_client_num):
+            await app.ctx.dispatch_from_realtime(event)
+            cnt += 1
+        logr.info(f"Polling client {polling_client_num} [{time.perf_counter() - start_time:.2f}s] [{cnt} events]")
+        await asyncio.sleep(wait_cycle)
 
 ##################################
 #

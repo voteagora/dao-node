@@ -134,6 +134,8 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
         self.event_subsription_meta = defaultdict(lambda: defaultdict(dict))
         self.block_subsription_meta = []
 
+        self.noisy = True
+
     def connect(self):
         
         w3 = Web3(Web3.HTTPProvider(self.url))
@@ -173,9 +175,9 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             ans = w3.is_connected()
         
         if ans:
-            print(f"The server '{self.url}' is valid.")
+            logr.info(f"The server '{self.url}' is valid for {self.__class__.__name__}.")
         else:
-            print(f"The server '{self.url}' is not valid.")
+            logr.info(f"The server '{self.url}' is not valid for {self.__class__.__name__}.")
         
         return ans
     
@@ -202,7 +204,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
         chain_id = w3.eth.chain_id
 
-        print(f"Searching for a block ~{days_back} days ago from block {latest_block}")
+        logr.info(f"Searching for a block ~{days_back} days ago from block {latest_block}")
 
         step = resolve_block_count_span(chain_id)
 
@@ -224,28 +226,6 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             logr.info(f"No block older than {days_back} days found.")
             return 0
 
-    def get_logs_unsafe(self, w3, contract_address, topics, from_block, to_block):
-
-        # Set filter parameters for each range
-        event_filter = {
-            "fromBlock": from_block,
-            "toBlock": to_block,
-            "address": contract_address,
-            "topics": [topics]
-        }
-
-        # logr.info(f"Fetching logs for {contract_address} from block {from_block} to {to_block}, for topics={topics}")
-        # Fetch the logs for the current block range
-        try:
-            logs = w3.eth.get_logs(event_filter)
-        except Exception as e:
-            logr.error(f"Failed to get logs: {e}")
-            print(event_filter)
-            raise
-        
-        return logs
-
-
     def get_paginated_logs(self, w3, contract_address, topics, step, start_block, end_block=None):
 
         def chunk_list(lst, chunk_size):
@@ -254,7 +234,8 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
         topics = chunk_list(list(topics), chunk_size=4)
 
-        logr.info(f"👉 Fetching {len(topics)} topic chunk(s) for {contract_address} from block {start_block}")
+        if self.noisy:
+            logr.info(f"👉 Fetching {len(topics)} topic chunk(s) for {contract_address} from block {start_block}")
 
         from_block = start_block
 
@@ -273,7 +254,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
                 chunk_logs = self.get_logs_by_block_range(w3, contract_address, topic_chunk, from_block, to_block)
                 logs.extend(chunk_logs)
             
-            if len(logs):
+            if len(logs) and self.noisy:
                 logr.info(f"Fetched {len(logs)} logs from block {from_block} to {to_block}")
             
             all_logs.extend(logs)
@@ -288,20 +269,20 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
     def get_logs_by_block_range(self, w3, contract_address, event_signature_hash, from_block, to_block,
                                 current_recursion_depth=0, max_recursion_depth=2000):
         """
-This is a recursive function that will split itself apart to handle block ranges that exceed the block limit of the external API.
+        This is a recursive function that will split itself apart to handle block ranges that exceed the block limit of the external API.
 
-It is unlikely that this function will ever be called directly, and is instead called by
-    the :py:meth:`~.clients.JsonRpcHistHttpClient.get_paginated_logs` function, where additional
-    processing is performed.
+        It is unlikely that this function will ever be called directly, and is instead called by
+            the :py:meth:`~.clients.JsonRpcHistHttpClient.get_paginated_logs` function, where additional
+            processing is performed.
 
-:param w3: The web3 object used to interact with the external API.
-:param contract_address: The address of the contract to which the event is emitted.
-:param event_signature_hash: The hash of the event signature.
-:param from_block: The starting block number for the block range.
-:param to_block: The ending block number for the block range.
-:param current_recursion_depth: The current recursion depth of the function. Used for tracking recursion depth.
-:param max_recursion_depth: The maximum recursion depth allowed for the function. If the recursion depth exceeds this value, an exception will be raised. This prevents infinite recursion.
-:returns: A list of logs from the specified block range.
+        :param w3: The web3 object used to interact with the external API.
+        :param contract_address: The address of the contract to which the event is emitted.
+        :param event_signature_hash: The hash of the event signature.
+        :param from_block: The starting block number for the block range.
+        :param to_block: The ending block number for the block range.
+        :param current_recursion_depth: The current recursion depth of the function. Used for tracking recursion depth.
+        :param max_recursion_depth: The maximum recursion depth allowed for the function. If the recursion depth exceeds this value, an exception will be raised. This prevents infinite recursion.
+        :returns: A list of logs from the specified block range.
            """
 
         # Set filter parameters for each range
@@ -355,9 +336,6 @@ It is unlikely that this function will ever be called directly, and is instead c
             # Fallback to raising the exception
             raise e
         return logs
-
-
-        
 
     def get_paginated_blocks(self, w3, chain_id, start_block, end_block, step):
 
@@ -445,3 +423,71 @@ It is unlikely that this function will ever be called directly, and is instead c
 
         for log in all_logs:
             yield log
+
+class JsonRpcRtHttpClient(JsonRpcHistHttpClient):
+    timeliness = 'polling'
+
+    def __init__(self, url, name):
+        self.url = url
+        self.name = name
+        
+        self.init()
+
+        self.casterCls = JsonRpcHistHttpClientCaster
+
+        self.event_subsription_meta = defaultdict(lambda: defaultdict(dict))
+        self.block_subsription_meta = []
+
+        self.noisy = False
+
+
+    async def read(self):
+
+        w3 = self.connect()
+
+        all_logs = []
+
+        latest_block = w3.eth.block_number
+
+        for chain_id in self.event_subsription_meta.keys():
+
+            span = resolve_block_count_span(chain_id) 
+            lookback_block = latest_block - int(span / 200) # 10 blocks back for ETH, for example.
+
+            for cs_address in self.event_subsription_meta[chain_id].keys():
+
+                topics = self.event_subsription_meta[chain_id][cs_address].keys()
+
+                logs = self.get_paginated_logs(w3, cs_address, topics, step=span, start_block=lookback_block, end_block=latest_block)
+
+                for log in logs:
+
+                    topic = "0x" + log['topics'][0].hex()
+
+                    caster_fn, signature = self.event_subsription_meta[chain_id][cs_address][topic]
+
+                    args = caster_fn(log)
+
+                    out = {}
+
+                    out['block_number'] = str(log['blockNumber'])
+                    out['transaction_index'] = log['transactionIndex']
+                    out['log_index'] = log['logIndex']
+
+                    out.update(**args)
+
+                    out['signal'] = f"{chain_id}.{cs_address.lower()}.{signature}"
+                    out['signature'] = signature
+                    out['sighash'] = topic.replace("0x", "")
+
+                    all_logs.append(out)
+
+        all_logs.sort(key=lambda x: (x['block_number'], x['transaction_index'], x['log_index']))   
+
+        if self.noisy:
+            logr.info(f"{self.name} read {len(all_logs)} logs")
+        
+        for log in all_logs:
+            yield log
+
+    
