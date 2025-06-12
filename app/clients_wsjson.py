@@ -56,7 +56,7 @@ class JsonRpcRtWsClientCaster:
 
                 return args
 
-        elif signature in (VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1):
+        elif signature == VOTE_CAST_1:
         
             def caster_fn(log):
                 tmp = processor(log)
@@ -68,6 +68,19 @@ class JsonRpcRtWsClientCaster:
 
                 return args
     
+        elif signature == VOTE_CAST_WITH_PARAMS_1:
+        
+            def caster_fn(log):
+                tmp = processor(log)
+                args = {camel_to_snake(k) : v for k,v in tmp['args'].items()}
+                args['voter'] = args['voter'].lower()
+                args['params'] = args['params'].hex()
+
+                header = cast_log_header(log)
+                args.update(header)
+
+                return args
+
         else:
 
             abi = self.abis.get_by_signature(signature)
