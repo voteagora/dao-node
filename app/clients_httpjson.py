@@ -91,14 +91,23 @@ class JsonRpcHistHttpClientCaster:
                 
                 return args
         
-        elif signature in (VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1):
+        elif signature == VOTE_CAST_1:
         
             def caster_fn(log):
                 tmp = processor(log)
                 args = {camel_to_snake(k) : v for k,v in tmp['args'].items()}
                 args['voter'] = args['voter'].lower()
                 return args
-    
+
+        elif signature == VOTE_CAST_WITH_PARAMS_1:
+
+            def caster_fn(log):
+                tmp = processor(log)
+                args = {camel_to_snake(k) : v for k,v in tmp['args'].items()}
+                args['voter'] = args['voter'].lower()
+                args['params'] = args['params'].hex()
+                return args
+
         else: 
 
             def bytes_to_str(x):
