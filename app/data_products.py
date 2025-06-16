@@ -515,6 +515,25 @@ class Proposal:
         self.executed = False
 
         self.result = defaultdict(nested_default_dict)
+        
+        self._start_block = None
+        self._end_block = None
+
+    def _get_block_value(self, primary_key, fallback_key):
+        event = self.create_event
+        return event.get(primary_key) or event.get(fallback_key)
+    
+    @property
+    def start_block(self):
+        if self._start_block is None:
+            self._start_block = self._get_block_value('start_block', 'vote_start')
+        return self._start_block
+    
+    @property
+    def end_block(self):
+        if self._end_block is None:
+            self._end_block = self._get_block_value('end_block', 'vote_end')
+        return self._end_block
 
     def get_proposal_type(self, proposal_types):
         prop_type_id = self.create_event['proposal_type']
@@ -552,10 +571,10 @@ class Proposal:
     def set_voting_module_name(self, name):
         self.voting_module_name = name
         self.create_event['voting_module_name'] = name
-        
-    def resolve_voting_module_name(self, modules):
-        voting_module_name = modules.get(self.voting_module_address, "standard")
-        self.set_voting_module_name(voting_module_name)
+
+    def set_proposal_type(self, proposal_type):
+        self.proposal_type = proposal_type
+        self.create_event['proposal_type'] = proposal_type
     
     def reverse_engineer_module_name(self, signature, proposal_data):
         voting_module_name = reverse_engineer_module(signature, proposal_data)
@@ -691,32 +710,54 @@ class Proposals(DataProduct):
 
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
-                proposal = Proposal(event)
+                if signature == PROPOSAL_CREATED_MODULE:
+                    if proposal_id in self.proposals:
+                        proposal = self.proposals[proposal_id]
+                    else:
+                        minimal_event = event.copy()
+                        minimal_event['description'] = ""
+                        proposal = Proposal(minimal_event)
+                        self.proposals[proposal_id] = proposal
+                    
+                    settings = event.get('settings', [])
+                    if settings[5] == '2':
+                        proposal.set_voting_module_name('standard')
+                    elif settings[5] in ('0', '1'):
+                        proposal.set_voting_module_name('approval')
+                    else:
+                        raise Exception(f"Unknown voting module type: {settings[5]}")
 
-                proposal_data = proposal.create_event.get('proposal_data', None)
-
-                # Maybe this is not needed? reverse_engineer_module_name might work for 2.0. TBD
-                # if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1:
-                #     raise ToDo("Old Govenors are using newer PTCs, and so using gov version here doesn't work perfectly for this check.  So the first one that upgrades, is going to trip this reminder.  Plus, PTC upgrades happen without changing gov versions Eg. Optimism.")
-                #     proposal.resolve_voting_module_name(self.modules)
-                if self.gov_spec['name'] == 'agora':
-                    # Older PTC Contracts didn't fully describe themselves, so we 
-                    # this is a hack.
-                    proposal.reverse_engineer_module_name(signature, proposal_data)
+                    proposal.create_event['decoded_proposal_data'] = [
+                        event.get('options', []),
+                        settings
+                    ]
                 else:
-                    proposal.set_voting_module_name('standard')
+                    # This is the main ProposalCreated event
+                    proposal = Proposal(event)
 
-                if self.gov_spec['name'] == 'agora':
-                    
-                    voting_module_name = proposal.voting_module_name # standard / approval / optimistic
+                    proposal_data = proposal.create_event.get('proposal_data', None)
 
-                    if voting_module_name in ('approval', 'optimistic'):
-                        proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)                
-                    
-                self.proposals[proposal_id] = proposal
+                    if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] >= 2.0:
+                        proposal_type = int(proposal.create_event.get('description', None).split('#proposalTypeId=')[1].split('#')[0])
+                        proposal.set_proposal_type(proposal_type)
+                    elif self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1 and self.gov_spec['version'] < 2.0:
+                        # Older PTC Contracts didn't fully describe themselves, so we 
+                        # this is a hack.
+                        proposal.reverse_engineer_module_name(signature, proposal_data)
+                    else:
+                        proposal.set_voting_module_name('standard')
 
-                if proposal.voting_module_name != 'optimistic':
-                    self.prst.track_new_proposal(proposal_id, proposal.create_event['start_block'], proposal.create_event['end_block'])
+                    if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] < 2.0:
+                        
+                        voting_module_name = proposal.voting_module_name # standard / approval / optimistic
+
+                        if voting_module_name in ('approval', 'optimistic'):
+                            proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)                
+                        
+                    self.proposals[proposal_id] = proposal
+
+                    if hasattr(proposal, 'voting_module_name') and proposal.voting_module_name != 'optimistic':
+                        self.prst.track_new_proposal(proposal_id, proposal.start_block, proposal.end_block)
 
             elif 'ProposalQueued' == signature[:LQUEUED]:
                 self.proposals[proposal_id].queue(event)
@@ -737,10 +778,8 @@ class Proposals(DataProduct):
         fresh_completed_proposals = []
         
         for proposal_id, proposal in self.proposals.items():
-            end_block = proposal.create_event['end_block']
-            start_block = proposal.create_event['start_block']
-            if (end_block < self.block_number) and (not proposal.canceled) and (not proposal.voting_module_name == 'optimistic'):
-                fresh_completed_proposals.append((proposal_id, start_block, end_block))
+            if (proposal.end_block < self.block_number) and (not proposal.canceled) and hasattr(proposal, 'voting_module_name') and (not proposal.voting_module_name == 'optimistic'):
+                fresh_completed_proposals.append((proposal_id, proposal.start_block, proposal.end_block))
         self.prst.update_recently_completed_and_counted_proposal(fresh_completed_proposals)
     
         self.prst.check_integrity()

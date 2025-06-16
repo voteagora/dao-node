@@ -9,6 +9,8 @@ PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address[],uint256[],string
 PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
 PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
 
+PROPOSAL_CREATED_MODULE = 'ProposalCreated(uint256,(string)[],(uint256,uint8,uint8,uint128,bool))'
+
 PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
 PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
 PROPOSAL_EXECUTED = 'ProposalExecuted(uint256)'
