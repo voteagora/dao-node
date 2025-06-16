@@ -740,7 +740,7 @@ class Proposals(DataProduct):
                     if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] >= 2.0:
                         proposal_type = int(proposal.create_event.get('description', None).split('#proposalTypeId=')[1].split('#')[0])
                         proposal.set_proposal_type(proposal_type)
-                    elif self.gov_spec['name'] == 'agora' and self.gov_spec['version'] > 1.1 and self.gov_spec['version'] < 2.0:
+                    elif self.gov_spec['name'] == 'agora':
                         # Older PTC Contracts didn't fully describe themselves, so we 
                         # this is a hack.
                         proposal.reverse_engineer_module_name(signature, proposal_data)
