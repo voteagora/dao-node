@@ -720,12 +720,12 @@ class Proposals(DataProduct):
                         self.proposals[proposal_id] = proposal
                     
                     settings = event.get('settings', [])
-                    if settings[1] == 2:
+                    if settings[2] == 2:
                         proposal.set_voting_module_name('standard')
-                    elif settings[1] in (0, 1):
+                    elif settings[2] in (0, 1):
                         proposal.set_voting_module_name('approval')
                     else:
-                        raise Exception(f"Unknown voting module type: {settings[1]}")
+                        raise Exception(f"Unknown voting module type: {settings[2]}")
 
                     proposal.create_event['decoded_proposal_data'] = [
                         event.get('options', []),

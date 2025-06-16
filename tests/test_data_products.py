@@ -533,9 +533,9 @@ def test_Proposals_agora_v2_proposal_creation(v2_proposal_abi):
     assert proposals.proposals['15955855790422721941705776916809127869130159600460608057182735456172624954953'].create_event['proposal_type'] == 9
     
     proposal = proposals.proposals['15955855790422721941705776916809127869130159600460608057182735456172624954953']
-    assert proposal.voting_module_name == 'approval'
-    assert proposal.create_event['voting_module_name'] == 'approval'
-    
-    proposal = proposals.proposals['87979399618794581401818953625454412059253836401449247822065377110773751412581']
     assert proposal.voting_module_name == 'standard'
     assert proposal.create_event['voting_module_name'] == 'standard'
+    
+    proposal = proposals.proposals['87979399618794581401818953625454412059253836401449247822065377110773751412581']
+    assert proposal.voting_module_name == 'approval'
+    assert proposal.create_event['voting_module_name'] == 'approval'
