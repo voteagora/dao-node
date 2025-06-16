@@ -1,5 +1,5 @@
 import pytest
-from app.data_products import Balances, Delegations, Proposals, Votes, ProposalTypes
+from app.data_products import Balances, Delegations, Proposals, Votes, ProposalTypes, Proposal
 from app.clients_csv import CSVClient
 import csv
 import os
@@ -393,5 +393,149 @@ def test_DelegateVotesChanged_7day_growth_rate():
     end = time.perf_counter()
     print(f"Time: {end - start}")
 
+def test_ProposalTypes_v2_scope_disabled_by_index(v2_scope_abi):
+    
+    proposal_types = ProposalTypes()
+    
+    csvc = CSVClient('tests/data/7000-v2-scope-disabled')
+    csvc.set_abis(v2_scope_abi)
+    
+    chain_id = 1
+    address = '0xtest1'
+    
+    csvc.plan_event(chain_id, address, PROP_TYPE_SET_4)
+    csvc.plan_event(chain_id, address, SCOPE_CREATED)
+    csvc.plan_event(chain_id, address, SCOPE_DISABLED_2)
+    
+    for event, _, _ in csvc.read(after=0):
+        proposal_types.handle(event)
+    
+    # Verify all scopes are created
+    assert len(proposal_types.proposal_types[1]['scopes']) == 3
+    for i, scope in enumerate(proposal_types.proposal_types[1]['scopes']):
+        if i == 1:
+            assert scope['status'] == 'disabled'
+            assert 'disabled_event' in scope
+            assert scope['disabled_event']['block_number'] == '1004'
+        else:
+            assert scope['status'] == 'created'
 
+def test_ProposalTypes_v2_scope_deleted_by_index(v2_scope_abi):
+    
+    proposal_types = ProposalTypes()
+    
+    csvc = CSVClient('tests/data/8000-v2-scope-deleted')
+    csvc.set_abis(v2_scope_abi)
+    
+    chain_id = 1
+    address = '0xtest2'
+    
+    csvc.plan_event(chain_id, address, PROP_TYPE_SET_4)
+    csvc.plan_event(chain_id, address, SCOPE_CREATED)
+    csvc.plan_event(chain_id, address, SCOPE_DELETED_2)
+    
+    for event, _, _ in csvc.read(after=0):
+        proposal_types.handle(event)
+    
+    # Check that only the first scope (idx=0) is deleted
+    scopes = proposal_types.proposal_types[1]['scopes']
+    assert scopes[0]['status'] == 'deleted'
+    assert scopes[1]['status'] == 'created'
+    assert 'deleted_event' in scopes[0]
+    assert scopes[0]['deleted_event']['block_number'] == '1003'
 
+def test_ProposalTypes_v1_scope_disabled_all(pguild_ptc_abi):
+    
+    proposal_types = ProposalTypes()
+    
+    csvc = CSVClient('tests/data/9000-v1-scope-disabled')
+    csvc.set_abis(pguild_ptc_abi)
+    
+    chain_id = 1
+    address = '0xtest3'
+    
+    csvc.plan_event(chain_id, address, PROP_TYPE_SET_4)
+    csvc.plan_event(chain_id, address, SCOPE_CREATED)
+    csvc.plan_event(chain_id, address, SCOPE_DISABLED)
+    
+    for event, _, _ in csvc.read(after=0):
+        proposal_types.handle(event)
+    
+    # Check that all scopes with the same scope_key are disabled
+    scopes = proposal_types.proposal_types[1]['scopes']
+    assert scopes[0]['status'] == 'disabled'
+    assert scopes[1]['status'] == 'disabled'
+    assert 'disabled_event' in scopes[0]
+    assert 'disabled_event' in scopes[1]
+
+def test_Proposal_start_end_block_properties():
+    
+    # Test with vote_start/vote_end keys
+    create_event_old = {
+        'proposal_id': 42,
+        'proposer': '0x1234567890123456789012345678901234567890',
+        'description': 'Test proposal',
+        'vote_start': 1000,
+        'vote_end': 2000
+    }
+    
+    proposal_old = Proposal(create_event_old)
+    assert proposal_old.start_block == 1000
+    assert proposal_old.end_block == 2000
+    
+    # Test with start_block/end_block keys (v2)
+    create_event_new = {
+        'proposal_id': 43,
+        'proposer': '0x1234567890123456789012345678901234567890',
+        'description': 'Test proposal v2',
+        'start_block': 1500,
+        'end_block': 2500
+    }
+    
+    proposal_new = Proposal(create_event_new)
+    assert proposal_new.start_block == 1500
+    assert proposal_new.end_block == 2500
+    
+    # Test fallback behavior (start_block takes precedence)
+    create_event_mixed = {
+        'proposal_id': 44,
+        'proposer': '0x1234567890123456789012345678901234567890',
+        'description': 'Test proposal mixed',
+        'start_block': 3000,
+        'end_block': 4000,
+        'vote_start': 1000,
+        'vote_end': 2000
+    }
+    
+    proposal_mixed = Proposal(create_event_mixed)
+    assert proposal_mixed.start_block == 3000
+    assert proposal_mixed.end_block == 4000
+
+def test_Proposals_agora_v2_proposal_creation(v2_proposal_abi):
+    
+    proposals = Proposals(governor_spec={'name': 'agora', 'version': 2.0})
+    
+    csvc = CSVClient('tests/data/10000-agora-v2-proposals')
+    csvc.set_abis(v2_proposal_abi)
+    
+    chain_id = 1
+    address = '0xtest4'
+    
+    csvc.plan_event(chain_id, address, PROPOSAL_CREATED_1)
+    csvc.plan_event(chain_id, address, PROPOSAL_CREATED_MODULE)
+    
+    for event, _, _ in csvc.read(after=0):
+        proposals.handle(event)
+    
+    # Verify proposal type is extracted from description
+    assert '15955855790422721941705776916809127869130159600460608057182735456172624954953' in proposals.proposals
+    assert proposals.proposals['15955855790422721941705776916809127869130159600460608057182735456172624954953'].proposal_type == 9
+    assert proposals.proposals['15955855790422721941705776916809127869130159600460608057182735456172624954953'].create_event['proposal_type'] == 9
+    
+    proposal = proposals.proposals['15955855790422721941705776916809127869130159600460608057182735456172624954953']
+    assert proposal.voting_module_name == 'standard'
+    assert proposal.create_event['voting_module_name'] == 'standard'
+    
+    proposal = proposals.proposals['87979399618794581401818953625454412059253836401449247822065377110773751412581']
+    assert proposal.voting_module_name == 'approval'
+    assert proposal.create_event['voting_module_name'] == 'approval'

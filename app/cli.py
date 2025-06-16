@@ -40,7 +40,7 @@ def sync_from_gcs(dir: str, multi_processing=False, strict=False):
 
     for contract in deployment.keys():
 
-        if contract not in ('gov', 'token', 'ptc'):
+        if contract not in ('gov', 'token', 'ptc', 'voting_module'):
             continue
 
         address = None

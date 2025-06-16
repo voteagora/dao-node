@@ -6,7 +6,7 @@ from collections import defaultdict
 from abifsm import ABISet
 
 from .utils import camel_to_snake
-from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4, DELEGATE_CHANGED_2
+from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4, PROPOSAL_CREATED_MODULE, DELEGATE_CHANGED_2
 
 
 INT_TYPES = [f"uint{i}" for i in range(8, 257, 8)]
@@ -87,6 +87,29 @@ class CSVClientCaster:
 
             return caster_fn
 
+
+        if signature == PROPOSAL_CREATED_MODULE:
+            
+            def caster_fn(event):
+                event = cast(event, int_fields, int)
+                
+                obj = event.get('settings', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = json.loads(obj)
+                    event['settings'] = obj
+
+                obj = event.get('options', Ellipsis)
+                if obj is not Ellipsis:
+                    if isinstance(obj, str):
+                        obj = obj.replace('"', '')
+                        obj = obj[1:-1]
+                        obj = obj.split(',')
+                    event['options'] = obj
+
+                return event
+            
+            return caster_fn
 
         if signature in [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]:
             

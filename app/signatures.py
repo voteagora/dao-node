@@ -9,6 +9,8 @@ PROPOSAL_CREATED_2 = 'ProposalCreated(uint256,address,address[],uint256[],string
 PROPOSAL_CREATED_3 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string)'
 PROPOSAL_CREATED_4 = 'ProposalCreated(uint256,address,address,bytes,uint256,uint256,string,uint8)'
 
+PROPOSAL_CREATED_MODULE = 'ProposalCreated(uint256,(string)[],(uint256,uint8,uint8,uint128,bool))'
+
 PROPOSAL_CANCELED = 'ProposalCanceled(uint256)'
 PROPOSAL_QUEUED   = 'ProposalQueued(uint256,uint256)'
 PROPOSAL_EXECUTED = 'ProposalExecuted(uint256)'
@@ -23,7 +25,9 @@ VOTE_CAST_WITH_PARAMS_1 = 'VoteCastWithParams(address,uint256,uint8,uint256,stri
 
 SCOPE_CREATED  = 'ScopeCreated(uint8,bytes24,bytes4,string)'
 SCOPE_DELETED  = 'ScopeDeleted(uint8,bytes24)'
+SCOPE_DELETED_2 = 'ScopeDeleted(uint8,bytes24,uint8)'
 SCOPE_DISABLED = 'ScopeDisabled(uint8,bytes24)'
+SCOPE_DISABLED_2 = 'ScopeDisabled(uint8,bytes24,uint8)'
 
 if __name__ == '__main__':
 

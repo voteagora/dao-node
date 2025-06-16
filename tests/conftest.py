@@ -43,3 +43,21 @@ def scroll_token_abi():
     abi = ABI.from_file('token', abi_path)
     abis = ABISet('test-abis', [abi])
     return abis
+
+@pytest.fixture(scope="session")
+def v2_scope_abi():
+    abi_path = os.path.join('tests', 'abis', 'world-ptc.json')
+    abi = ABI.from_file('ptc', abi_path)
+    abis = ABISet('test-abis', [abi])
+    return abis
+
+@pytest.fixture(scope="session") 
+def v2_proposal_abi():
+    gov_abi_path = os.path.join('tests', 'abis', 'world-gov.json')
+    gov_abi = ABI.from_file('gov', gov_abi_path)
+    
+    voting_module_abi_path = os.path.join('tests', 'abis', 'world-voting_module.json')
+    voting_module_abi = ABI.from_file('voting_module', voting_module_abi_path)
+    
+    abis = ABISet('test-abis', [gov_abi, voting_module_abi])
+    return abis

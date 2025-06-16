@@ -1,0 +1,2 @@
+block_number,transaction_index,log_index,proposal_type_id,quorum,approval_threshold,name,description,module
+1000,0,0,1,1000,5000,Test Proposal Type,"",0x0000000000000000000000000000000000000000 

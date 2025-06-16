@@ -882,7 +882,7 @@ async def delegates_handler(app, request):
     if sort_by_pr or add_participation_rate:
         # TODO - figure out all the edge cases that could require this,
         # and then call it at the right time, rather than here.
-        if ENABLE_DELEGATION:
+        if ENABLE_DELEGATION and 'token' in deployment:
             app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
 
     out = []
@@ -1303,6 +1303,12 @@ async def bootstrap_data_feeds(app, loop):
         ptc_abi = ABI.from_internet('ptc', ptc_addr, chain_id=chain_id, implementation=True)
         abi_list.append(ptc_abi)
 
+    if 'voting_module' in deployment:
+        voting_module_addr = deployment['voting_module']['address'].lower()
+        logr.info(f"Using {voting_module_addr=}")
+        voting_module_abi = ABI.from_internet('voting_module', voting_module_addr, chain_id=chain_id, implementation=True)
+        abi_list.append(voting_module_abi)
+
     abis = ABISet('daonode', abi_list)
     dcqs.set_abis(abis)
 
@@ -1310,7 +1316,7 @@ async def bootstrap_data_feeds(app, loop):
     # 🎪 🧠 Instantiate "Data Products".  These are the singletons that store data 
     #      in RAM, that need to be maintained for every event.
 
-    if ENABLE_BALANCES:
+    if ENABLE_BALANCES and 'token' in deployment:
         balances = Balances(token_spec=public_config['token_spec'])
         app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
@@ -1333,10 +1339,14 @@ async def bootstrap_data_feeds(app, loop):
             if abis.get_by_signature(prop_type_set_signature):
                 app.ctx.register(f'{chain_id}.{ptc_addr}.{prop_type_set_signature}', proposal_types)
         
-        if AGORA_GOV and public_config['governor_spec']['version'] >= 1.1:
+        if AGORA_GOV and public_config['governor_spec']['version'] >= 1.1 and public_config['governor_spec']['version'] < 2.0:
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
+        elif AGORA_GOV and public_config['governor_spec']['version'] >= 2.0:
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED_2}', proposal_types)
+            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED_2}' , proposal_types)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'])
     votes = Votes(governor_spec=public_config['governor_spec'])
@@ -1346,6 +1356,8 @@ async def bootstrap_data_feeds(app, loop):
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
     elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 0.1:
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
+    elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 2.0:
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_MODULE]
     elif gov_spec_name == 'agora':
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_4]
     elif gov_spec_name == 'none':
@@ -1356,7 +1368,10 @@ async def bootstrap_data_feeds(app, loop):
     if PROPOSAL_CREATED_EVENTS:
         PROPOSAL_LIFECYCLE_EVENTS = PROPOSAL_CREATED_EVENTS + [PROPOSAL_CANCELED, PROPOSAL_QUEUED, PROPOSAL_EXECUTED]
         for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
-            app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
+            if PROPOSAL_EVENT == PROPOSAL_CREATED_MODULE and 'voting_module' in deployment:
+                app.ctx.register(f'{chain_id}.{voting_module_addr}.' + PROPOSAL_EVENT, proposals)
+            else:
+                app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
 
         VOTE_EVENTS = [VOTE_CAST_1]    
         if not (public_config['governor_spec']['name'] in ('compound', 'ENSGovernor')):
@@ -1381,7 +1396,7 @@ async def index_proposals(app):
     start = time.time()
     app.ctx.proposals.restate_recently_completed_and_counted_proposals()
     
-    if ENABLE_DELEGATION:
+    if ENABLE_DELEGATION and 'token' in deployment:
         app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
 
     logr.info(f"Indexing participation rates [{time.time() - start:.2f}s]")
