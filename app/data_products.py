@@ -207,42 +207,52 @@ class Delegations(DataProduct):
             to_delegate = event['to_delegate'].lower()
             from_delegate = event['from_delegate'].lower()
 
-            self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
+            ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
-            if to_delegate != '0x0000000000000000000000000000000000000000':
-                self.delegator_delegate[delegator] = {to_delegate}
-            else:
+            # If this is an undelegation (to_delegate is zero address)
+            if to_delegate == ZERO_ADDRESS:
+                # Remove delegator from delegator_delegate if present
                 if delegator in self.delegator_delegate:
                     del self.delegator_delegate[delegator]
+            else:
+                # If not undelegation, update delegator_delegate
+                self.delegator_delegate[delegator] = {to_delegate}
+                # Only update delegatee_list if not zero address
+                self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
 
-
-            if not self.delegatee_oldest_event.get(to_delegate):
-                self.delegatee_oldest_event[to_delegate] = {
+                if not self.delegatee_oldest_event.get(to_delegate):
+                    self.delegatee_oldest_event[to_delegate] = {
+                        'block_number': block_number,
+                        'delegator': delegator,
+                    }
+                self.delegatee_latest_event[to_delegate] = {
                     'block_number': block_number,
                     'delegator': delegator,
-                    # 'from_delegate': from_delegate, don't think we actually need this...
                 }
-            
-            self.delegatee_latest_event[to_delegate] = {
-                'block_number': block_number,
-                'delegator': delegator,
-                # 'from_delegate': from_delegate, don't think we actually need this...
-            }
+                if not to_delegate in self.delegatee_oldest:
+                    self.delegatee_oldest[to_delegate] = block_number
+                self.delegatee_latest[to_delegate] = block_number
+                self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
-            if not to_delegate in self.delegatee_oldest:
-                self.delegatee_oldest[to_delegate] = block_number
-
-            self.delegatee_latest[to_delegate] = block_number
-
-            if (from_delegate != '0x0000000000000000000000000000000000000000'):
+            # Remove delegator from previous delegatee if needed
+            if (from_delegate != ZERO_ADDRESS):
                 if from_delegate != to_delegate:
                     try:
                         if delegator in self.delegatee_list[from_delegate]:
-                            del self.delegatee_list[from_delegate][delegator]                
+                            del self.delegatee_list[from_delegate][delegator]
+                            # If previous delegatee has no more delegators, remove the key
+                            if len(self.delegatee_list[from_delegate]) == 0:
+                                del self.delegatee_list[from_delegate]
+                                if from_delegate in self.delegatee_cnt:
+                                    del self.delegatee_cnt[from_delegate]
                     except KeyError as e:
                         print(f"E251250520 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
-            self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
+            # Always clean up zero address if it exists and is empty
+            if ZERO_ADDRESS in self.delegatee_list and len(self.delegatee_list[ZERO_ADDRESS]) == 0:
+                del self.delegatee_list[ZERO_ADDRESS]
+                if ZERO_ADDRESS in self.delegatee_cnt:
+                    del self.delegatee_cnt[ZERO_ADDRESS]
 
         elif signature == DELEGATE_CHANGED_2:
             delegator = event['delegator'].lower()
