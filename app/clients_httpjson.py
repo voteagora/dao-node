@@ -130,7 +130,11 @@ class JsonRpcHistHttpClientCaster:
                     return args
                     
                 except UnicodeDecodeError:
-                    data_bytes = bytes(log['data']) if hasattr(log['data'], 'hex') else bytes.fromhex(log['data'][2:])
+                    if isinstance(log['data'], str):
+                        data_bytes = bytes.fromhex(log['data'].replace("0x", ""))
+                    else:
+                        data_bytes = bytes(log['data'])
+                    assert isinstance(data_bytes, bytes)
                     
                     if b'#proposalData=' in data_bytes:
                         split_point = data_bytes.find(b'#proposalData=')

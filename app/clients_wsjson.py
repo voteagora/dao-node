@@ -8,7 +8,7 @@ from sanic.log import logger as logr
 
 from .utils import camel_to_snake
 from .clients_httpjson import SubscriptionPlannerMixin
-from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1
+from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1, PROPOSAL_CREATED_1, PROPOSAL_CREATED_MODULE
 from .dev_modes import CAPTURE_WS_CLIENT_OUTPUTS
 
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
@@ -35,6 +35,18 @@ class JsonRpcRtWsClientCaster:
                     "log_index": int(log["logIndex"], 16),
                     "transaction_index": int(log["transactionIndex"], 16),
                    }
+        
+        def bytes_to_str(x):
+            if isinstance(x, bytes):
+                return x.hex()
+            return x
+        
+        def array_of_bytes_to_str(x):
+            if isinstance(x, list):
+                return [bytes_to_str(i) for i in x]
+            elif isinstance(x, bytes):
+                return bytes_to_str(x)
+            return x
 
         if signature == DELEGATE_CHANGED_2:
             # THIS FUNCTION IS SOoooo close to the one in clients_httpjson, we should be able to collapse, 
@@ -79,6 +91,64 @@ class JsonRpcRtWsClientCaster:
                 header = cast_log_header(log)
                 args.update(header)
 
+                return args
+
+        elif signature == PROPOSAL_CREATED_1:
+
+            def caster_fn(log):
+                try:
+                    tmp = processor(log)
+                    args = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in tmp['args'].items()}
+                    
+                    header = cast_log_header(log)
+                    args.update(header)
+                    
+                    return args
+                    
+                except UnicodeDecodeError:
+                    if isinstance(log['data'], str):
+                        data_bytes = bytes.fromhex(log['data'].replace("0x", ""))
+                    else:
+                        data_bytes = bytes(log['data'])
+                    assert isinstance(data_bytes, bytes)
+                    
+                    if b'#proposalData=' in data_bytes:
+                        split_point = data_bytes.find(b'#proposalData=')
+                        cleaned_data = data_bytes[:split_point] + b'\x00' * (len(data_bytes) - split_point)
+                    else:
+                        cleaned_data = data_bytes.replace(b'\xc0', b'\x00').replace(b'\x80', b'\x00')
+                    
+                    patched_log = dict(log)
+                    patched_log['data'] = '0x' + cleaned_data.hex()
+                    
+                    tmp = processor(patched_log)
+                    args = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in tmp['args'].items()}
+                    
+                    if 'description' in args and isinstance(args['description'], str):
+                        args['description'] = args['description'].rstrip('\x00 ')
+                        if '#proposalData=' in args['description']:
+                            args['description'] = args['description'][:args['description'].find('#proposalData=')]
+                    
+                    header = cast_log_header(log)
+                    args.update(header)
+                    
+                    return args
+
+        elif signature == PROPOSAL_CREATED_MODULE:
+
+            def parse_settings(settings):
+                if hasattr(settings, 'values'):
+                    return list(settings.values())
+                return settings
+            
+            def caster_fn(log):
+                tmp = processor(log)
+                args = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in tmp['args'].items()}
+                args['settings'] = parse_settings(args['settings'])
+                
+                header = cast_log_header(log)
+                args.update(header)
+                
                 return args
 
         else:
