@@ -186,6 +186,25 @@ def test_Delegations_partial_delegations():
     assert delegations.delegation_amounts['0xabcdef1234567890123456789012345678901234']['0x1234567890123456789012345678901234567890'] == 10000
     assert '0x1234567890123456789012345678901234567890' not in delegations.delegation_amounts['0x9876543210987654321098765432109876543210']
 
+def test_Delegations_zero_address_not_in_list():
+    delegations = Delegations()
+
+    data = [
+            # First delegation
+            {'block_number': 79335962, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x0000000000000000000000000000000000000000', 'to_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'},
+            # Undelegation
+            {'block_number': 92356698, 'transaction_index': 0, 'log_index': 0, 'delegator': '0xded7e867cc42114f1cffa1c5572f591e8711771d', 'from_delegate': '0x75536cf4f01c2bfa528f5c74ddc1232db3af3ee5', 'to_delegate': '0x0000000000000000000000000000000000000000', 'signature': 'DelegateChanged(address,address,address)', 'sighash': '3134e8a2e6d97e929a7e54011ea5485d7d196dd5f0ba4d4ef95803e8e3fc257f'}
+            ]
+
+    for record in data:
+        delegations.handle(record)
+
+    # Verify zero address is not in delegatee_list
+    assert '0x0000000000000000000000000000000000000000' not in delegations.delegatee_list
+    # Verify zero address is not in delegatee_cnt
+    assert '0x0000000000000000000000000000000000000000' not in delegations.delegatee_cnt
+    # Verify delegator is not in any delegate's list
+    assert '0xded7e867cc42114f1cffa1c5572f591e8711771d' not in delegations.delegator_delegate
 
 ####################################
 #
