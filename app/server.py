@@ -1235,9 +1235,9 @@ async def voting_power(request):
 #
 ################################################################################
 
-NUM_ARCHIVE_CLIENTS = 2
-NUM_REALTIME_CLIENTS = 2
-NUM_POLLING_CLIENTS = 1
+NUM_ARCHIVE_CLIENTS = int(os.getenv('NUM_ARCHIVE_CLIENTS', 2))
+NUM_REALTIME_CLIENTS = int(os.getenv('NUM_REALTIME_CLIENTS', 2))
+NUM_POLLING_CLIENTS = int(os.getenv('NUM_POLLING_CLIENTS', 1))
 
 @app.before_server_start(priority=0)
 async def bootstrap_data_feeds(app, loop):
@@ -1444,7 +1444,7 @@ async def read_polling(app, polling_client_num):
     Note that this blocks for the duration of the wait_cycle, so it should be as short as possible, TODO - make it fully async.
     """
 
-    wait_cycle = 120
+    wait_cycle = int(os.getenv('POLLING_WAIT_CYCLE', 120))
     await asyncio.sleep(wait_cycle)
     while True:
         start_time = time.perf_counter()
