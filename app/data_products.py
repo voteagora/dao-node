@@ -911,7 +911,7 @@ class Votes(DataProduct):
         voter = event['voter']
 
         if self.module_spec and self.module_spec['name'] == 'WorldIDVoting':
-            event_cp['weight'] = 1
+            del event_cp['weight']
 
         self.voter_history[voter].append(event_cp)
 
