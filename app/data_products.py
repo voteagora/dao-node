@@ -811,21 +811,32 @@ def nested_default_dict():
 
 
 class VoteAggregation:
-    def __init__(self):
+    def __init__(self, dao_slug):
         self.result = defaultdict(nested_default_dict)
+        self.dao_slug = dao_slug
     
     def tally(self, event):
 
         votes = event.get('votes', 0)
         weight = int(event.get('weight', votes))
+
+        if self.dao_slug and self.dao_slug == 'WORLD':
+            weight = 1
         
         params = event.get('params', None)
         if params:
-            params, = decode_abi(["uint256[]"], bytes.fromhex(params))
+            if (self.dao_slug and self.dao_slug == 'WORLD'):
+                decoded = decode_abi(["uint256", "uint256", "uint256[8]", "uint256[]"], bytes.fromhex(params))
+                params = decoded[3]  # options
+            else:
+                params, = decode_abi(["uint256[]"], bytes.fromhex(params))
+            
             event['params'] = params
 
             for param in params:
                 self.result[param][event['support']] += weight
+            if not params:
+                self.result['no-param'][event['support']] += weight
         else:
             self.result['no-param'][event['support']] += weight
         
@@ -850,8 +861,8 @@ def check_weight_and_votes_are_int(event):
         raise Exception(f"weight or votes is missing from event: {event}")
 
 class Votes(DataProduct):
-    def __init__(self, governor_spec):
-        self.proposal_aggregations = defaultdict(VoteAggregation)
+    def __init__(self, governor_spec, dao_slug):
+        self.proposal_aggregations = defaultdict(lambda: VoteAggregation(dao_slug))
 
         self.voter_history = defaultdict(list)
         self.proposal_vote_record = defaultdict(list)
@@ -859,6 +870,7 @@ class Votes(DataProduct):
         self.latest_vote_block = defaultdict(int)
 
         self.participated = defaultdict(lambda : defaultdict(lambda : False))
+        self.dao_slug = dao_slug
 
         if governor_spec['name'] == 'compound':
             self.proposal_id_field_name = 'id'
@@ -897,7 +909,10 @@ class Votes(DataProduct):
 
         assert check_weight_and_votes_are_int(event_cp)
         voter = event['voter']
-        
+
+        if self.dao_slug and self.dao_slug == 'WORLD':
+            event_cp['weight'] = 1
+
         self.voter_history[voter].append(event_cp)
 
         self.participated[voter][proposal_id] = True
