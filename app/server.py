@@ -128,7 +128,7 @@ try:
         config = yaml.safe_load(f)
     
     glogr.info(config)
-    public_config = {k : config[k] for k in ['governor_spec', 'token_spec', 'module_spec']}
+    public_config = {k : config.get(k) for k in ['governor_spec', 'token_spec', 'module_spec']}
 
     deployment = config['deployments'][CONTRACT_DEPLOYMENT]
     del config['deployments']
