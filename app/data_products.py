@@ -811,21 +811,21 @@ def nested_default_dict():
 
 
 class VoteAggregation:
-    def __init__(self, dao_slug):
+    def __init__(self, module_spec):
         self.result = defaultdict(nested_default_dict)
-        self.dao_slug = dao_slug
+        self.module_spec = module_spec
     
     def tally(self, event):
 
         votes = event.get('votes', 0)
         weight = int(event.get('weight', votes))
 
-        if self.dao_slug and self.dao_slug == 'WORLD':
+        if self.module_spec and self.module_spec['name'] == 'WorldIDVoting':
             weight = 1
         
         params = event.get('params', None)
         if params:
-            if (self.dao_slug and self.dao_slug == 'WORLD'):
+            if (self.module_spec and self.module_spec['name'] == 'WorldIDVoting'):
                 decoded = decode_abi(["uint256", "uint256", "uint256[8]", "uint256[]"], bytes.fromhex(params))
                 params = decoded[3]  # options
             else:
@@ -861,8 +861,8 @@ def check_weight_and_votes_are_int(event):
         raise Exception(f"weight or votes is missing from event: {event}")
 
 class Votes(DataProduct):
-    def __init__(self, governor_spec, dao_slug):
-        self.proposal_aggregations = defaultdict(lambda: VoteAggregation(dao_slug))
+    def __init__(self, governor_spec, module_spec=None):
+        self.proposal_aggregations = defaultdict(lambda: VoteAggregation(module_spec))
 
         self.voter_history = defaultdict(list)
         self.proposal_vote_record = defaultdict(list)
@@ -870,7 +870,7 @@ class Votes(DataProduct):
         self.latest_vote_block = defaultdict(int)
 
         self.participated = defaultdict(lambda : defaultdict(lambda : False))
-        self.dao_slug = dao_slug
+        self.module_spec = module_spec
 
         if governor_spec['name'] == 'compound':
             self.proposal_id_field_name = 'id'
@@ -910,7 +910,7 @@ class Votes(DataProduct):
         assert check_weight_and_votes_are_int(event_cp)
         voter = event['voter']
 
-        if self.dao_slug and self.dao_slug == 'WORLD':
+        if self.module_spec and self.module_spec['name'] == 'WorldIDVoting':
             event_cp['weight'] = 1
 
         self.voter_history[voter].append(event_cp)

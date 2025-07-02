@@ -128,7 +128,7 @@ try:
         config = yaml.safe_load(f)
     
     glogr.info(config)
-    public_config = {k : config[k] for k in ['governor_spec', 'token_spec', 'dao_slug']}
+    public_config = {k : config[k] for k in ['governor_spec', 'token_spec', 'module_spec']}
 
     deployment = config['deployments'][CONTRACT_DEPLOYMENT]
     del config['deployments']
@@ -1349,7 +1349,7 @@ async def bootstrap_data_feeds(app, loop):
             app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED_2}' , proposal_types)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'])
-    votes = Votes(governor_spec=public_config['governor_spec'], dao_slug=public_config['dao_slug'])
+    votes = Votes(governor_spec=public_config['governor_spec'], module_spec=public_config['module_spec'])
 
     gov_spec_name = public_config['governor_spec']['name']
     if gov_spec_name in ('compound', 'ENSGovernor'):
