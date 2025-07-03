@@ -213,7 +213,11 @@ class Delegations(DataProduct):
             else:
                 pass # print("No timestamp found that is older than 7 days.")
 
-    def handle(self, event):
+
+
+
+
+    def handle(self, event): 
 
         if 'timestamp' in event:
             self.handle_block(event)
@@ -222,6 +226,8 @@ class Delegations(DataProduct):
         signature = event['signature']
         block_number = event['block_number']
         transaction_index = event['transaction_index']
+        
+        ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
         if signature == DELEGATE_CHANGED_1:
 
@@ -229,42 +235,44 @@ class Delegations(DataProduct):
             to_delegate = event['to_delegate'].lower()
             from_delegate = event['from_delegate'].lower()
 
-            self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
-
-            if to_delegate != '0x0000000000000000000000000000000000000000':
-                self.delegator_delegate[delegator] = {to_delegate}
-            else:
+            # If this is an undelegation (to_delegate is zero address)
+            if to_delegate == ZERO_ADDRESS:
+                # Remove delegator from delegator_delegate if present
                 if delegator in self.delegator_delegate:
                     del self.delegator_delegate[delegator]
+            else:
+                # If not undelegation, update delegator_delegate
+                self.delegator_delegate[delegator] = {to_delegate}
+                # Only update delegatee_list if not zero address
+                self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
 
-
-            if not self.delegatee_oldest_event.get(to_delegate):
-                self.delegatee_oldest_event[to_delegate] = {
+                if not self.delegatee_oldest_event.get(to_delegate):
+                    self.delegatee_oldest_event[to_delegate] = {
+                        'block_number': block_number,
+                        'delegator': delegator,
+                    }
+                self.delegatee_latest_event[to_delegate] = {
                     'block_number': block_number,
                     'delegator': delegator,
-                    # 'from_delegate': from_delegate, don't think we actually need this...
                 }
-            
-            self.delegatee_latest_event[to_delegate] = {
-                'block_number': block_number,
-                'delegator': delegator,
-                # 'from_delegate': from_delegate, don't think we actually need this...
-            }
+                if not to_delegate in self.delegatee_oldest:
+                    self.delegatee_oldest[to_delegate] = block_number
+                self.delegatee_latest[to_delegate] = block_number
+                self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
-            if not to_delegate in self.delegatee_oldest:
-                self.delegatee_oldest[to_delegate] = block_number
-
-            self.delegatee_latest[to_delegate] = block_number
-
-            if (from_delegate != '0x0000000000000000000000000000000000000000'):
+            # Remove delegator from previous delegatee if needed
+            if (from_delegate != ZERO_ADDRESS):
                 if from_delegate != to_delegate:
                     try:
                         if delegator in self.delegatee_list[from_delegate]:
-                            del self.delegatee_list[from_delegate][delegator]                
+                            del self.delegatee_list[from_delegate][delegator]
+                            # If previous delegatee has no more delegators, remove the key
+                            if len(self.delegatee_list[from_delegate]) == 0:
+                                del self.delegatee_list[from_delegate]
+                                if from_delegate in self.delegatee_cnt:
+                                    del self.delegatee_cnt[from_delegate]
                     except KeyError as e:
                         print(f"E251250520 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
-
-            self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
         elif signature == DELEGATE_CHANGED_2:
             delegator = event['delegator'].lower()
@@ -301,31 +309,29 @@ class Delegations(DataProduct):
                 to_delegate = new_delegation[0].lower()
                 amount = new_delegation[1]
                 
-                if not self.delegatee_oldest_event.get(to_delegate):
-                    self.delegatee_oldest_event[to_delegate] = {
+                if to_delegate != ZERO_ADDRESS:  
+                    if not self.delegatee_oldest_event.get(to_delegate):
+                        self.delegatee_oldest_event[to_delegate] = {
+                            'block_number': block_number,
+                            'delegator': delegator
+                        }
+                    self.delegatee_latest_event[to_delegate] = {
                         'block_number': block_number,
-                        'delegator': delegator
+                        'delegator': delegator,
                     }
-            
-                self.delegatee_latest_event[to_delegate] = {
-                    'block_number': block_number,
-                    'delegator': delegator,
-                }
-
-                self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
-                self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
-                self.delegation_amounts[to_delegate][delegator] = amount
-                
-                # Update voting power
-                self.delegatee_vp[to_delegate] += amount
-
-                if to_delegate != '0x0000000000000000000000000000000000000000':
+                    self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)  
+                    self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])  
+                    self.delegation_amounts[to_delegate][delegator] = amount
+                    self.delegatee_vp[to_delegate] += amount
                     self.delegator_delegate[delegator].add(to_delegate)
-                
 
         elif signature == DELEGATE_VOTES_CHANGE:
 
             delegatee = event['delegate'].lower()
+            
+            # Skip processing if delegatee is zero address
+            if delegatee == ZERO_ADDRESS:
+                return
 
             # TODO figure out why optimism's abi encode new_balance/previous_balance,
             # but more modern DAOs seem to rely on new_votes/previous_votes.
@@ -356,6 +362,10 @@ class Delegations(DataProduct):
     
             self.delegatee_vp_recent_history[delegatee] = recent_history
 
+   
+   
+   
+   
     def delegatee_vp_at_block(self, addr, block_number, include_history=False):
         vp_history = [(0, 0)] + self.delegatee_vp_history[addr]
         index = bisect_left(vp_history, (block_number,)) - 1
