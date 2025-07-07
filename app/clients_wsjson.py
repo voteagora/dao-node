@@ -139,12 +139,15 @@ class JsonRpcRtWsClientCaster:
             def parse_settings(settings):
                 if hasattr(settings, 'values'):
                     return list(settings.values())
+                elif isinstance(settings, list):
+                    return [next(iter(item.values())) if hasattr(item, 'values') else item for item in settings]
                 return settings
             
             def caster_fn(log):
                 tmp = processor(log)
                 args = {camel_to_snake(k) : array_of_bytes_to_str(v) for k,v in tmp['args'].items()}
                 args['settings'] = parse_settings(args['settings'])
+                args['options'] = parse_settings(args['options'])
                 
                 header = cast_log_header(log)
                 args.update(header)
