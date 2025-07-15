@@ -1317,7 +1317,7 @@ async def bootstrap_data_feeds(app, loop):
     if 'token' in deployment:
 
         if ENABLE_DELEGATION:
-            delegations = Delegations()
+            delegations = Delegations(token_spec=public_config['token_spec'])
             app.ctx.register(f'{chain_id}.blocks', delegations)
             app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
 

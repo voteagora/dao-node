@@ -129,10 +129,12 @@ def round_and_seven_days_ago(ts):
     return seven_days_ago(tmp)
 
 class Delegations(DataProduct):
-    def __init__(self):
+    ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+    
+    def __init__(self, token_spec=None):
         # Data about the delegatee (ie, the delegate's influence)
-        self.delegatee_list = defaultdict(SortedDict) #  list of delegators
-        self.delegatee_cnt = defaultdict(int) #  dele
+        self.delegatee_list = defaultdict(SortedDict) # list of delegators
+        self.delegatee_cnt = defaultdict(int) # delegate count
 
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
         self.delegation_amounts = defaultdict(dict)
@@ -162,6 +164,9 @@ class Delegations(DataProduct):
         self.seven_day_ts = 0
 
         self.cached_seven_day_vp = defaultdict(lambda: (0, 0))
+        
+        # Tenant configuration
+        self.token_spec = token_spec or {}
         
     def handle_block(self, event):
 
@@ -204,8 +209,6 @@ class Delegations(DataProduct):
         signature = event['signature']
         block_number = event['block_number']
         transaction_index = event['transaction_index']
-        
-        ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
         if signature == DELEGATE_CHANGED_1:
 
@@ -213,15 +216,12 @@ class Delegations(DataProduct):
             to_delegate = event['to_delegate'].lower()
             from_delegate = event['from_delegate'].lower()
 
-            # If this is an undelegation (to_delegate is zero address)
-            if to_delegate == ZERO_ADDRESS:
-                # Remove delegator from delegator_delegate if present
+            # Handle undelegation to zero address
+            if to_delegate == self.ZERO_ADDRESS:
                 if delegator in self.delegator_delegate:
                     del self.delegator_delegate[delegator]
             else:
-                # If not undelegation, update delegator_delegate
                 self.delegator_delegate[delegator] = {to_delegate}
-                # Only update delegatee_list if not zero address
                 self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)
 
                 if not self.delegatee_oldest_event.get(to_delegate):
@@ -238,13 +238,12 @@ class Delegations(DataProduct):
                 self.delegatee_latest[to_delegate] = block_number
                 self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])
 
-            # Remove delegator from previous delegatee if needed
-            if (from_delegate != ZERO_ADDRESS):
+            # Clean up previous delegation
+            if (from_delegate != self.ZERO_ADDRESS):
                 if from_delegate != to_delegate:
                     try:
                         if delegator in self.delegatee_list[from_delegate]:
                             del self.delegatee_list[from_delegate][delegator]
-                            # If previous delegatee has no more delegators, remove the key
                             if len(self.delegatee_list[from_delegate]) == 0:
                                 del self.delegatee_list[from_delegate]
                                 if from_delegate in self.delegatee_cnt:
@@ -253,66 +252,15 @@ class Delegations(DataProduct):
                         print(f"E251250520 - Problem removing delegator '{delegator}' this is unexpected. ({from_delegate=}, {to_delegate=})")
 
         elif signature == DELEGATE_CHANGED_2:
-            delegator = event['delegator'].lower()
-            
-            # Parse old and new delegations
-            old_delegatees = event.get('old_delegatees')
-            new_delegatees = event.get('new_delegatees')
-            
-            # Handle old delegations removal
-            for old_delegation in old_delegatees:
-                old_delegate = old_delegation[0].lower()
-                amount = old_delegation[1]
-
-                if old_delegate in self.delegatee_list:
-                    if delegator in self.delegatee_list[old_delegate]:
-                        del self.delegatee_list[old_delegate][delegator]
-                        
-                    cnt = len(self.delegatee_list[old_delegate])
-                    if cnt == 0:
-                        del self.delegatee_list[old_delegate]
-
-                    self.delegation_amounts[old_delegate].pop(delegator, None)
-                    
-                    # Update voting power
-                    self.delegatee_vp[old_delegate] -= amount
-                
-                if delegator in self.delegator_delegate:
-                    self.delegator_delegate[delegator].discard(old_delegate)
-                    if not self.delegator_delegate[delegator]:
-                        del self.delegator_delegate[delegator]
-
-            # Handle new delegations addition
-            for new_delegation in new_delegatees:
-                to_delegate = new_delegation[0].lower()
-                amount = new_delegation[1]
-                
-                if to_delegate != ZERO_ADDRESS:  
-                    if not self.delegatee_oldest_event.get(to_delegate):
-                        self.delegatee_oldest_event[to_delegate] = {
-                            'block_number': block_number,
-                            'delegator': delegator
-                        }
-                    self.delegatee_latest_event[to_delegate] = {
-                        'block_number': block_number,
-                        'delegator': delegator,
-                    }
-                    self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)  
-                    self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])  
-                    self.delegation_amounts[to_delegate][delegator] = amount
-                    self.delegatee_vp[to_delegate] += amount
-                    self.delegator_delegate[delegator].add(to_delegate)
+            self._handle_partial_delegation(event)
 
         elif signature == DELEGATE_VOTES_CHANGE:
 
             delegatee = event['delegate'].lower()
             
-            # Skip processing if delegatee is zero address
-            if delegatee == ZERO_ADDRESS:
+            if delegatee == self.ZERO_ADDRESS:
                 return
 
-            # TODO figure out why optimism's abi encode new_balance/previous_balance,
-            # but more modern DAOs seem to rely on new_votes/previous_votes.
             new_votes = int(event.get('new_votes', event.get('new_balance', None)))
             previous_votes = int(event.get('previous_votes', event.get('previous_balance', None)))
 
@@ -387,6 +335,55 @@ class Delegations(DataProduct):
         delta = cur_vp - old_vp
 
         return delta 
+    
+    def _handle_partial_delegation(self, event):
+        delegator = event['delegator'].lower()
+        block_number = event['block_number']
+        transaction_index = event['transaction_index']
+        
+        old_delegatees = event.get('old_delegatees')
+        new_delegatees = event.get('new_delegatees')
+        
+        # Remove old delegations
+        for old_delegation in old_delegatees:
+            old_delegate = old_delegation[0].lower()
+            amount = old_delegation[1]
+
+            if old_delegate in self.delegatee_list:
+                if delegator in self.delegatee_list[old_delegate]:
+                    del self.delegatee_list[old_delegate][delegator]
+                    
+                cnt = len(self.delegatee_list[old_delegate])
+                if cnt == 0:
+                    del self.delegatee_list[old_delegate]
+
+                self.delegation_amounts[old_delegate].pop(delegator, None)
+                self.delegatee_vp[old_delegate] -= amount
+            
+            if delegator in self.delegator_delegate:
+                self.delegator_delegate[delegator].discard(old_delegate)
+                if not self.delegator_delegate[delegator]:
+                    del self.delegator_delegate[delegator]
+
+        # Add new delegations
+        for new_delegation in new_delegatees:
+            to_delegate = new_delegation[0].lower()
+            amount = new_delegation[1]
+            
+            if not self.delegatee_oldest_event.get(to_delegate):
+                self.delegatee_oldest_event[to_delegate] = {
+                    'block_number': block_number,
+                    'delegator': delegator
+                }
+            self.delegatee_latest_event[to_delegate] = {
+                'block_number': block_number,
+                'delegator': delegator,
+            }
+            self.delegatee_list[to_delegate][delegator] = (block_number, transaction_index)  
+            self.delegatee_cnt[to_delegate] = len(self.delegatee_list[to_delegate])  
+            self.delegation_amounts[to_delegate][delegator] = amount
+            self.delegatee_vp[to_delegate] += amount
+            self.delegator_delegate[delegator].add(to_delegate)
         
                 
 
