@@ -8,7 +8,8 @@ from sanic.log import logger as logr
 
 from .utils import camel_to_snake
 from .clients_httpjson import SubscriptionPlannerMixin
-from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1, PROPOSAL_CREATED_1, PROPOSAL_CREATED_MODULE
+from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1, PROPOSAL_CREATED_1, \
+    PROPOSAL_CREATED_MODULE, PROPOSAL_CREATED_2
 from .dev_modes import CAPTURE_WS_CLIENT_OUTPUTS
 
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
@@ -93,7 +94,7 @@ class JsonRpcRtWsClientCaster:
 
                 return args
 
-        elif signature == PROPOSAL_CREATED_1:
+        elif signature in (PROPOSAL_CREATED_1, PROPOSAL_CREATED_2):
 
             def caster_fn(log):
                 try:

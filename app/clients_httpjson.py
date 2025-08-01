@@ -11,7 +11,9 @@ from sanic.log import logger as logr
 from .utils import camel_to_snake
 from .clients_csv import SubscriptionPlannerMixin
 from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK
-from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1, PROPOSAL_CREATED_1, PROPOSAL_CREATED_MODULE
+from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1, PROPOSAL_CREATED_1, \
+    PROPOSAL_CREATED_MODULE, PROPOSAL_CREATED_2
+
 
 def resolve_block_count_span(chain_id=None):
 
@@ -120,7 +122,7 @@ class JsonRpcHistHttpClientCaster:
                 args['params'] = args['params'].hex()
                 return args
 
-        elif signature == PROPOSAL_CREATED_1:
+        elif signature in (PROPOSAL_CREATED_1, PROPOSAL_CREATED_2):
 
             def caster_fn(log):
                 try:
