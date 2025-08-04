@@ -28,7 +28,7 @@ def resolve_block_count_span(chain_id=None):
     elif chain_id in (7560,): # Cyber
         default_block_span = 10_000 
     elif chain_id in (534352,): # Scroll
-        default_block_span = target * 4
+        default_block_span = target * 12
     elif chain_id in (901, 957): # Derive & it's Testnet
         default_block_span = target * 6
     elif chain_id in (59144, 59141): # Linea, Linea Sepolia
