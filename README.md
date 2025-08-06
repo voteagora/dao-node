@@ -121,3 +121,4 @@ The table below excludes functionality related to partial and advanced delegatio
 | GET `/config`                                   | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GET `/deployment`                               | ✅ | ✅ | ✅ | ✅ | ✅ |
 
+
