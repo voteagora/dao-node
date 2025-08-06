@@ -1351,13 +1351,16 @@ async def bootstrap_data_feeds(app, loop):
     proposals = Proposals(governor_spec=public_config['governor_spec'])
     votes = Votes(governor_spec=public_config['governor_spec'], module_spec=public_config['module_spec'])
 
+    if 'voting_module' in deployment:
+        app.ctx.register(f'{chain_id}.{voting_module_addr}.{PROPOSAL_CREATED_MODULE}', proposals)
+
     gov_spec_name = public_config['governor_spec']['name']
     if gov_spec_name in ('compound', 'ENSGovernor'):
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
     elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 0.1:
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4]
     elif gov_spec_name == 'agora' and public_config['governor_spec']['version'] == 2.0:
-        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1, PROPOSAL_CREATED_MODULE]
+        PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_1]
     elif gov_spec_name == 'agora':
         PROPOSAL_CREATED_EVENTS = [PROPOSAL_CREATED_2, PROPOSAL_CREATED_4]
     elif gov_spec_name == 'none':
@@ -1368,10 +1371,7 @@ async def bootstrap_data_feeds(app, loop):
     if PROPOSAL_CREATED_EVENTS:
         PROPOSAL_LIFECYCLE_EVENTS = PROPOSAL_CREATED_EVENTS + [PROPOSAL_CANCELED, PROPOSAL_QUEUED, PROPOSAL_EXECUTED]
         for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
-            if PROPOSAL_EVENT == PROPOSAL_CREATED_MODULE and 'voting_module' in deployment:
-                app.ctx.register(f'{chain_id}.{voting_module_addr}.' + PROPOSAL_EVENT, proposals)
-            else:
-                app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
+            app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
 
         VOTE_EVENTS = [VOTE_CAST_1]    
         if not (public_config['governor_spec']['name'] in ('compound', 'ENSGovernor')):
