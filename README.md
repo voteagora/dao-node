@@ -120,3 +120,5 @@ The table below excludes functionality related to partial and advanced delegatio
 | GET `/health`                                   | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GET `/config`                                   | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GET `/deployment`                               | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+
