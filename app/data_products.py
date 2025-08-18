@@ -100,7 +100,7 @@ class ProposalTypes(DataProduct):
                             active_count += 1
                 else:  # v1 - disable all scopes with the scope_key
                     for scope in self.proposal_types[proposal_type_id]['scopes']:
-                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
+                        if scope['scope_key']:
                             # Only disable scopes that existed at the time of this disable event
                             scope_block = int(scope['block_number'])
                             scope_tx = int(scope['transaction_index'])
@@ -128,7 +128,7 @@ class ProposalTypes(DataProduct):
                             active_count += 1
                 else:  # v1 - delete all scopes with the scope_key
                     for scope in self.proposal_types[proposal_type_id]['scopes']:
-                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
+                        if scope['scope_key'] == scope_key:
                             # Only delete scopes that existed at the time of this delete event
                             scope_block = int(scope['block_number'])
                             scope_tx = int(scope['transaction_index'])
