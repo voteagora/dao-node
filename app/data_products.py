@@ -100,9 +100,20 @@ class ProposalTypes(DataProduct):
                             active_count += 1
                 else:  # v1 - disable all scopes with the scope_key
                     for scope in self.proposal_types[proposal_type_id]['scopes']:
-                        if scope['scope_key'] == scope_key:
-                            scope['disabled_event'] = event
-                            scope['status'] = 'disabled'
+                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
+                            # Only disable scopes that existed at the time of this disable event
+                            scope_block = int(scope['block_number'])
+                            scope_tx = int(scope['transaction_index'])
+                            scope_log = int(scope['log_index'])
+                            
+                            disable_block = int(event['block_number'])
+                            disable_tx = int(event['transaction_index'])
+                            disable_log = int(event['log_index'])
+                            
+                            # Compare chronological order: (block, tx, log)
+                            if (scope_block, scope_tx, scope_log) <= (disable_block, disable_tx, disable_log):
+                                scope['disabled_event'] = event
+                                scope['status'] = 'disabled'
             elif 'Deleted' in signature:
                 if signature == 'ScopeDeleted(uint8,bytes24,uint8)':  # v2
                     idx = event['idx']
@@ -117,9 +128,20 @@ class ProposalTypes(DataProduct):
                             active_count += 1
                 else:  # v1 - delete all scopes with the scope_key
                     for scope in self.proposal_types[proposal_type_id]['scopes']:
-                        if scope['scope_key'] == scope_key:
-                            scope['deleted_event'] = event
-                            scope['status'] = 'deleted'
+                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
+                            # Only delete scopes that existed at the time of this delete event
+                            scope_block = int(scope['block_number'])
+                            scope_tx = int(scope['transaction_index'])
+                            scope_log = int(scope['log_index'])
+                            
+                            delete_block = int(event['block_number'])
+                            delete_tx = int(event['transaction_index'])
+                            delete_log = int(event['log_index'])
+                            
+                            # Compare chronological order: (block, tx, log)
+                            if (scope_block, scope_tx, scope_log) <= (delete_block, delete_tx, delete_log):
+                                scope['deleted_event'] = event
+                                scope['status'] = 'deleted'
             else:
                 raise Exception(f"Event signature {signature} not handled.")
         
