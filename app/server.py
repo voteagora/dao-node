@@ -720,7 +720,11 @@ async def proposal_types(request):
     return await proposal_types_handler(app, request)
 
 async def proposal_types_handler(app, request):
-	return json({'proposal_types' : app.ctx.proposal_types.proposal_types})
+    proposal_types_with_scopes = {}
+    for proposal_type_id in app.ctx.proposal_types.proposal_types:
+        proposal_types_with_scopes[proposal_type_id] = app.ctx.proposal_types.get_proposal_type_with_scopes(proposal_type_id)
+    
+    return json({'proposal_types' : proposal_types_with_scopes})
 
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0

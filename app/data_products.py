@@ -56,6 +56,7 @@ class ProposalTypes(DataProduct):
     def __init__(self):
         self.proposal_types = defaultdict(dict)
         self.proposal_types_history = defaultdict(list)
+        self.scope_events = defaultdict(list)  # proposal_type_id -> list of scope events
 
     def handle(self, event):
 
@@ -73,59 +74,83 @@ class ProposalTypes(DataProduct):
             self.proposal_types_history[proposal_type_id].append(event)
 
         elif 'Scope' in signature:
+            event_copy = copy(event)
+            # Memory optimization: store the signature as a single character
+            if 'Created' in event_copy['signature']:
+                event_copy['sig'] = 'C'
+            elif 'Disabled' in event_copy['signature']:
+                event_copy['sig'] = 'D'
+            elif 'Deleted' in event_copy['signature']:
+                event_copy['sig'] = 'X'
+            del event_copy['signature']
+            del event_copy['sighash']
             
-            event = copy(event)
-            scope_key = event['scope_key']
-
-            del event['signature']
-            del event['sighash']
-
-            if 'Created' in signature:
-                del event['proposal_type_id']
-                event['status'] = 'created'
-                event['disabled_event'] = {}
-                event['deleted_event'] = {}
-                self.proposal_types[proposal_type_id]['scopes'].append(event)
-            elif 'Disabled' in signature:
-                if signature == 'ScopeDisabled(uint8,bytes24,uint8)':  # v2
-                    idx = event['idx']
-                    scopes = self.proposal_types[proposal_type_id]['scopes']
-                    active_count = 0
-                    for scope in scopes:
-                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
-                            if active_count == idx:
-                                scope['disabled_event'] = event
-                                scope['status'] = 'disabled'
-                                break
-                            active_count += 1
-                else:  # v1 - disable all scopes with the scope_key
-                    for scope in self.proposal_types[proposal_type_id]['scopes']:
-                        if scope['scope_key'] == scope_key:
-                            scope['disabled_event'] = event
-                            scope['status'] = 'disabled'
-            elif 'Deleted' in signature:
-                if signature == 'ScopeDeleted(uint8,bytes24,uint8)':  # v2
-                    idx = event['idx']
-                    scopes = self.proposal_types[proposal_type_id]['scopes']
-                    active_count = 0
-                    for scope in scopes:
-                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
-                            if active_count == idx:
-                                scope['deleted_event'] = event
-                                scope['status'] = 'deleted'
-                                break
-                            active_count += 1
-                else:  # v1 - delete all scopes with the scope_key
-                    for scope in self.proposal_types[proposal_type_id]['scopes']:
-                        if scope['scope_key'] == scope_key:
-                            scope['deleted_event'] = event
-                            scope['status'] = 'deleted'
-            else:
-                raise Exception(f"Event signature {signature} not handled.")
-        
+            self.scope_events[proposal_type_id].append(event_copy)
+            
         else:
             raise Exception(f"Event signature {signature} not handled.")
 
+    def _resolve_scope_state(self, proposal_type_id):
+        events = self.scope_events[proposal_type_id]
+        if not events:
+            return []
+        
+        events = sorted(events, key=lambda e: (int(e['block_number']), int(e['transaction_index']), int(e['log_index'])))
+        
+        scopes = {}
+        
+        for event in events:
+            signature = event['sig']
+            scope_key = event['scope_key']
+            selector = event.get('selector', '')
+            
+            scope_id = f"{scope_key}_{selector}"
+            
+            if signature == 'C':  # Created
+                scopes[scope_id] = {
+                    'scope_key': scope_key,
+                    'selector': selector,
+                    'status': 'created',
+                    'disabled_event': {},
+                    'deleted_event': {}
+                }
+                
+                for k, v in event.items():
+                    if k not in ['scope_key', 'proposal_type_id', 'sig', 'selector']:
+                        scopes[scope_id][k] = v
+                            
+            elif signature == 'D':  # Disabled
+                if 'idx' in event:  # v2 - ScopeDisabled(uint8,bytes24,uint8)
+                    idx = event['idx']
+                    active_scopes = [s for s in scopes.values() if s['scope_key'] == scope_key and s['status'] == 'created']
+                    if idx < len(active_scopes):
+                        target_scope = active_scopes[idx]
+                        target_scope['disabled_event'] = event
+                        target_scope['status'] = 'disabled'
+                else:  # v1 - disable all scopes with the scope_key
+                    for scope in scopes.values():
+                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
+                            scope['disabled_event'] = event
+                            scope['status'] = 'disabled'
+                            
+            elif signature == 'X':  # Deleted
+                if 'idx' in event:  # v2 - ScopeDeleted(uint8,bytes24,uint8)
+                    idx = event['idx']
+                    active_scopes = [s for s in scopes.values() if s['scope_key'] == scope_key and s['status'] == 'created']
+                    if idx < len(active_scopes):
+                        target_scope = active_scopes[idx]
+                        target_scope['deleted_event'] = event
+                        target_scope['status'] = 'deleted'
+                else:  # v1 - delete all scopes with the scope_key
+                    for scope in scopes.values():
+                        if scope['scope_key'] == scope_key and scope['status'] == 'created':
+                            scope['deleted_event'] = event
+                            scope['status'] = 'deleted'
+        
+        return list(scopes.values())
+
+    def get_scopes(self, proposal_type_id):
+        return self._resolve_scope_state(proposal_type_id)
 
     def get_historic_proposal_type(self, proposal_type_id, block_number):
 
@@ -140,6 +165,11 @@ class ProposalTypes(DataProduct):
 
         return {k : pit_proposal_type[k] for k in ['quorum', 'approval_threshold', 'name']}
 
+    def get_proposal_type_with_scopes(self, proposal_type_id):
+        proposal_type = self.proposal_types[proposal_type_id].copy()
+        proposal_type['scopes'] = self.get_scopes(proposal_type_id)
+        return proposal_type
+    
 def round_to_hour(ts):
     return ts - (ts % 3600)
 
@@ -537,7 +567,10 @@ class Proposal:
 
     def get_proposal_type(self, proposal_types):
         prop_type_id = self.create_event['proposal_type']
-        out = deepcopy(proposal_types.get(prop_type_id))
+        if hasattr(proposal_types, 'get_proposal_type_with_scopes'):
+            out = proposal_types.get_proposal_type_with_scopes(prop_type_id)
+        else:
+            out = deepcopy(proposal_types.get(prop_type_id))
         out['id'] = prop_type_id
         return out
     
