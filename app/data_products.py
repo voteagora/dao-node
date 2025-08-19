@@ -102,18 +102,22 @@ class ProposalTypes(DataProduct):
         for event in events:
             signature = event['sig']
             scope_key = event['scope_key']
+            selector = event.get('selector', '')
+            
+            scope_id = f"{scope_key}_{selector}"
             
             if signature == 'C':  # Created
-                scopes[scope_key] = {
+                scopes[scope_id] = {
                     'scope_key': scope_key,
+                    'selector': selector,
                     'status': 'created',
                     'disabled_event': {},
                     'deleted_event': {}
                 }
                 
                 for k, v in event.items():
-                    if k not in ['scope_key', 'proposal_type_id', 'sig']:
-                        scopes[scope_key][k] = v
+                    if k not in ['scope_key', 'proposal_type_id', 'sig', 'selector']:
+                        scopes[scope_id][k] = v
                             
             elif signature == 'D':  # Disabled
                 if 'idx' in event:  # v2 - ScopeDisabled(uint8,bytes24,uint8)

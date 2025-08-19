@@ -349,7 +349,8 @@ def test_ProposalTypes_proposal_type_set_with_one_scope_created(pguild_ptc_abi):
     assert pt.proposal_types[2]['quorum'] == 3300
     assert pt.proposal_types[2]['approval_threshold'] == 5100
 
-    assert pt.proposal_types[1]['scopes'][0]['description'] == 'Distribute splits contract'
+    proposal_type_1 = pt.get_proposal_type_with_scopes(1)
+    assert proposal_type_1['scopes'][0]['description'] == 'Distribute splits contract'
 
 def test_DelegateVotesChanged_7day_growth_rate():
 
@@ -411,8 +412,9 @@ def test_ProposalTypes_v2_scope_disabled_by_index(v2_scope_abi):
         proposal_types.handle(event)
     
     # Verify all scopes are created
-    assert len(proposal_types.proposal_types[1]['scopes']) == 3
-    for i, scope in enumerate(proposal_types.proposal_types[1]['scopes']):
+    proposal_type_1 = proposal_types.get_proposal_type_with_scopes(1)
+    assert len(proposal_type_1['scopes']) == 3
+    for i, scope in enumerate(proposal_type_1['scopes']):
         if i == 1:
             assert scope['status'] == 'disabled'
             assert 'disabled_event' in scope
@@ -438,7 +440,8 @@ def test_ProposalTypes_v2_scope_deleted_by_index(v2_scope_abi):
         proposal_types.handle(event)
     
     # Check that only the first scope (idx=0) is deleted
-    scopes = proposal_types.proposal_types[1]['scopes']
+    proposal_type_1 = proposal_types.get_proposal_type_with_scopes(1)
+    scopes = proposal_type_1['scopes']
     assert scopes[0]['status'] == 'deleted'
     assert scopes[1]['status'] == 'created'
     assert 'deleted_event' in scopes[0]
@@ -462,7 +465,8 @@ def test_ProposalTypes_v1_scope_disabled_all(pguild_ptc_abi):
         proposal_types.handle(event)
     
     # Check that all scopes with the same scope_key are disabled
-    scopes = proposal_types.proposal_types[1]['scopes']
+    proposal_type_1 = proposal_types.get_proposal_type_with_scopes(1)
+    scopes = proposal_type_1['scopes']
     assert scopes[0]['status'] == 'disabled'
     assert scopes[1]['status'] == 'disabled'
     assert 'disabled_event' in scopes[0]
