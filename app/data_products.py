@@ -387,6 +387,7 @@ class Delegations(DataProduct):
             self.delegatee_vp_recent_history[delegatee] = recent_history
 
     def delegatee_vp_at_block(self, addr, block_number, include_history=False):
+        block_number = int(block_number)
         vp_history = [(0, 0)] + self.delegatee_vp_history[addr]
         index = bisect_left(vp_history, (block_number,)) - 1
 
