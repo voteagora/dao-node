@@ -848,6 +848,7 @@ class VoteAggregation:
     def __init__(self, module_spec):
         self.result = defaultdict(nested_default_dict)
         self.module_spec = module_spec
+        self.num_of_votes = 0
     
     def tally(self, event):
 
@@ -873,6 +874,8 @@ class VoteAggregation:
                 self.result['no-param'][event['support']] += weight
         else:
             self.result['no-param'][event['support']] += weight
+        
+        self.num_of_votes += 1
         
         return event
 

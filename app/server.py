@@ -555,11 +555,12 @@ async def proposal_handler(app, request, proposal_id):
 
     proposal = copy(proposal)
 
-    totals = app.ctx.votes.proposal_aggregations[proposal_id].totals()
-    proposal['totals'] = totals
+    aggregates = app.ctx.votes.proposal_aggregations[proposal_id]
+    proposal['totals'] = aggregates.totals()
+    proposal['num_of_votes'] = aggregates.num_of_votes
 
     # We intentionally removed this.  Votes need to be sorted, and cache
-    # behaviour is different.  And there are likeely client
+    # behaviour is different.  And there are likely client
     # features that do things per-vote, that make consuming this 
     # entire data set unlikely.
     
