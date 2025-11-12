@@ -1,5 +1,5 @@
 import pytest
-from app.data_products import Balances, Delegations, Proposals, Votes, ProposalTypes, Proposal
+from app.data_products import Balances, Delegations, Proposals, Votes, ProposalTypes, Proposal, Staking
 from app.clients_csv import CSVClient
 import csv
 import os
@@ -185,6 +185,70 @@ def test_Delegations_partial_delegations():
     assert '0x9876543210987654321098765432109876543210' not in delegations.delegatee_list
     assert delegations.delegation_amounts['0xabcdef1234567890123456789012345678901234']['0x1234567890123456789012345678901234567890'] == 10000
     assert '0x1234567890123456789012345678901234567890' not in delegations.delegation_amounts['0x9876543210987654321098765432109876543210']
+
+def make_staking_event(signature, block_number, **kwargs):
+    event = {
+        'signature': signature,
+        'block_number': block_number,
+    }
+    event.update(kwargs)
+    return event
+
+def test_staking_handles_stake_and_withdrawal_completion():
+    staking = Staking()
+
+    staking.handle(make_staking_event(STAKE, 10, user='0xAAAA', amount=100))
+    staking.handle(make_staking_event(STAKE, 12, user='0xBBBB', amount=50))
+
+    assert staking.total_staked == 150
+    assert staking.get_user_total_stake('0xaaaa') == 100
+    assert staking.get_user_total_stake('0xbbbb') == 50
+    assert staking.get_user_stake_at_block('0xaaaa', 10) == 100
+    assert staking.get_user_stake_at_block('0xbbbb', 11) == 0
+    assert staking.get_total_stake_at_block(9) == 0
+    assert staking.get_total_stake_at_block(10) == 100
+    assert staking.get_total_stake_at_block(12) == 150
+
+    staking.handle(make_staking_event(WITHDRAWAL_COMPLETED, 15, user='0xAAAA', amount=40, destination='0xccc'))
+
+    assert staking.total_staked == 110
+    assert staking.get_user_total_stake('0xaaaa') == 60
+    assert staking.get_user_stake_at_block('0xaaaa', 14) == 100
+    assert staking.get_user_stake_at_block('0xaaaa', 15) == 60
+    assert staking.get_total_stake_at_block(14) == 150
+    assert staking.get_total_stake_at_block(15) == 110
+
+    staking.handle(make_staking_event(WITHDRAWAL_COMPLETED, 20, user='0xAAAA', amount=40, destination='0xccc'))
+
+    assert staking.total_staked == 70
+    assert staking.get_user_total_stake('0xaaaa') == 20
+    assert staking.get_user_stake_at_block('0xaaaa', 19) == 60
+    assert staking.get_user_stake_at_block('0xaaaa', 20) == 20
+    assert staking.get_total_stake_at_block(19) == 110
+    assert staking.get_total_stake_at_block(20) == 70
+
+def test_staking_clamps_withdrawals_and_snapshots_are_isolated():
+    staking = Staking()
+
+    staking.handle(make_staking_event(STAKE, 5, user='0x1111', amount=25))
+    staking.handle(make_staking_event(WITHDRAWAL_COMPLETED, 6, user='0x1111', amount=40, destination='0xccc'))
+
+    assert staking.get_user_total_stake('0x1111') == 0
+    assert staking.total_staked == 0
+
+    snapshot = staking.get_all_stakes_at_block(6)
+    snapshot['0x1111'] = 999
+    assert '0x1111' not in staking.get_all_stakes_at_block(6) or staking.get_all_stakes_at_block(6)['0x1111'] == 0
+
+def test_staking_get_all_stakes_returns_latest_known_block_state():
+    staking = Staking()
+
+    staking.handle(make_staking_event(STAKE, 3, user='0xabc', amount=10))
+    staking.handle(make_staking_event(STAKE, 7, user='0xdef', amount=20))
+
+    assert staking.get_all_stakes_at_block(2) == {}
+    assert staking.get_all_stakes_at_block(5) == {'0xabc': 10}
+    assert staking.get_all_stakes_at_block(7) == {'0xabc': 10, '0xdef': 20}
 
 
 ####################################

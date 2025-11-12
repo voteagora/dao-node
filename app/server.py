@@ -34,7 +34,7 @@ from .clients_csv import CSVClient
 from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcRtHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
 
-from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes
+from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, Staking
 from .data_models import ParticipationRateModel
 
 from .signatures import *
@@ -120,6 +120,33 @@ if DAO_NODE_REALTIME_NODE_WS:
     if 'quiknode.pro' in DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
         glogr.info(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
+
+SECONDARY_DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('SECONDARY_DAO_NODE_ARCHIVE_NODE_HTTP', None)
+if SECONDARY_DAO_NODE_ARCHIVE_NODE_HTTP:
+
+    SECONDARY_ARCHIVE_NODE_HTTP_URL = SECONDARY_DAO_NODE_ARCHIVE_NODE_HTTP
+
+    if 'alchemy.com' in SECONDARY_DAO_NODE_ARCHIVE_NODE_HTTP:
+        SECONDARY_ARCHIVE_NODE_HTTP_URL = SECONDARY_ARCHIVE_NODE_HTTP_URL + os.getenv('SECONDARY_ALCHEMY_API_KEY', '') 
+        glogr.info(f"Using alchemy for Secondary Archive: {secret_text(SECONDARY_ARCHIVE_NODE_HTTP_URL, 6)}")
+
+    if 'quiknode.pro' in SECONDARY_DAO_NODE_ARCHIVE_NODE_HTTP:
+        SECONDARY_ARCHIVE_NODE_HTTP_URL = SECONDARY_ARCHIVE_NODE_HTTP_URL + os.getenv('SECONDARY_QUICKNODE_API_KEY', '')
+        glogr.info(f"Using quiknode.pro for Secondary Archive: {secret_text(SECONDARY_ARCHIVE_NODE_HTTP_URL, 6)}")
+    
+
+SECONDARY_DAO_NODE_REALTIME_NODE_WS = os.getenv('SECONDARY_DAO_NODE_REALTIME_NODE_WS', None)
+if SECONDARY_DAO_NODE_REALTIME_NODE_WS:
+
+    SECONDARY_REALTIME_NODE_WS_URL = SECONDARY_DAO_NODE_REALTIME_NODE_WS
+
+    if 'alchemy.com' in SECONDARY_DAO_NODE_REALTIME_NODE_WS:
+        SECONDARY_REALTIME_NODE_WS_URL = SECONDARY_REALTIME_NODE_WS_URL + os.getenv('SECONDARY_ALCHEMY_API_KEY', '')
+        glogr.info(f"Using alchemy for Secondary Web Socket: {secret_text(SECONDARY_REALTIME_NODE_WS_URL, 6)}")
+    
+    if 'quiknode.pro' in SECONDARY_DAO_NODE_REALTIME_NODE_WS:
+        SECONDARY_REALTIME_NODE_WS_URL = SECONDARY_REALTIME_NODE_WS_URL + os.getenv('SECONDARY_QUICKNODE_API_KEY', '')
+        glogr.info(f"Using quiknode.pro for Secondary Web Socket: {secret_text(SECONDARY_REALTIME_NODE_WS_URL, 6)}")
 
 
 try:
@@ -631,13 +658,13 @@ async def vote_record_handler(app, request, proposal_id):
             vr = deepcopy(app.ctx.votes.proposal_vote_record[proposal_id])
             vr.sort(key=lambda x: int(x['bn']), reverse=True)
         else:
-            # Since the events are ordered, we don't need to take a 
-            # deep copy nor sort.  This reduces the API call from 35 ms to 1 ms 
+            # Since the events are ordered, we don't need to take a
+            # deep copy nor sort.  This reduces the API call from 35 ms to 1 ms
             # when loading a chart in chronological order.
             vr = app.ctx.votes.proposal_vote_record[proposal_id]
     elif sort_by == 'VP':
         vr = deepcopy(app.ctx.votes.proposal_vote_record[proposal_id])
-        key = 'weight' if 'weight' in vr[0] else 'votes'    
+        key = 'weight' if 'weight' in vr[0] else 'votes'
         vr.sort(key=lambda x: x[key], reverse=reverse)
     else:
         raise Exception(f"Invalid sort_by: {sort_by}")
@@ -837,9 +864,11 @@ async def delegates(request):
     return await delegates_handler(app, request)
 
 # Helper function to get the sort value for a single delegate
-def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str):
+def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str, has_staking: bool = False):
     if sort_by == 'VP':
-        return app_ctx.delegations.delegatee_vp.get(delegate_address, 0)
+        delegated_vp = app_ctx.delegations.delegatee_vp.get(delegate_address, 0)
+        staked_vp = app_ctx.staking.get_user_total_stake(delegate_address) if has_staking else 0
+        return delegated_vp + staked_vp
     elif sort_by == 'MRD':
         event = app_ctx.delegations.delegatee_latest_event.get(delegate_address)
         return int(event.get('block_number', 0)) if event else 0 # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
@@ -858,15 +887,16 @@ def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str):
 async def delegates_handler(app, request):
 
     sort_by = request.args.get("sort_by", 'VP')
-    
+
     sort_by_vp  = sort_by == 'VP'  # Voting Power
     sort_by_dc  = sort_by == 'DC'  # Delegator Count
-    sort_by_pr  = sort_by == 'PR'  # Partipcipation Rate ( Not supported yet) 
+    sort_by_pr  = sort_by == 'PR'  # Partipcipation Rate ( Not supported yet)
     sort_by_lvb = sort_by == 'LVB' # Last Vote Block
     sort_by_mrd = sort_by == 'MRD' # Most Recent Delegation
     sort_by_old = sort_by == 'OLD' # Oldest Delegation
     sort_by_vpc = sort_by == 'VPC' # 7-day Voting Power Change
 
+    has_staking = hasattr(app.ctx, 'staking')
 
     offset = int(request.args.get("offset", DEFAULT_OFFSET))
     page_size = int(request.args.get("page_size", DEFAULT_PAGE_SIZE))
@@ -894,11 +924,11 @@ async def delegates_handler(app, request):
     if delegator_address_filter:
         delegator_address_filter_lower = delegator_address_filter.lower()
         target_delegatee_addresses = app.ctx.delegations.delegator_delegate[delegator_address_filter_lower]
-        
+
         if target_delegatee_addresses:
             for delegate_addr in target_delegatee_addresses:
                 delegate_addr_lower = delegate_addr
-                sort_val = _get_delegate_sort_value(app.ctx, delegate_addr_lower, sort_by)
+                sort_val = _get_delegate_sort_value(app.ctx, delegate_addr_lower, sort_by, has_staking)
                 
                 # Apply LVB specific pruning if sorting by LVB
                 if sort_by_lvb and sort_val == 0:
@@ -907,7 +937,15 @@ async def delegates_handler(app, request):
     # Get the initial list based on sort criteria
     else:
         if sort_by_vp:
-            out = list(app.ctx.delegations.delegatee_vp.items())
+            # Include staking VP in total VP calculation
+            if has_staking:
+                staking = app.ctx.staking
+                vp_dict = dict(app.ctx.delegations.delegatee_vp)
+                for addr, stake in staking.user_stakes.items():
+                    vp_dict[addr] = vp_dict.get(addr, 0) + stake
+                out = [(addr, vp) for addr, vp in vp_dict.items() if vp > 0]
+            else:
+                out = list(app.ctx.delegations.delegatee_vp.items())
         elif sort_by_mrd:
             out = [(addr, int(event['block_number'])) 
                    for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
@@ -941,12 +979,20 @@ async def delegates_handler(app, request):
     if sort_by_vp or sort_by_vpc:
         out = [(addr, str(v)) for addr, v in out]
 
-    voting_power_func = lambda x, y: str(app.ctx.delegations.delegatee_vp[x])
-    from_cnt_func = lambda x, y: app.ctx.delegations.delegatee_cnt[x]
+    if sort_by_vp:
+        voting_power_func = lambda addr, sort_val: sort_val
+    else:
+        if has_staking:
+            def voting_power_func(addr, _sort_val):
+                return str(app.ctx.delegations.delegatee_vp.get(addr, 0) + app.ctx.staking.get_user_total_stake(addr))
+        else:
+            voting_power_func = lambda addr, _sort_val: str(app.ctx.delegations.delegatee_vp[addr])
+
+    from_cnt_func = lambda x, y: app.ctx.delegations.delegatee_cnt.get(x, 0)
     participation_func = lambda x, y: app.ctx.participation_rate_model.get_rate(x)
     last_vote_block_func = lambda x, y: app.ctx.votes.latest_vote_block.get(x, 0)
-    most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event[x].get('block_number', 0) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
-    oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event[x].get('block_number', 100000000000000000000000000) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
+    most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event.get(x, {}).get('block_number', 0) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
+    oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event.get(x, {}).get('block_number', 100000000000000000000000000) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
     seven_day_vp_change_func = lambda x, y: str(app.ctx.delegations.delegate_seven_day_vp_change(x))
 
     use_sort_key = lambda x, y: y
@@ -976,32 +1022,38 @@ async def delegates_handler(app, request):
 ############################################################################################################################################################
 
 async def delegate_handler(app, request, addr):
-    from_list_with_info = []
-
     addr = addr.lower()
 
-    for delegator, (block_number, transaction_index) in app.ctx.delegations.delegatee_list[addr].items():
-        
-        if addr in app.ctx.delegations.delegation_amounts and delegator in app.ctx.delegations.delegation_amounts[addr]:
-            amount = app.ctx.delegations.delegation_amounts[addr][delegator]
-        else:
-            amount = 10000
+    delegatee_list = app.ctx.delegations.delegatee_list[addr]
+    delegation_amounts = app.ctx.delegations.delegation_amounts.get(addr, {})
 
-        row = {'delegator' : delegator, 'percentage' : amount, 'bn' : block_number, 'tid' : transaction_index}
+    from_list_with_info = []
+    for delegator, (block_number, transaction_index) in delegatee_list.items():
+        amount = delegation_amounts.get(delegator, 10000)
+        row = {'delegator': delegator, 'percentage': amount, 'bn': block_number, 'tid': transaction_index}
 
         if INCLUDE_BALANCES:
-            balance = str(app.ctx.balances.balance_of(delegator))
-            row['balance'] = balance
+            row['balance'] = str(app.ctx.balances.balance_of(delegator))
 
         from_list_with_info.append(row)
 
     participation = app.ctx.participation_rate_model.get_fraction(addr)
 
-    return json({'delegate' : 
+    # Get delegated voting power
+    delegated_vp = app.ctx.delegations.delegatee_vp[addr]
+
+    # Get staked voting power if staking is available
+    staked_vp = app.ctx.staking.get_user_total_stake(addr) if hasattr(app.ctx, 'staking') else 0
+
+    total_vp = delegated_vp + staked_vp
+
+    return json({'delegate' :
                 {'addr' : addr,
                 'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
                 'from_list' : from_list_with_info,
-                'voting_power' : str(app.ctx.delegations.delegatee_vp[addr]),
+                'voting_power' : str(total_vp),
+                'delegated_voting_power' : str(delegated_vp),
+                'staked_voting_power' : str(staked_vp),
                 'history' : app.ctx.delegations.delegatee_vp_history[addr],
                 'participation' : participation}})
 
@@ -1211,12 +1263,14 @@ async def progress(request):
 @openapi.description("""
 ## Description
 The total voting power across all delegations for the DAO, as of the last block heard.
+If staking is enabled, includes the total staked amount.
 
 ## Methodology
 Voting power is calculated as the cumulative sum of the difference between new and prior in every DelegateVotesChanged `event`.
+Staking power is added from the total staked balance.
 
 ## Performance
-- 🟢 
+- 🟢
 - O(0)
 - E(t) <= 100 μs
 
@@ -1228,11 +1282,152 @@ None
 @measure
 async def voting_power(request):
     if ENABLE_DELEGATION:
-        return json({'voting_power' : str(app.ctx.delegations.voting_power)})
+        delegation_vp = app.ctx.delegations.voting_power
+        staking_vp = app.ctx.staking.total_staked if hasattr(app.ctx, 'staking') else 0
+        total_vp = delegation_vp + staking_vp
+        return json({
+            'voting_power': str(total_vp),
+            'delegated_voting_power': str(delegation_vp),
+            'staked_voting_power': str(staking_vp)
+        })
     else:
         return json({'voting_power' : '10000000000000000000'})
 
+#################################################################################
+#
+# STAKING ENDPOINTS
+#
+#################################################################################
 
+@app.route('/v1/staking/total')
+@openapi.tag("Staking")
+@openapi.summary("Get total staked")
+@openapi.description("""
+## Description
+Returns the total amount staked.
+
+## Returns
+- total_stake: Total amount staked
+""")
+@measure
+async def staking_total(request):
+    if not hasattr(app.ctx, 'staking'):
+        return json({'error': 'Staking not configured'}, status=404)
+    
+    staking = app.ctx.staking
+    
+    return json({
+        'total_stake': str(staking.total_staked),
+    })
+
+@app.route('/v1/staking/total/at-block/<block_number:int>')
+@openapi.tag("Staking")
+@openapi.summary("Get total staked at a specific block")
+@openapi.description("""
+## Description
+Returns the total amount staked at a given block.
+
+## Returns
+- block_number: The queried block number
+- total_stake: Total amount staked at that block
+""")
+@measure
+async def staking_total_at_block(request, block_number):
+    if not hasattr(app.ctx, 'staking'):
+        return json({'error': 'Staking not configured'}, status=404)
+
+    staking = app.ctx.staking
+    total_stake = staking.get_total_stake_at_block(block_number)
+
+    return json({
+        'block_number': block_number,
+        'total_stake': str(total_stake),
+    })
+
+@app.route('/v1/staking/user/<address:str>/at-block/<block_number:int>')
+@openapi.tag("Staking")
+@openapi.summary("Get user stake at specific block")
+@openapi.description("""
+## Description
+Returns the user's staked balance at a specific block height.
+
+## Returns
+- address: User address
+- block_number: The queried block number
+- stake: Stake amount at that block
+""")
+@measure
+async def staking_user_at_block(request, address, block_number):
+    if not hasattr(app.ctx, 'staking'):
+        return json({'error': 'Staking not configured'}, status=404)
+
+    staking = app.ctx.staking
+    address = address.lower()
+    stake = staking.get_user_stake_at_block(address, block_number)
+
+    result = {
+        'address': address,
+        'block_number': block_number,
+        'stake': str(stake)
+    }
+
+    return json(result)
+
+@app.route('/v1/staking/all-stakes/at-block/<block_number:int>')
+@openapi.tag("Staking")
+@openapi.summary("Get all stakes at specific block")
+@openapi.description("""
+## Description
+Returns all user stakes at a specific block number.
+
+## Returns
+- block_number: The queried block number
+- stakes: Dictionary of all user stakes by address
+""")
+@measure
+async def staking_all_at_block(request, block_number):
+    if not hasattr(app.ctx, 'staking'):
+        return json({'error': 'Staking not configured'}, status=404)
+
+    staking = app.ctx.staking
+    all_stakes = staking.get_all_stakes_at_block(block_number)
+
+    stakes_formatted = {user: str(amount) for user, amount in all_stakes.items()}
+
+    return json({
+        'block_number': block_number,
+        'stakes': stakes_formatted
+    })
+
+@app.route('/v1/staking/epoch/current')
+@openapi.tag("Staking")
+@openapi.summary("Get current epoch information")
+@openapi.description("""
+## Description
+Returns information about the current epoch.
+
+## Returns
+- current_epoch: Current epoch index
+- epoch_start: Start timestamp of current epoch
+- epoch_end: End timestamp of current epoch
+- epoch_duration: Duration of each epoch in seconds
+""")
+@measure
+async def staking_current_epoch(request):
+    if not hasattr(app.ctx, 'staking'):
+        return json({'error': 'Staking not configured'}, status=404)
+
+    staking = app.ctx.staking
+    current_time = int(time.time())
+    current_epoch = staking.timestamp_to_epoch(current_time)
+    epoch_start, epoch_end = staking.epoch_to_timestamp_range(current_epoch)
+
+    return json({
+        'current_epoch': current_epoch,
+        'epoch_start': epoch_start,
+        'epoch_end': epoch_end,
+        'epoch_duration': staking.EPOCH_DURATION
+    })
 
 #################################################################################
 #
@@ -1393,7 +1588,71 @@ async def bootstrap_data_feeds(app, loop):
     for data_product in [proposals, votes]:
         if not hasattr(app.ctx, data_product.name):
             setattr(app.ctx, data_product.name, data_product)
+    # Secondary setup for staking contract
+    
+    if 'staking' in deployment and SECONDARY_ARCHIVE_NODE_HTTP_URL:
+        secondary_clients = []
+        
+        staking_chain_id = int(deployment['staking']['chain_id'])
+        staking_addr = deployment['staking']['address'].lower()
+        
+        logr.info(f"Setting up secondary clients for staking contract on chain {staking_chain_id}")
 
+        # Force start from block 0 for staking since CSV archive will never be there
+        secondary_rpcc = JsonRpcHistHttpClient(SECONDARY_ARCHIVE_NODE_HTTP_URL, force_start_block_zero=True)
+        if secondary_rpcc.is_valid():
+            secondary_clients.append(secondary_rpcc)
+        
+        if SECONDARY_REALTIME_NODE_WS_URL:
+            for i in range(NUM_REALTIME_CLIENTS):
+                secondary_jwsc = JsonRpcRtWsClient(SECONDARY_REALTIME_NODE_WS_URL, f"SEC_RTWS{i}")
+                if secondary_jwsc.is_valid():
+                    secondary_clients.append(secondary_jwsc)
+        
+        for i in range(NUM_POLLING_CLIENTS):
+            secondary_jwhc = JsonRpcRtHttpClient(SECONDARY_ARCHIVE_NODE_HTTP_URL, f"SEC_POLL{i}")
+            if secondary_jwhc.is_valid():
+                secondary_clients.append(secondary_jwhc)
+        
+        secondary_dcqs = ClientSequencer(secondary_clients)
+        
+        staking_abi_list = []
+        
+        STAKING_ABI_OVERRIDE_URL = os.getenv('STAKING_ABI_OVERRIDE_URL', None)
+        if STAKING_ABI_OVERRIDE_URL:
+            logr.info("Using override URL for Staking ABI")
+            staking_abi = ABI.from_url('staking', STAKING_ABI_OVERRIDE_URL)
+        else:
+            logr.info(f"Loading Staking ABI for {staking_addr=} on {staking_chain_id=}")
+            staking_abi = ABI.from_internet('staking', staking_addr, chain_id=staking_chain_id, implementation=True)
+        
+        staking_abi_list.append(staking_abi)
+
+        staking_abis = ABISet('staking', staking_abi_list)
+        secondary_dcqs.set_abis(staking_abis)
+
+        # Create secondary feed and plan events BEFORE setting client sequencer
+        app.ctx.secondary_feed = Feed()
+
+        staking = Staking()
+
+        # Plan events on the secondary feed BEFORE setting the client sequencer
+        # This ensures the meta list is populated when clients are configured
+        app.ctx.secondary_feed.plan_event(chain_id=staking_chain_id, address=staking_addr, signature=STAKE)
+        app.ctx.secondary_feed.plan_event(chain_id=staking_chain_id, address=staking_addr, signature=WITHDRAWAL_COMPLETED)
+
+        # Now set the client sequencer, which will plan the events on the clients
+        app.ctx.secondary_feed.set_client_sequencer(secondary_dcqs)
+
+        # Register the data product for dispatch
+        app.ctx.dps[f'{staking_chain_id}.{staking_addr}.{STAKE}'].append(staking)
+        app.ctx.dps[f'{staking_chain_id}.{staking_addr}.{WITHDRAWAL_COMPLETED}'].append(staking)
+
+        if not hasattr(app.ctx, 'staking'):
+            setattr(app.ctx, 'staking', staking)
+        
+        app.add_task(read_secondary_archive(app, secondary_dcqs))
+    
     app.add_task(read_archive(app, dcqs))
 
 async def index_proposals(app):
@@ -1417,6 +1676,19 @@ async def read_archive(app, dcqs):
 
         app.ctx.dispatch_from_archive(event)
 
+async def read_secondary_archive(app, secondary_dcqs):
+    
+    if not hasattr(app.ctx, 'secondary_feed'):
+        logr.warning("No secondary feed configured, skipping secondary archive read")
+        return
+    
+    for event, signal, new_signal in app.ctx.secondary_feed.read_archive():
+
+        if new_signal:
+            app.ctx.set_signal_context(signal)
+
+        app.ctx.dispatch_from_archive(event)
+
 @app.after_server_start
 async def subscribe_feeds(app):
 
@@ -1429,6 +1701,15 @@ async def subscribe_feeds(app):
     for i in range(NUM_POLLING_CLIENTS):
         logr.info(f"Polling client {1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i} started")
         app.add_task(read_polling(app, 1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i))
+    
+    if hasattr(app.ctx, 'secondary_feed') and 'staking' in deployment and SECONDARY_REALTIME_NODE_WS_URL:
+        for i in range(NUM_REALTIME_CLIENTS):
+            logr.info(f"Secondary realtime client {i} started")
+            app.add_task(read_secondary_realtime(app, 1 + i))
+        
+        for i in range(NUM_POLLING_CLIENTS):
+            logr.info(f"Secondary polling client {i} started")
+            app.add_task(read_secondary_polling(app, 1 + NUM_REALTIME_CLIENTS + i))
 
 async def read_realtime(app, rt_client_num):
     
@@ -1458,6 +1739,30 @@ async def read_polling(app, polling_client_num):
             await app.ctx.dispatch_from_realtime(event)
             cnt += 1
         logr.info(f"Polling client {polling_client_num} [{time.perf_counter() - start_time:.2f}s] [{cnt} events]")
+        await asyncio.sleep(wait_cycle)
+
+async def read_secondary_realtime(app, rt_client_num):
+    
+    if not hasattr(app.ctx, 'secondary_feed'):
+        return
+    
+    async for event in app.ctx.secondary_feed.realtime_async_read(rt_client_num):
+        await app.ctx.dispatch_from_realtime(event)
+
+async def read_secondary_polling(app, polling_client_num):
+    
+    if not hasattr(app.ctx, 'secondary_feed'):
+        return
+    
+    wait_cycle = int(os.getenv('POLLING_WAIT_CYCLE', 120))
+    await asyncio.sleep(wait_cycle)
+    while True:
+        start_time = time.perf_counter()
+        cnt = 0
+        async for event in app.ctx.secondary_feed.realtime_async_read(polling_client_num):
+            await app.ctx.dispatch_from_realtime(event)
+            cnt += 1
+        logr.info(f"Secondary polling client {polling_client_num} [{time.perf_counter() - start_time:.2f}s] [{cnt} events]")
         await asyncio.sleep(wait_cycle)
 
 ##################################
@@ -1575,4 +1880,3 @@ It is not a replacement for JSON-RPC provider, in the sense that contract-calls 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8004, dev=True, debug=True)
     #app.run(host="0.0.0.0", port=7654, dev=True, workers=1, access_log=True, debug=True)
-
