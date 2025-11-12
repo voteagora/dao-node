@@ -104,6 +104,9 @@ async def test_delegates_endpoint_sort_by_oldest(app):
     app.ctx.delegations = delegations
     app.ctx.proposals = Mock(spec=Proposals)
     app.ctx.votes = Mock(spec=Votes)
+    staking_mock = Mock()
+    staking_mock.get_user_total_stake.return_value = 0
+    app.ctx.staking = staking_mock
     
     response = await delegates_handler(app, request)
     
@@ -157,6 +160,9 @@ async def test_delegates_endpoint_sort_by_latest(app):
     app.ctx.delegations = delegations
     app.ctx.proposals = Mock(spec=Proposals)
     app.ctx.votes = Mock(spec=Votes)
+    staking_mock = Mock()
+    staking_mock.get_user_total_stake.return_value = 0
+    app.ctx.staking = staking_mock
     
     response = await delegates_handler(app, request)
     
@@ -245,6 +251,9 @@ async def test_delegates_endpoint_with_lvb_sorting(app, test_client):
     app.ctx.delegations = MockDelegations()
     app.ctx.proposals = MockProposals()
     app.ctx.votes = MockVotes()
+    staking_mock = Mock()
+    staking_mock.get_user_total_stake.return_value = 0
+    app.ctx.staking = staking_mock
     
     req, resp = await test_client.get('/v1/delegates?sort_by=LVB&include=VP,DC')
     
