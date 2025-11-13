@@ -35,6 +35,8 @@ def resolve_block_count_span(chain_id=None):
         default_block_span = int(target * 4.76)
     elif chain_id in (42161, 421614): # Arbitrum One (ie XAI), Arbitrum Sepolia
         default_block_span = target * 48
+    elif chain_id in (510003,): # Syndicate
+        default_block_span = target * 1000
     else:
         default_block_span = target
 
@@ -185,10 +187,11 @@ class JsonRpcHistHttpClientCaster:
 class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
     timeliness = 'archive'
 
-    def __init__(self, url):
+    def __init__(self, url, force_start_block_zero=False):
         self.url = url
         self.fallback_block = None
-        
+        self.force_start_block_zero = force_start_block_zero
+
         self.init()
 
         self.casterCls = JsonRpcHistHttpClientCaster
@@ -245,18 +248,24 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
     
     def get_fallback_block(self):
 
-        if self.fallback_block:
+        if self.fallback_block is not None:
             return self.fallback_block
-        
+
+        # If force_start_block_zero is True, always start from block 0
+        if self.force_start_block_zero:
+            logr.info("Force start from block 0 enabled - starting from genesis block")
+            self.fallback_block = 0
+            return 0
+
         w3 = self.connect()
-            
+
         if not w3.is_connected():
             raise Exception(f"Could not connect to {self.url}")
 
         now = datetime.utcnow()
 
         if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
-            days_back = 30 
+            days_back = 30
         else:
             days_back = 1 # TODO: Change back to 4, after we get infra stable.
 
@@ -281,7 +290,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             if block_time < target_date:
                 logr.info(f"Found block from ~{days_back} days ago: {block.number} @ {block_time.isoformat()} UTC")
 
-                self.fallback_block = block.number 
+                self.fallback_block = block.number
 
                 return block.number
         else:
