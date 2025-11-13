@@ -1608,11 +1608,11 @@ async def bootstrap_data_feeds(app, loop):
                 secondary_jwsc = JsonRpcRtWsClient(SECONDARY_REALTIME_NODE_WS_URL, f"SEC_RTWS{i}")
                 if secondary_jwsc.is_valid():
                     secondary_clients.append(secondary_jwsc)
-        
-        for i in range(NUM_POLLING_CLIENTS):
-            secondary_jwhc = JsonRpcRtHttpClient(SECONDARY_ARCHIVE_NODE_HTTP_URL, f"SEC_POLL{i}")
-            if secondary_jwhc.is_valid():
-                secondary_clients.append(secondary_jwhc)
+
+            for i in range(NUM_POLLING_CLIENTS):
+                secondary_jwhc = JsonRpcRtHttpClient(SECONDARY_ARCHIVE_NODE_HTTP_URL, f"SEC_POLL{i}")
+                if secondary_jwhc.is_valid():
+                    secondary_clients.append(secondary_jwhc)
         
         secondary_dcqs = ClientSequencer(secondary_clients)
         
@@ -1631,18 +1631,14 @@ async def bootstrap_data_feeds(app, loop):
         staking_abis = ABISet('staking', staking_abi_list)
         secondary_dcqs.set_abis(staking_abis)
 
-        # Create secondary feed and plan events BEFORE setting client sequencer
+        # Create secondary feed
         app.ctx.secondary_feed = Feed()
 
         staking = Staking()
 
-        # Plan events on the secondary feed BEFORE setting the client sequencer
-        # This ensures the meta list is populated when clients are configured
+        # Plan events on the secondary feed
         app.ctx.secondary_feed.plan_event(chain_id=staking_chain_id, address=staking_addr, signature=STAKE)
         app.ctx.secondary_feed.plan_event(chain_id=staking_chain_id, address=staking_addr, signature=WITHDRAWAL_COMPLETED)
-
-        # Now set the client sequencer, which will plan the events on the clients
-        app.ctx.secondary_feed.set_client_sequencer(secondary_dcqs)
 
         # Register the data product for dispatch
         app.ctx.dps[f'{staking_chain_id}.{staking_addr}.{STAKE}'].append(staking)
@@ -1650,7 +1646,7 @@ async def bootstrap_data_feeds(app, loop):
 
         if not hasattr(app.ctx, 'staking'):
             setattr(app.ctx, 'staking', staking)
-        
+
         app.add_task(read_secondary_archive(app, secondary_dcqs))
     
     app.add_task(read_archive(app, dcqs))
@@ -1677,11 +1673,13 @@ async def read_archive(app, dcqs):
         app.ctx.dispatch_from_archive(event)
 
 async def read_secondary_archive(app, secondary_dcqs):
-    
+
     if not hasattr(app.ctx, 'secondary_feed'):
         logr.warning("No secondary feed configured, skipping secondary archive read")
         return
-    
+
+    app.ctx.secondary_feed.set_client_sequencer(secondary_dcqs)
+
     for event, signal, new_signal in app.ctx.secondary_feed.read_archive():
 
         if new_signal:
