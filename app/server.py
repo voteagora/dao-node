@@ -31,7 +31,7 @@ from .middleware import start_timer, add_server_timing_header, measure
 from .profiling import Profiler
 
 from .clients_csv import CSVClient
-from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcRtHttpClient
+from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcHistHttpClientSecondary, JsonRpcRtHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
 
 from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes, Staking
@@ -174,6 +174,7 @@ except:
 ERC20 = public_config['token_spec']['name'] == 'erc20'
 NORMAL_STYLE = public_config['token_spec'].get('style', 'normal') == 'normal'
 INCLUDE_BALANCES = ERC20 and NORMAL_STYLE and ENABLE_BALANCES
+INCLUDE_STAKING = 'staking' in deployment
 
 ########################################################################
 
@@ -1043,19 +1044,26 @@ async def delegate_handler(app, request, addr):
     delegated_vp = app.ctx.delegations.delegatee_vp[addr]
 
     # Get staked voting power if staking is available
-    staked_vp = app.ctx.staking.get_user_total_stake(addr) if hasattr(app.ctx, 'staking') else 0
+    has_staking = hasattr(app.ctx, 'staking')
+    staked_vp = app.ctx.staking.get_user_total_stake(addr) if has_staking else 0
 
     total_vp = delegated_vp + staked_vp
 
-    return json({'delegate' :
-                {'addr' : addr,
-                'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
-                'from_list' : from_list_with_info,
-                'voting_power' : str(total_vp),
-                'delegated_voting_power' : str(delegated_vp),
-                'staked_voting_power' : str(staked_vp),
-                'history' : app.ctx.delegations.delegatee_vp_history[addr],
-                'participation' : participation}})
+    delegate_info = {
+        'addr' : addr,
+        'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
+        'from_list' : from_list_with_info,
+        'voting_power' : str(total_vp),
+        'history' : app.ctx.delegations.delegatee_vp_history[addr],
+        'participation' : participation
+    }
+
+    # Only include staking fields if staking is enabled
+    if has_staking:
+        delegate_info['delegated_voting_power'] = str(delegated_vp)
+        delegate_info['staked_voting_power'] = str(staked_vp)
+
+    return json({'delegate' : delegate_info})
 
 @app.route('/v1/delegate/<addr>')
 @openapi.tag("Delegation State")
@@ -1283,13 +1291,17 @@ None
 async def voting_power(request):
     if ENABLE_DELEGATION:
         delegation_vp = app.ctx.delegations.voting_power
-        staking_vp = app.ctx.staking.total_staked if hasattr(app.ctx, 'staking') else 0
+        has_staking = hasattr(app.ctx, 'staking')
+        staking_vp = app.ctx.staking.total_staked if has_staking else 0
         total_vp = delegation_vp + staking_vp
-        return json({
-            'voting_power': str(total_vp),
-            'delegated_voting_power': str(delegation_vp),
-            'staked_voting_power': str(staking_vp)
-        })
+
+        result = {'voting_power': str(total_vp)}
+
+        if has_staking:
+            result['delegated_voting_power'] = str(delegation_vp)
+            result['staked_voting_power'] = str(staking_vp)
+
+        return json(result)
     else:
         return json({'voting_power' : '10000000000000000000'})
 
@@ -1299,135 +1311,121 @@ async def voting_power(request):
 #
 #################################################################################
 
-@app.route('/v1/staking/total')
-@openapi.tag("Staking")
-@openapi.summary("Get total staked")
-@openapi.description("""
-## Description
-Returns the total amount staked.
+if INCLUDE_STAKING:
+    @app.route('/v1/staking/total')
+    @openapi.tag("Staking")
+    @openapi.summary("Get total staked")
+    @openapi.description("""
+    ## Description
+    Returns the total amount staked.
 
-## Returns
-- total_stake: Total amount staked
-""")
-@measure
-async def staking_total(request):
-    if not hasattr(app.ctx, 'staking'):
-        return json({'error': 'Staking not configured'}, status=404)
-    
-    staking = app.ctx.staking
-    
-    return json({
-        'total_stake': str(staking.total_staked),
-    })
+    ## Returns
+    - total_stake: Total amount staked
+    """)
+    @measure
+    async def staking_total(request):
+        staking = app.ctx.staking
 
-@app.route('/v1/staking/total/at-block/<block_number:int>')
-@openapi.tag("Staking")
-@openapi.summary("Get total staked at a specific block")
-@openapi.description("""
-## Description
-Returns the total amount staked at a given block.
+        return json({
+            'total_stake': str(staking.total_staked),
+        })
 
-## Returns
-- block_number: The queried block number
-- total_stake: Total amount staked at that block
-""")
-@measure
-async def staking_total_at_block(request, block_number):
-    if not hasattr(app.ctx, 'staking'):
-        return json({'error': 'Staking not configured'}, status=404)
+    @app.route('/v1/staking/total/at-block/<block_number:int>')
+    @openapi.tag("Staking")
+    @openapi.summary("Get total staked at a specific block")
+    @openapi.description("""
+    ## Description
+    Returns the total amount staked at a given block.
 
-    staking = app.ctx.staking
-    total_stake = staking.get_total_stake_at_block(block_number)
+    ## Returns
+    - block_number: The queried block number
+    - total_stake: Total amount staked at that block
+    """)
+    @measure
+    async def staking_total_at_block(request, block_number):
+        staking = app.ctx.staking
+        total_stake = staking.get_total_stake_at_block(block_number)
 
-    return json({
-        'block_number': block_number,
-        'total_stake': str(total_stake),
-    })
+        return json({
+            'block_number': block_number,
+            'total_stake': str(total_stake),
+        })
 
-@app.route('/v1/staking/user/<address:str>/at-block/<block_number:int>')
-@openapi.tag("Staking")
-@openapi.summary("Get user stake at specific block")
-@openapi.description("""
-## Description
-Returns the user's staked balance at a specific block height.
+    @app.route('/v1/staking/user/<address:str>/at-block/<block_number:int>')
+    @openapi.tag("Staking")
+    @openapi.summary("Get user stake at specific block")
+    @openapi.description("""
+    ## Description
+    Returns the user's staked balance at a specific block height.
 
-## Returns
-- address: User address
-- block_number: The queried block number
-- stake: Stake amount at that block
-""")
-@measure
-async def staking_user_at_block(request, address, block_number):
-    if not hasattr(app.ctx, 'staking'):
-        return json({'error': 'Staking not configured'}, status=404)
+    ## Returns
+    - address: User address
+    - block_number: The queried block number
+    - stake: Stake amount at that block
+    """)
+    @measure
+    async def staking_user_at_block(request, address, block_number):
+        staking = app.ctx.staking
+        address = address.lower()
+        stake = staking.get_user_stake_at_block(address, block_number)
 
-    staking = app.ctx.staking
-    address = address.lower()
-    stake = staking.get_user_stake_at_block(address, block_number)
+        result = {
+            'address': address,
+            'block_number': block_number,
+            'stake': str(stake)
+        }
 
-    result = {
-        'address': address,
-        'block_number': block_number,
-        'stake': str(stake)
-    }
+        return json(result)
 
-    return json(result)
+    @app.route('/v1/staking/all-stakes/at-block/<block_number:int>')
+    @openapi.tag("Staking")
+    @openapi.summary("Get all stakes at specific block")
+    @openapi.description("""
+    ## Description
+    Returns all user stakes at a specific block number.
 
-@app.route('/v1/staking/all-stakes/at-block/<block_number:int>')
-@openapi.tag("Staking")
-@openapi.summary("Get all stakes at specific block")
-@openapi.description("""
-## Description
-Returns all user stakes at a specific block number.
+    ## Returns
+    - block_number: The queried block number
+    - stakes: Dictionary of all user stakes by address
+    """)
+    @measure
+    async def staking_all_at_block(request, block_number):
+        staking = app.ctx.staking
+        all_stakes = staking.get_all_stakes_at_block(block_number)
 
-## Returns
-- block_number: The queried block number
-- stakes: Dictionary of all user stakes by address
-""")
-@measure
-async def staking_all_at_block(request, block_number):
-    if not hasattr(app.ctx, 'staking'):
-        return json({'error': 'Staking not configured'}, status=404)
+        stakes_formatted = {user: str(amount) for user, amount in all_stakes.items()}
 
-    staking = app.ctx.staking
-    all_stakes = staking.get_all_stakes_at_block(block_number)
+        return json({
+            'block_number': block_number,
+            'stakes': stakes_formatted
+        })
 
-    stakes_formatted = {user: str(amount) for user, amount in all_stakes.items()}
+    @app.route('/v1/staking/epoch/current')
+    @openapi.tag("Staking")
+    @openapi.summary("Get current epoch information")
+    @openapi.description("""
+    ## Description
+    Returns information about the current epoch.
 
-    return json({
-        'block_number': block_number,
-        'stakes': stakes_formatted
-    })
+    ## Returns
+    - current_epoch: Current epoch index
+    - epoch_start: Start timestamp of current epoch
+    - epoch_end: End timestamp of current epoch
+    - epoch_duration: Duration of each epoch in seconds
+    """)
+    @measure
+    async def staking_current_epoch(request):
+        staking = app.ctx.staking
+        current_time = int(time.time())
+        current_epoch = staking.timestamp_to_epoch(current_time)
+        epoch_start, epoch_end = staking.epoch_to_timestamp_range(current_epoch)
 
-@app.route('/v1/staking/epoch/current')
-@openapi.tag("Staking")
-@openapi.summary("Get current epoch information")
-@openapi.description("""
-## Description
-Returns information about the current epoch.
-
-## Returns
-- current_epoch: Current epoch index
-- epoch_start: Start timestamp of current epoch
-- epoch_end: End timestamp of current epoch
-- epoch_duration: Duration of each epoch in seconds
-""")
-@measure
-async def staking_current_epoch(request):
-    if not hasattr(app.ctx, 'staking'):
-        return json({'error': 'Staking not configured'}, status=404)
-
-    staking = app.ctx.staking
-    current_time = int(time.time())
-    current_epoch = staking.timestamp_to_epoch(current_time)
-    epoch_start, epoch_end = staking.epoch_to_timestamp_range(current_epoch)
-
-    return json({
-        'current_epoch': current_epoch,
-        'epoch_start': epoch_start,
-        'epoch_end': epoch_end,
-        'epoch_duration': staking.EPOCH_DURATION
-    })
+        return json({
+            'current_epoch': current_epoch,
+            'epoch_start': epoch_start,
+            'epoch_end': epoch_end,
+            'epoch_duration': staking.EPOCH_DURATION
+        })
 
 #################################################################################
 #
@@ -1598,8 +1596,8 @@ async def bootstrap_data_feeds(app, loop):
         
         logr.info(f"Setting up secondary clients for staking contract on chain {staking_chain_id}")
 
-        # Force start from block 0 for staking since CSV archive will never be there
-        secondary_rpcc = JsonRpcHistHttpClient(SECONDARY_ARCHIVE_NODE_HTTP_URL, force_start_block_zero=True)
+        # Use secondary client that starts from block 0 for staking since CSV archive will never be there
+        secondary_rpcc = JsonRpcHistHttpClientSecondary(SECONDARY_ARCHIVE_NODE_HTTP_URL)
         if secondary_rpcc.is_valid():
             secondary_clients.append(secondary_rpcc)
         

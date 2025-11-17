@@ -187,10 +187,9 @@ class JsonRpcHistHttpClientCaster:
 class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
     timeliness = 'archive'
 
-    def __init__(self, url, force_start_block_zero=False):
+    def __init__(self, url):
         self.url = url
         self.fallback_block = None
-        self.force_start_block_zero = force_start_block_zero
 
         self.init()
 
@@ -250,12 +249,6 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
         if self.fallback_block is not None:
             return self.fallback_block
-
-        # If force_start_block_zero is True, always start from block 0
-        if self.force_start_block_zero:
-            logr.info("Force start from block 0 enabled - starting from genesis block")
-            self.fallback_block = 0
-            return 0
 
         w3 = self.connect()
 
@@ -494,6 +487,16 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
         for log in all_logs:
             yield log
+
+class JsonRpcHistHttpClientSecondary(JsonRpcHistHttpClient):
+    def get_fallback_block(self):
+        if self.fallback_block is not None:
+            return self.fallback_block
+
+        logr.info("Secondary archive source - starting from genesis block 0")
+        self.fallback_block = 0
+        return 0
+
 
 class JsonRpcRtHttpClient(JsonRpcHistHttpClient):
     timeliness = 'polling'

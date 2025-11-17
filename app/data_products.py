@@ -981,7 +981,7 @@ class Staking(DataProduct):
         signature = event['signature']
         block_number = int(event['block_number'])
         
-        if 'Stake' == signature[:5]:
+        if 'Stake' == STAKE:
             user = event['user'].lower()
             amount = int(event['amount'])
             
