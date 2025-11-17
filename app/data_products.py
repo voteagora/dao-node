@@ -980,14 +980,14 @@ class Staking(DataProduct):
     def handle(self, event):
         signature = event['signature']
         block_number = int(event['block_number'])
-        
-        if 'Stake' == STAKE:
+
+        if signature == STAKE:
             user = event['user'].lower()
             amount = int(event['amount'])
-            
+
             self.user_stakes[user] += amount
             self.total_staked += amount
-            
+
             self._snapshot_state_at_block(block_number)
 
         elif signature == WITHDRAWAL_COMPLETED:
