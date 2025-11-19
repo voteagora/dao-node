@@ -1016,7 +1016,8 @@ async def delegates_handler(app, request):
     if add_seven_day_vp_change:
         transformers.append(('VPC', use_sort_key if sort_by_vpc else seven_day_vp_change_func))
 
-    out = [dict([(k, func(addr, sort_val)) for k, func in transformers]) for addr, sort_val in out]
+    # TODO - the zero address shouldn't appear here.  But, if it does, remove it.
+    out = [dict([(k, func(addr, sort_val)) for k, func in transformers]) for addr, sort_val in out if addr != '0x0000000000000000000000000000000000000000']
 
     return json({'delegates': out})
 
