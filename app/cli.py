@@ -16,19 +16,38 @@ def sync_from_gcs(dir: str, multi_processing=False, strict=False):
 
     load_dotenv()
 
-    agora_config_file = os.environ.get('AGORA_CONFIG_FILE')
+    agora_config_value = os.environ.get('AGORA_CONFIG_FILE')
     dao_node_gcloud_bucket = os.environ.get('DAO_NODE_GCLOUD_BUCKET')
     contract_deployment = os.environ.get('CONTRACT_DEPLOYMENT')
 
-    print(f"agora_config_file={agora_config_file}")
+    print(f"agora_config_file={agora_config_value}")
 
     if not dao_node_gcloud_bucket:
         raise ValueError("The environment variable DAO_NODE_GCLOUD_BUCKET must be set.")
     if not contract_deployment:
         raise ValueError("The environment variable CONTRACT_DEPLOYMENT must be set.")
 
-    with open(agora_config_file, "r") as file:
-        config = yaml.safe_load(file)
+    def load_config():
+        if agora_config_value:
+            env_path = Path(agora_config_value)
+            if env_path.exists():
+                with open(env_path, "r") as file:
+                    return yaml.safe_load(file)
+            try:
+                config_from_env = yaml.safe_load(agora_config_value)
+                if isinstance(config_from_env, dict):
+                    return config_from_env
+            except yaml.YAMLError:
+                pass
+
+        default_path = Path("/app/config.yaml")
+        if default_path.exists():
+            with open(default_path, "r") as file:
+                return yaml.safe_load(file)
+
+        raise ValueError("AGORA_CONFIG_FILE must be a path to a config file or valid inline YAML.")
+
+    config = load_config()
 
     pprint(config)
 

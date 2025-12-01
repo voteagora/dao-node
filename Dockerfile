@@ -30,14 +30,14 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt --no-cache-dir
 
 # copy the content of the local directory to the working directory
-COPY app app
-COPY static static
+COPY . .
 
-# Set PYTHONPATH to include the project root
+# Set PYTHONPATH to include the project root and tell Sanic where the app lives
 ENV PYTHONPATH=/app
+ENV SANIC_APP=app.server:app
 
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Command to run the application
-CMD ["sanic", "app.server", "--host=0.0.0.0", "--port=8000"]
+# Command to run the application, honoring the PORT Railway provides
+CMD ["sh", "-c", "sanic ${SANIC_APP} --host=0.0.0.0 --port=${PORT:-8000}"]

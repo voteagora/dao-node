@@ -150,9 +150,32 @@ if SECONDARY_DAO_NODE_REALTIME_NODE_WS:
 
 
 try:
-    AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
-    with open(AGORA_CONFIG_FILE, 'r') as f:
-        config = yaml.safe_load(f)
+    def load_agora_config():
+        env_value = os.getenv('AGORA_CONFIG_FILE')
+        if env_value:
+            env_path = Path(env_value)
+            if env_path.exists():
+                glogr.info(f"Loading config from AGORA_CONFIG_FILE path: {env_path}")
+                with open(env_path, 'r') as f:
+                    return yaml.safe_load(f)
+            try:
+                glogr.info("Parsing AGORA_CONFIG_FILE as inline YAML from environment.")
+                config_from_env = yaml.safe_load(env_value)
+                if isinstance(config_from_env, dict):
+                    return config_from_env
+                glogr.info("Inline AGORA_CONFIG_FILE did not parse to a mapping; falling back to defaults.")
+            except yaml.YAMLError as exc:
+                glogr.info(f"Failed to parse inline AGORA_CONFIG_FILE YAML: {exc}")
+
+        default_path = Path('/app/config.yaml')
+        if default_path.exists():
+            glogr.info(f"Loading config from default path: {default_path}")
+            with open(default_path, 'r') as f:
+                return yaml.safe_load(f)
+
+        raise FileNotFoundError("No valid config file found and AGORA_CONFIG_FILE was not valid YAML.")
+
+    config = load_agora_config()
     
     glogr.info(config)
     public_config = {k : config.get(k) for k in ['governor_spec', 'token_spec', 'module_spec']}
