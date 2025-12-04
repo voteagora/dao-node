@@ -35,8 +35,6 @@ def resolve_block_count_span(chain_id=None):
         default_block_span = int(target * 4.76)
     elif chain_id in (42161, 421614): # Arbitrum One (ie XAI), Arbitrum Sepolia
         default_block_span = target * 48
-    elif chain_id in (510003,): # Syndicate
-        default_block_span = target * 1000
     else:
         default_block_span = target
 
@@ -190,7 +188,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
     def __init__(self, url):
         self.url = url
         self.fallback_block = None
-
+        
         self.init()
 
         self.casterCls = JsonRpcHistHttpClientCaster
@@ -247,18 +245,18 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
     
     def get_fallback_block(self):
 
-        if self.fallback_block is not None:
+        if self.fallback_block:
             return self.fallback_block
-
+        
         w3 = self.connect()
-
+            
         if not w3.is_connected():
             raise Exception(f"Could not connect to {self.url}")
 
         now = datetime.utcnow()
 
         if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
-            days_back = 30
+            days_back = 30 
         else:
             days_back = 1 # TODO: Change back to 4, after we get infra stable.
 
@@ -283,7 +281,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             if block_time < target_date:
                 logr.info(f"Found block from ~{days_back} days ago: {block.number} @ {block_time.isoformat()} UTC")
 
-                self.fallback_block = block.number
+                self.fallback_block = block.number 
 
                 return block.number
         else:
@@ -487,16 +485,6 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
         for log in all_logs:
             yield log
-
-class JsonRpcHistHttpClientSecondary(JsonRpcHistHttpClient):
-    def get_fallback_block(self):
-        if self.fallback_block is not None:
-            return self.fallback_block
-
-        logr.info("Secondary archive source - starting from genesis block 0")
-        self.fallback_block = 0
-        return 0
-
 
 class JsonRpcRtHttpClient(JsonRpcHistHttpClient):
     timeliness = 'polling'
