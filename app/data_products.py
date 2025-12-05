@@ -43,17 +43,16 @@ class NonIVotesVP(DataProduct):
             self.history_bn_to_pos[int(event['block_number'])] = self.history_len
             self.history_ts_to_pos[int(event['timestamp'])] = self.history_len
             self.history_len += 1
-
             self.history_bn_to_pos = dict(sorted(self.history_bn_to_pos.items()))
             self.history_ts_to_pos = dict(sorted(self.history_ts_to_pos.items()))
 
     @property
     def latest(self):
-        return self.history[self.history_ts_to_pos[-1]]
+        return self.history[self.history_ts_to_pos[max(self.history_ts_to_pos)]]
     
     @property
     def latest_total(self):
-        return self.total[self.history_ts_to_pos[-1]]  
+        return self.total[self.history_ts_to_pos[max(self.history_ts_to_pos)]]
 
     def get_user_vp_at_block(self, address, block_number):
         return self.history[self.history_bn_to_pos[int(block_number)]].get(address, 0)
