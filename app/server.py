@@ -1,3 +1,4 @@
+from app.clients_wsvpsnapper import VPSnappercWsClient
 from dotenv import load_dotenv
 from pyenvdiff import Environment
 
@@ -34,7 +35,7 @@ from .clients_csv import CSVClient
 from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcRtHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
 
-from .data_products import Balances, ProposalTypes, Delegations, Proposals, Votes
+from .data_products import Balances, NonIVotesVP, ProposalTypes, Delegations, Proposals, Votes
 from .data_models import ParticipationRateModel
 
 from .signatures import *
@@ -82,6 +83,9 @@ def secret_text(t, n):
         return t[:n] + "..." + t[-1 * n:]
     else:
         return t[:n] + "***..."
+    
+DAO_NODE_VPSNAPPER_WS = os.getenv('DAO_NODE_VPSNAPPER_WS', None)
+glogr.info(f"{DAO_NODE_VPSNAPPER_WS=}")
 
 DAO_NODE_ARCHIVE_NODE_HTTP = os.getenv('DAO_NODE_ARCHIVE_NODE_HTTP', None)
 glogr.info(f"{DAO_NODE_ARCHIVE_NODE_HTTP=}")
@@ -137,7 +141,8 @@ except:
     glogr.info("Failed to load config of any kind.  DAO Node probably isn't going to do much.")
     config = {
         'friendly_short_name': 'Unknown',
-        'deployments': {}
+        'deployments': {},
+        'features' : {}
     }
     public_config = {}
     public_deployment = {}
@@ -147,6 +152,9 @@ except:
 ERC20 = public_config['token_spec']['name'] == 'erc20'
 NORMAL_STYLE = public_config['token_spec'].get('style', 'normal') == 'normal'
 INCLUDE_BALANCES = ERC20 and NORMAL_STYLE and ENABLE_BALANCES
+INCLUDE_STAKING_VP = config['features'].get('staking', False)
+INCLUDE_LPING_VP = config['features'].get('lping', False)
+INCLUDE_NON_IVOTES_VP = INCLUDE_STAKING_VP or INCLUDE_LPING_VP
 
 ########################################################################
 
@@ -371,7 +379,7 @@ class DataProductContext:
         self.dps_names = defaultdict(list)
         self.feed = Feed()
 
-    def register(self, chain_id_contract_signature, data_product):
+    def register_onchain(self, chain_id_contract_signature, data_product):
 
         if 'blocks' in chain_id_contract_signature:
             self.feed.plan_block(chain_id=int(chain_id_contract_signature.split('.')[0]))
@@ -380,7 +388,11 @@ class DataProductContext:
             self.feed.plan_event(chain_id=int(chain_id), address=address, signature=signature)
 
         self.dps[chain_id_contract_signature].append(data_product)
-        
+        setattr(self, data_product.name, data_product)
+    
+    def register_offchain(self, channel, data_product):
+
+        self.dps[channel].append(data_product)
         setattr(self, data_product.name, data_product)
     
     def register_model(self, model):
@@ -398,12 +410,10 @@ class DataProductContext:
 
         chain_id_contract_signature = event['signal']
         del event['signal']
-
         dps = self.dps[chain_id_contract_signature]
 
         for data_product in dps:
             data_product.handle(event)  
-
     
 app = Sanic('DaoNode', ctx=DataProductContext())
 app.middleware('request')(start_timer)
@@ -855,6 +865,29 @@ def _get_delegate_sort_value(app_ctx, delegate_address: str, sort_by: str):
     elif sort_by == 'VPC':
         return app_ctx.delegations.delegate_seven_day_vp_change(delegate_address)
 
+def _get_delegate_sort_value_with_nonivotes(app_ctx, delegate_address: str, sort_by: str):
+    if sort_by == 'VP':
+        delegated_vp = app_ctx.delegations.delegatee_vp.get(delegate_address, 0)
+        nonivotes_vp = app_ctx.non_ivotes_vp.latest.get(delegate_address, 0)
+        return delegated_vp + nonivotes_vp
+    elif sort_by == 'MRD':
+        event = app_ctx.delegations.delegatee_latest_event.get(delegate_address)
+        return int(event.get('block_number', 0)) if event else 0 # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
+    elif sort_by == 'PR':
+        return app_ctx.participation_rate_model.get_rate(delegate_address)
+    elif sort_by == 'OLD':
+        event = app_ctx.delegations.delegatee_oldest_event.get(delegate_address)
+        return int(event.get('block_number', 100000000000000000000000000)) if event else 100000000000000000000000000 # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
+    elif sort_by == 'DC':
+        return app_ctx.delegations.delegatee_cnt.get(delegate_address, 0)
+    elif sort_by == 'LVB':
+        return int(app_ctx.votes.latest_vote_block.get(delegate_address, 0))
+    elif sort_by == 'VPC':
+        delegated_vp_change = app_ctx.delegations.delegate_seven_day_vp_change(delegate_address)
+        nonivotes_vp_change = app_ctx.non_ivotes_vp.change.get(delegate_address, 0)
+        return delegated_vp_change + nonivotes_vp_change
+            
+
 async def delegates_handler(app, request):
 
     sort_by = request.args.get("sort_by", 'VP')
@@ -890,15 +923,20 @@ async def delegates_handler(app, request):
         if ENABLE_DELEGATION and 'token' in deployment:
             app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
 
+    if INCLUDE_NON_IVOTES_VP:
+        sorter_func = _get_delegate_sort_value_with_nonivotes
+    else:
+        sorter_func = _get_delegate_sort_value
+
     out = []
     if delegator_address_filter:
         delegator_address_filter_lower = delegator_address_filter.lower()
         target_delegatee_addresses = app.ctx.delegations.delegator_delegate[delegator_address_filter_lower]
-        
+
         if target_delegatee_addresses:
             for delegate_addr in target_delegatee_addresses:
                 delegate_addr_lower = delegate_addr
-                sort_val = _get_delegate_sort_value(app.ctx, delegate_addr_lower, sort_by)
+                sort_val = sorter_func(app.ctx, delegate_addr_lower, sort_by)
                 
                 # Apply LVB specific pruning if sorting by LVB
                 if sort_by_lvb and sort_val == 0:
@@ -907,7 +945,16 @@ async def delegates_handler(app, request):
     # Get the initial list based on sort criteria
     else:
         if sort_by_vp:
-            out = list(app.ctx.delegations.delegatee_vp.items())
+            # Include staking VP in total VP calculation
+            if INCLUDE_NON_IVOTES_VP:
+                non_ivotes = app.ctx.non_ivotes
+                vp_dict = dict(app.ctx.delegations.delegatee_vp)
+                latest = non_ivotes.latest
+                for addr, stake in latest.items():
+                    vp_dict[addr] = vp_dict.get(addr, 0) + stake
+                out = [(addr, vp) for addr, vp in vp_dict.items() if vp > 0]
+            else:
+                out = list(app.ctx.delegations.delegatee_vp.items())
         elif sort_by_mrd:
             out = [(addr, int(event['block_number'])) 
                    for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
@@ -923,8 +970,20 @@ async def delegates_handler(app, request):
                    for addr in app.ctx.delegations.delegatee_vp.keys()]
             out  = [obj for obj in out if obj[1] > 0] # TODO This should not be necessary. The data model should prune zeros.
         elif sort_by_vpc:
-            out = [(addr, app.ctx.delegations.delegate_seven_day_vp_change(addr))
-                   for addr in app.ctx.delegations.delegatee_vp.keys()]
+            if INCLUDE_NON_IVOTES_VP:
+                non_ivotes = app.ctx.non_ivotes
+
+                vp_dict = {}
+                for addr in app.ctx.delegations.delegatee_vp.keys():
+                    vp_dict = app.ctx.delegations.delegate_seven_day_vp_change(addr)
+                
+                for addr, change in app.ctx.non_votes_vp.change.items():
+                    vp_dict[addr] = vp_dict.get(addr, 0) + change
+                
+                out = [(addr, vp) for addr, vp in vp_dict.items() if vp > 0]
+            else:
+                out = [(addr, app.ctx.delegations.delegate_seven_day_vp_change(addr))
+                    for addr in app.ctx.delegations.delegatee_vp.keys()]
         else:
             raise Exception(f"Sort by '{sort_by}' not implemented.")
 
@@ -941,12 +1000,20 @@ async def delegates_handler(app, request):
     if sort_by_vp or sort_by_vpc:
         out = [(addr, str(v)) for addr, v in out]
 
-    voting_power_func = lambda x, y: str(app.ctx.delegations.delegatee_vp[x])
-    from_cnt_func = lambda x, y: app.ctx.delegations.delegatee_cnt[x]
+    if sort_by_vp:
+        voting_power_func = lambda addr, sort_val: sort_val
+    else:
+        if INCLUDE_NON_IVOTES_VP:
+            def voting_power_func(addr, _sort_val):
+                return str(app.ctx.delegations.delegatee_vp.get(addr, 0) + app.ctx.non_ivotes_vp.latest.get(addr, 0))
+        else:
+            voting_power_func = lambda addr, _sort_val: str(app.ctx.delegations.delegatee_vp[addr])
+
+    from_cnt_func = lambda x, y: app.ctx.delegations.delegatee_cnt.get(x, 0)
     participation_func = lambda x, y: app.ctx.participation_rate_model.get_rate(x)
     last_vote_block_func = lambda x, y: app.ctx.votes.latest_vote_block.get(x, 0)
-    most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event[x].get('block_number', 0) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
-    oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event[x].get('block_number', 100000000000000000000000000) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
+    most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event.get(x, {}).get('block_number', 0) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
+    oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event.get(x, {}).get('block_number', 100000000000000000000000000) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
     seven_day_vp_change_func = lambda x, y: str(app.ctx.delegations.delegate_seven_day_vp_change(x))
 
     use_sort_key = lambda x, y: y
@@ -981,30 +1048,47 @@ async def delegate_handler(app, request, addr):
 
     addr = addr.lower()
 
-    for delegator, (block_number, transaction_index) in app.ctx.delegations.delegatee_list[addr].items():
-        
-        if addr in app.ctx.delegations.delegation_amounts and delegator in app.ctx.delegations.delegation_amounts[addr]:
-            amount = app.ctx.delegations.delegation_amounts[addr][delegator]
-        else:
-            amount = 10000
+    delegatee_list = app.ctx.delegations.delegatee_list[addr]
+    delegation_amounts = app.ctx.delegations.delegation_amounts.get(addr, {})
 
-        row = {'delegator' : delegator, 'percentage' : amount, 'bn' : block_number, 'tid' : transaction_index}
+
+    for delegator, (block_number, transaction_index) in delegatee_list.items():
+        amount = delegation_amounts.get(delegator, 10000)        
+        row = {'delegator': delegator, 'percentage': amount, 'bn': block_number, 'tid': transaction_index}
 
         if INCLUDE_BALANCES:
-            balance = str(app.ctx.balances.balance_of(delegator))
-            row['balance'] = balance
+            row['balance'] = str(app.ctx.balances.balance_of(delegator))
 
         from_list_with_info.append(row)
 
     participation = app.ctx.participation_rate_model.get_fraction(addr)
 
-    return json({'delegate' : 
-                {'addr' : addr,
-                'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
-                'from_list' : from_list_with_info,
-                'voting_power' : str(app.ctx.delegations.delegatee_vp[addr]),
-                'history' : app.ctx.delegations.delegatee_vp_history[addr],
-                'participation' : participation}})
+    # Get delegated voting power
+    delegated_vp = app.ctx.delegations.delegatee_vp[addr]
+
+    # Get staked voting power if staking is available
+    if INCLUDE_NON_IVOTES_VP:
+        non_ivotes_vp = app.ctx.non_ivotes_vp.latest.get(addr, 0)
+    else:
+        non_ivotes_vp = 0
+
+    total_vp = delegated_vp + non_ivotes_vp
+
+    delegate_info = {
+        'addr' : addr,
+        'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
+        'from_list' : from_list_with_info,
+        'voting_power' : str(total_vp),
+        'history' : app.ctx.delegations.delegatee_vp_history[addr],
+        'participation' : participation
+    }
+
+    # Only include staking fields if staking is enabled
+    if INCLUDE_NON_IVOTES_VP:
+        delegate_info['delegated_voting_power'] = str(delegated_vp)
+        delegate_info['non_ivotes_voting_power'] = str(non_ivotes_vp)
+
+    return json({'delegate' : delegate_info})
 
 @app.route('/v1/delegate/<addr>')
 @openapi.tag("Delegation State")
@@ -1228,10 +1312,121 @@ None
 """)
 @measure
 async def voting_power(request):
+    
     if ENABLE_DELEGATION:
-        return json({'voting_power' : str(app.ctx.delegations.voting_power)})
+        delegation_vp = app.ctx.delegations.voting_power
     else:
-        return json({'voting_power' : '10000000000000000000'})
+        delegation_vp = 0
+    
+    if INCLUDE_NON_IVOTES_VP:
+        non_ivotes_vp = app.ctx.non_ivotes_vp.total
+    else:
+        non_ivotes_vp = 0
+
+    result = {'voting_power': str(delegation_vp + non_ivotes_vp)}
+
+    if INCLUDE_NON_IVOTES_VP:
+        result['delegated_voting_power'] = str(delegation_vp)
+        result['staked_voting_power'] = str(non_ivotes_vp)
+    
+    return json(result)
+    
+#################################################################################
+#
+# NON IVOTES ENDPOINTS
+#
+#################################################################################
+
+if INCLUDE_NON_IVOTES_VP:
+    @app.route('/v1/nonivotes/total')
+    @openapi.tag("Non IVotes")
+    @openapi.summary("Get total VP from non-IVotes sources, as of the latest snapshot.")
+    @openapi.description("""
+    ## Description
+    Returns the total amount across all non-IVotes sources.
+
+    ## Returns
+    - total_non_ivotes: Total amount
+    """)
+    @measure
+    async def non_ivotes_total(request):
+
+        return json({
+            'total_non_ivotes': app.ctx.non_ivotes_vp.latest_total,
+        })
+
+    @app.route('/v1/nonivotes/total/at-block/<block_number:int>')
+    @openapi.tag("Non IVotes")
+    @openapi.summary("Get total staked at a specific block")
+    @openapi.description("""
+    ## Description
+    Returns the total amount staked at a given block.
+
+    ## Returns
+    - block_number: The queried block number
+    - total_stake: Total amount staked at that block
+    """)
+    @measure
+    async def non_ivotes_total_at_block(request, block_number):
+
+
+        non_ivotes = app.ctx.non_ivotes_vp
+
+        total_stake = non_ivotes.total_at_block(int(block_number))
+
+        return json({
+            'block_number': str(block_number),
+            'total_stake': str(total_stake),
+        })
+
+    @app.route('/v1/staking/user/<address:str>/at-block/<block_number:int>')
+    @openapi.tag("Non IVotes")
+    @openapi.summary("Get user stake at specific block")
+    @openapi.description("""
+    ## Description
+    Returns the user's staked balance at a specific block height.
+
+    ## Returns
+    - address: User address
+    - block_number: The queried block number
+    - stake: Stake amount at that block
+    """)
+    @measure
+    async def non_ivotes_user_at_block(request, address, block_number):
+        non_ivotes = app.ctx.non_ivotes_vp
+        address = address.lower()
+        stake = non_ivotes.get_user_vp_at_block(address, block_number)
+
+        result = {
+            'address': address,
+            'block_number': block_number,
+            'vp': str(stake)
+        }
+
+        return json(result)
+
+    @app.route('/v1/nonivotes/all/at-block/<block_number:int>')
+    @openapi.tag("Non IVotes")
+    @openapi.summary("Get all non-IVotes VP at specific block")
+    @openapi.description("""
+    ## Description
+    Returns all user non-IVote VP at a specific block number.
+
+    ## Returns
+    - block_number: The queried block number
+    - vp: Dictionary of all user stakes by address
+    """)
+    @measure
+    async def non_ivotes_all_at_block(request, block_number):
+        non_ivotes = app.ctx.non_ivotes_vp
+        all_nonivotes_vp = non_ivotes.history[non_ivotes.history_bn_to_pos[int(block_number)]]
+
+        formatted = {user: str(amount) for user, amount in all_nonivotes_vp.items()}
+
+        return json({
+            'block_number': block_number,
+            'vp': formatted
+        })
 
 
 
@@ -1324,35 +1519,35 @@ async def bootstrap_data_feeds(app, loop):
 
     if ENABLE_BALANCES and 'token' in deployment:
         balances = Balances(token_spec=public_config['token_spec'])
-        app.ctx.register(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
+        app.ctx.register_onchain(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
     if 'token' in deployment:
 
         if ENABLE_DELEGATION:
             delegations = Delegations()
-            app.ctx.register(f'{chain_id}.blocks', delegations)
-            app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
+            app.ctx.register_onchain(f'{chain_id}.blocks', delegations)
+            app.ctx.register_onchain(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
 
             if 'IVotesPartialDelegation' in public_config['token_spec'].get('interfaces', []):
-                app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_2}', delegations)
+                app.ctx.register_onchain(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_2}', delegations)
             else:
-                app.ctx.register(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_1}', delegations)
+                app.ctx.register_onchain(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_1}', delegations)
 
     if 'ptc' in deployment:
         proposal_types = ProposalTypes()
 
         for prop_type_set_signature in [PROP_TYPE_SET_1, PROP_TYPE_SET_2, PROP_TYPE_SET_3, PROP_TYPE_SET_4]:
             if abis.get_by_signature(prop_type_set_signature):
-                app.ctx.register(f'{chain_id}.{ptc_addr}.{prop_type_set_signature}', proposal_types)
+                app.ctx.register_onchain(f'{chain_id}.{ptc_addr}.{prop_type_set_signature}', proposal_types)
         
         if AGORA_GOV and public_config['governor_spec']['version'] >= 1.1 and public_config['governor_spec']['version'] < 2.0:
-            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
-            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
-            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
+            app.ctx.register_onchain(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
+            app.ctx.register_onchain(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED}', proposal_types)
+            app.ctx.register_onchain(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED}' , proposal_types)
         elif AGORA_GOV and public_config['governor_spec']['version'] >= 2.0:
-            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
-            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED_2}', proposal_types)
-            app.ctx.register(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED_2}' , proposal_types)
+            app.ctx.register_onchain(f'{chain_id}.{ptc_addr}.{SCOPE_CREATED}' , proposal_types)
+            app.ctx.register_onchain(f'{chain_id}.{ptc_addr}.{SCOPE_DISABLED_2}', proposal_types)
+            app.ctx.register_onchain(f'{chain_id}.{ptc_addr}.{SCOPE_DELETED_2}' , proposal_types)
 
     proposals = Proposals(governor_spec=public_config['governor_spec'])
     votes = Votes(governor_spec=public_config['governor_spec'], module_spec=public_config['module_spec'])
@@ -1375,19 +1570,24 @@ async def bootstrap_data_feeds(app, loop):
         PROPOSAL_LIFECYCLE_EVENTS = PROPOSAL_CREATED_EVENTS + [PROPOSAL_CANCELED, PROPOSAL_QUEUED, PROPOSAL_EXECUTED]
         for PROPOSAL_EVENT in PROPOSAL_LIFECYCLE_EVENTS:
             if PROPOSAL_EVENT == PROPOSAL_CREATED_MODULE and 'voting_module' in deployment:
-                app.ctx.register(f'{chain_id}.{voting_module_addr}.' + PROPOSAL_EVENT, proposals)
+                app.ctx.register_onchain(f'{chain_id}.{voting_module_addr}.' + PROPOSAL_EVENT, proposals)
             else:
-                app.ctx.register(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
+                app.ctx.register_onchain(f'{chain_id}.{gov_addr}.' + PROPOSAL_EVENT, proposals)
 
         VOTE_EVENTS = [VOTE_CAST_1]    
         if not (public_config['governor_spec']['name'] in ('compound', 'ENSGovernor')):
             VOTE_EVENTS.append(VOTE_CAST_WITH_PARAMS_1)
 
         for VOTE_EVENT in VOTE_EVENTS:
-            app.ctx.register(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
+            app.ctx.register_onchain(f'{chain_id}.{gov_addr}.' + VOTE_EVENT, votes)
         
     pr = ParticipationRateModel()
     app.ctx.register_model(pr)
+
+    if INCLUDE_NON_IVOTES_VP:
+        non_ivotes_vp = NonIVotesVP()
+        app.ctx.register_offchain('non_ivotes_vp', non_ivotes_vp)
+
 
     # This is so certain endpoints can access empty data-products
     # without a bunch of gymnastics.
@@ -1396,6 +1596,7 @@ async def bootstrap_data_feeds(app, loop):
             setattr(app.ctx, data_product.name, data_product)
 
     app.add_task(read_archive(app, dcqs))
+
 
 async def index_proposals(app):
 
@@ -1430,10 +1631,19 @@ async def subscribe_feeds(app):
     for i in range(NUM_POLLING_CLIENTS):
         logr.info(f"Polling client {1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i} started")
         app.add_task(read_polling(app, 1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i))
+    
+    if INCLUDE_NON_IVOTES_VP:
+        app.add_task(read_naive_socket(app, VPSnappercWsClient(DAO_NODE_VPSNAPPER_WS)))
 
 async def read_realtime(app, rt_client_num):
     
     async for event in app.ctx.feed.realtime_async_read(rt_client_num):
+        await app.ctx.dispatch_from_realtime(event)
+
+async def read_naive_socket(app, ws_client):
+
+    async for event in ws_client.read():
+        event['signal'] = 'non_ivotes_vp' # its the only one for now.
         await app.ctx.dispatch_from_realtime(event)
 
 async def read_polling(app, polling_client_num):

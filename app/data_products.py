@@ -14,6 +14,47 @@ from .abcs import DataProduct
 class ToDo(NotImplementedError):
     pass
 
+class NonIVotesVP(DataProduct):
+
+    def __init__(self):
+
+        self.change = defaultdict(dict)
+
+        self.total = []
+        self.history = []
+        self.history_len = 0
+        self.history_bn_to_pos = {}
+        self.history_ts_to_pos = {}
+
+    def handle(self, event):
+
+        self.change = event['diff']
+
+        if event['block_number'] not in self.history_bn_to_pos:
+
+            assert event['timestamp'] not in self.history_ts_to_pos, f"Duplicate timestamp: {event['timestamp']}"
+
+            self.history.append(event['vp'])
+            self.total.append(event['total'])
+            self.history_bn_to_pos[int(event['block_number'])] = self.history_len
+            self.history_ts_to_pos[int(event['timestamp'])] = self.history_len
+            self.history_len += 1
+
+            self.history_bn_to_pos = dict(sorted(self.history_bn_to_pos.items()))
+            self.history_ts_to_pos = dict(sorted(self.history_ts_to_pos.items()))
+
+    @property
+    def latest(self):
+        return self.history[self.history_ts_to_pos[-1]]
+    
+    @property
+    def latest_total(self):
+        return self.total[self.history_ts_to_pos[-1]]  
+
+    def get_user_vp_at_block(self, address, block_number):
+        return self.history[self.history_bn_to_pos[int(block_number)]].get(address, 0)
+
+
 class Balances(DataProduct):
 
     def __init__(self, token_spec):
