@@ -1632,18 +1632,21 @@ async def subscribe_feeds(app):
         app.add_task(read_polling(app, 1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i))
     
     if INCLUDE_NON_IVOTES_VP:
+        logr.info(f"Non IVotes VP client started")
         app.add_task(read_naive_socket(app, VPSnappercWsClient(DAO_NODE_VPSNAPPER_WS)))
 
 async def read_realtime(app, rt_client_num):
-    
     async for event in app.ctx.feed.realtime_async_read(rt_client_num):
         await app.ctx.dispatch_from_realtime(event)
 
 async def read_naive_socket(app, ws_client):
 
+    logr.info(f"read_naive_socket invoked")
     async for event in ws_client.read():
         event['signal'] = 'non_ivotes_vp' # its the only one for now.
+        logr.info(f"reading an event with keys: {event.keys()}.")
         await app.ctx.dispatch_from_realtime(event)
+        logr.info(f"read_naive_socket done")
 
 async def read_polling(app, polling_client_num):
     """
