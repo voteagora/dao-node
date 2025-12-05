@@ -14,6 +14,47 @@ from .abcs import DataProduct
 class ToDo(NotImplementedError):
     pass
 
+class NonIVotesVP(DataProduct):
+
+    def __init__(self):
+
+        self.change = defaultdict(dict)
+
+        self.total = []
+        self.history = []
+        self.history_len = 0
+        self.history_bn_to_pos = {}
+        self.history_ts_to_pos = {}
+
+    def handle(self, event):
+
+        self.change = event['diff']
+
+        if event['block_number'] not in self.history_bn_to_pos:
+
+            assert event['timestamp'] not in self.history_ts_to_pos, f"Duplicate timestamp: {event['timestamp']}"
+
+            self.history.append(event['vp'])
+            self.total.append(event['total'])
+            self.history_bn_to_pos[int(event['block_number'])] = self.history_len
+            self.history_ts_to_pos[int(event['timestamp'])] = self.history_len
+            self.history_len += 1
+
+            self.history_bn_to_pos = dict(sorted(self.history_bn_to_pos.items()))
+            self.history_ts_to_pos = dict(sorted(self.history_ts_to_pos.items()))
+
+    @property
+    def latest(self):
+        return self.history[self.history_ts_to_pos[-1]]
+    
+    @property
+    def latest_total(self):
+        return self.total[self.history_ts_to_pos[-1]]  
+
+    def get_user_vp_at_block(self, address, block_number):
+        return self.history[self.history_bn_to_pos[int(block_number)]].get(address, 0)
+
+
 class Balances(DataProduct):
 
     def __init__(self, token_spec):
@@ -963,88 +1004,3 @@ class Votes(DataProduct):
         block_number = int(event['block_number']) if isinstance(event['block_number'], str) else event['block_number']
         if block_number > self.latest_vote_block[voter]:
             self.latest_vote_block[voter] = block_number
-
-class Staking(DataProduct):
-    def __init__(self):
-        self.user_stakes = defaultdict(int)
-        self.total_staked = 0
-
-        # Point-in-time tracking for historical queries
-        # Maps block_number -> {user -> amount}
-        self.stakes_at_block = SortedDict()
-
-        # Epoch constants from contract
-        self.EPOCH_DURATION = 30 * 24 * 60 * 60  # 30 days in seconds TODO: fetch from contract
-        self.START_TIMESTAMP = 1754089200  # From contract TODO: fetch from contract
-        
-    def handle(self, event):
-        signature = event['signature']
-        block_number = int(event['block_number'])
-
-        if signature == STAKE:
-            user = event['user'].lower()
-            amount = int(event['amount'])
-
-            self.user_stakes[user] += amount
-            self.total_staked += amount
-
-            self._snapshot_state_at_block(block_number)
-
-        elif signature == WITHDRAWAL_COMPLETED:
-            user = event['user'].lower()
-            amount = int(event['amount'])
-
-            self._apply_withdrawal(user, amount, block_number, signature)
-
-    def _apply_withdrawal(self, user, amount, block_number, signature):
-        prev_user = self.user_stakes[user]
-        prev_total = self.total_staked
-
-        self.user_stakes[user] = max(0, prev_user - amount)
-        self.total_staked = max(0, prev_total - amount)
-
-        self._snapshot_state_at_block(block_number)
-
-    def _snapshot_state_at_block(self, block_number):
-        self.stakes_at_block[block_number] = dict(self.user_stakes)
-
-    def _get_snapshot_at_block(self, block_number):
-        if not self.stakes_at_block:
-            return {}
-
-        if block_number in self.stakes_at_block:
-            return self.stakes_at_block[block_number]
-
-        idx = self.stakes_at_block.bisect_right(block_number)
-        if idx == 0:
-            return {}
-
-        prev_block = self.stakes_at_block.peekitem(idx - 1)[0]
-        return self.stakes_at_block[prev_block]
-
-    def get_user_total_stake(self, user):
-        return self.user_stakes[user.lower()]
-
-    def get_user_stake_at_block(self, user, block_number):
-        snapshot = self._get_snapshot_at_block(block_number)
-        return snapshot.get(user.lower(), 0)
-
-    def get_all_stakes_at_block(self, block_number):
-        snapshot = self._get_snapshot_at_block(block_number)
-        return deepcopy(snapshot)
-
-    def get_total_stake_at_block(self, block_number):
-        snapshot = self._get_snapshot_at_block(block_number)
-        return sum(snapshot.values())
-
-    def timestamp_to_epoch(self, timestamp):
-        if timestamp < self.START_TIMESTAMP:
-            return 0
-        return ((timestamp - self.START_TIMESTAMP) // self.EPOCH_DURATION) + 1
-
-    def epoch_to_timestamp_range(self, epoch_index):
-        if epoch_index == 0:
-            return (0, self.START_TIMESTAMP)
-        start = self.START_TIMESTAMP + (epoch_index - 1) * self.EPOCH_DURATION
-        end = self.START_TIMESTAMP + epoch_index * self.EPOCH_DURATION
-        return (start, end)
