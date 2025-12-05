@@ -40,8 +40,8 @@ class NonIVotesVP(DataProduct):
 
             self.history.append(event['vp'])
             self.total.append(event['total'])
-            self.history_bn_to_pos[int(event['block_number'])] = self.history_len
-            self.history_ts_to_pos[int(event['timestamp'])] = self.history_len
+            self.history_bn_to_pos[int(event['block_number'])] = copy(self.history_len)
+            self.history_ts_to_pos[int(event['timestamp'])] = copy(self.history_len)
             self.history_len += 1
             self.history_bn_to_pos = dict(sorted(self.history_bn_to_pos.items()))
             self.history_ts_to_pos = dict(sorted(self.history_ts_to_pos.items()))
@@ -54,8 +54,26 @@ class NonIVotesVP(DataProduct):
     def latest_total(self):
         return self.total[self.history_ts_to_pos[max(self.history_ts_to_pos)]]
 
+    def block_number_to_snapshot_block_number(self, requested_bn):
+
+        requested_bn = int(requested_bn)
+        snapshot_bn = 0
+        for bn in self.history_bn_to_pos.keys():
+            if bn > requested_bn:
+                break
+            snapshot_bn = bn
+
+        return snapshot_bn
+
     def get_user_vp_at_block(self, address, block_number):
-        return self.history[self.history_bn_to_pos[int(block_number)]].get(address, 0)
+
+        snapshot_bn = self.block_number_to_snapshot_block_number(block_number)
+
+        if snapshot_bn == 0:
+            return 0
+        
+        return self.history[self.history_bn_to_pos[snapshot_bn]].get(address, 0)
+
 
 
 class Balances(DataProduct):

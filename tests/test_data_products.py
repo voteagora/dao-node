@@ -1,5 +1,5 @@
 import pytest
-from app.data_products import Balances, Delegations, Proposals, Votes, ProposalTypes, Proposal
+from app.data_products import Balances, Delegations, NonIVotesVP, Proposals, Votes, ProposalTypes, Proposal
 from app.clients_csv import CSVClient
 import csv
 import os
@@ -8,6 +8,7 @@ import time
 from collections import Counter
 from abifsm import ABI, ABISet
 from app.signatures import *
+import glob
 
 ####################################
 #
@@ -543,3 +544,23 @@ def test_Proposals_agora_v2_proposal_creation(v2_proposal_abi):
     proposal = proposals.proposals['87979399618794581401818953625454412059253836401449247822065377110773751412581']
     assert proposal.voting_module_name == 'approval'
     assert proposal.create_event['voting_module_name'] == 'approval'
+
+def test_NonIvotesVp():
+
+    non_ivotes_vp = NonIVotesVP()
+
+    import json
+
+    for fname in glob.glob('./tests/data/nonivotes-syndicate/*.json'):
+        payload = json.load(open(fname))
+        non_ivotes_vp.handle(payload)
+    
+    assert non_ivotes_vp.block_number_to_snapshot_block_number(23836539) == 0
+    assert non_ivotes_vp.block_number_to_snapshot_block_number(23836540) == 23836540
+    assert non_ivotes_vp.block_number_to_snapshot_block_number(23843670) == 23843670
+    assert non_ivotes_vp.block_number_to_snapshot_block_number(23843671) == 23843670
+    assert non_ivotes_vp.block_number_to_snapshot_block_number(23943065) == 23943065
+
+    assert max(non_ivotes_vp.history_bn_to_pos.keys()) == 23943065
+
+    assert non_ivotes_vp.latest_total == '6583144304669856863236773'
