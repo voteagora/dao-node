@@ -949,8 +949,8 @@ async def delegates_handler(app, request):
                 non_ivotes = app.ctx.non_ivotes_vp
                 vp_dict = dict(app.ctx.delegations.delegatee_vp)
                 latest = non_ivotes.latest
-                for addr, stake in latest.items():
-                    vp_dict[addr] = vp_dict.get(addr, 0) + latest
+                for addr, nivvp in latest.items():
+                    vp_dict[addr] = vp_dict.get(addr, 0) + int(nivvp)
                 out = [(addr, vp) for addr, vp in vp_dict.items() if vp > 0]
             else:
                 out = list(app.ctx.delegations.delegatee_vp.items())
@@ -974,10 +974,10 @@ async def delegates_handler(app, request):
 
                 vp_dict = {}
                 for addr in app.ctx.delegations.delegatee_vp.keys():
-                    vp_dict = app.ctx.delegations.delegate_seven_day_vp_change(addr)
+                    vp_dict[addr] = app.ctx.delegations.delegate_seven_day_vp_change(addr)
                 
-                for addr, change in app.ctx.non_votes_vp.change.items():
-                    vp_dict[addr] = vp_dict.get(addr, 0) + change
+                for addr, change in app.ctx.non_ivotes_vp.change.items():
+                    vp_dict[addr] = vp_dict.get(addr, 0) + int(change)
                 
                 out = [(addr, vp) for addr, vp in vp_dict.items() if vp > 0]
             else:
@@ -1067,7 +1067,7 @@ async def delegate_handler(app, request, addr):
 
     # Get staked voting power if staking is available
     if INCLUDE_NON_IVOTES_VP:
-        non_ivotes_vp = app.ctx.non_ivotes_vp.latest.get(addr, 0)
+        non_ivotes_vp = int(app.ctx.non_ivotes_vp.latest.get(addr, 0))
     else:
         non_ivotes_vp = 0
 
@@ -1351,7 +1351,7 @@ if INCLUDE_NON_IVOTES_VP:
     async def non_ivotes_total(request):
 
         return json({
-            'total_non_ivotes': app.ctx.non_ivotes_vp.latest_total,
+            'total_non_ivotes': str(app.ctx.non_ivotes_vp.latest_total),
         })
 
     @app.route('/v1/nonivotes/total/at-block/<block_number:int>')
@@ -1371,14 +1371,19 @@ if INCLUDE_NON_IVOTES_VP:
 
         non_ivotes = app.ctx.non_ivotes_vp
 
-        total_stake = non_ivotes.total_at_block(int(block_number))
+        snapshot_bn = non_ivotes.block_number_to_snapshot_block_number(int(block_number))
+
+        if snapshot_bn == 0:
+            total_vp = 0
+        else:
+            total_vp = non_ivotes.total[snapshot_bn]
 
         return json({
             'block_number': str(block_number),
-            'total_stake': str(total_stake),
+            'total_vp': str(total_vp),
         })
 
-    @app.route('/v1/staking/user/<address:str>/at-block/<block_number:int>')
+    @app.route('/v1/nonivotes/user/<address:str>/at-block/<block_number:int>')
     @openapi.tag("Non IVotes")
     @openapi.summary("Get user stake at specific block")
     @openapi.description("""
@@ -1394,12 +1399,12 @@ if INCLUDE_NON_IVOTES_VP:
     async def non_ivotes_user_at_block(request, address, block_number):
         non_ivotes = app.ctx.non_ivotes_vp
         address = address.lower()
-        stake = non_ivotes.get_user_vp_at_block(address, block_number)
+        vp = non_ivotes.get_user_vp_at_block(address, block_number)
 
         result = {
             'address': address,
             'block_number': block_number,
-            'vp': str(stake)
+            'vp': str(vp)
         }
 
         return json(result)
@@ -1418,12 +1423,17 @@ if INCLUDE_NON_IVOTES_VP:
     @measure
     async def non_ivotes_all_at_block(request, block_number):
         non_ivotes = app.ctx.non_ivotes_vp
-        all_nonivotes_vp = non_ivotes.history[non_ivotes.history_bn_to_pos[int(block_number)]]
 
-        formatted = {user: str(amount) for user, amount in all_nonivotes_vp.items()}
+        snapshot_bn = non_ivotes.block_number_to_snapshot_block_number(int(block_number))
+
+        if snapshot_bn == 0:
+            formatted = {}
+        else:
+            all_nonivotes_vp = non_ivotes.history[non_ivotes.history_bn_to_pos[snapshot_bn]]
+            formatted = {user: str(amount) for user, amount in all_nonivotes_vp.items()}
 
         return json({
-            'block_number': block_number,
+            'block_number': snapshot_bn,
             'vp': formatted
         })
 
