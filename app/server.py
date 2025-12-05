@@ -946,7 +946,7 @@ async def delegates_handler(app, request):
         if sort_by_vp:
             # Include staking VP in total VP calculation
             if INCLUDE_NON_IVOTES_VP:
-                non_ivotes = app.ctx.non_ivotes
+                non_ivotes = app.ctx.non_ivotes_vp
                 vp_dict = dict(app.ctx.delegations.delegatee_vp)
                 latest = non_ivotes.latest
                 for addr, stake in latest.items():
@@ -970,7 +970,7 @@ async def delegates_handler(app, request):
             out  = [obj for obj in out if obj[1] > 0] # TODO This should not be necessary. The data model should prune zeros.
         elif sort_by_vpc:
             if INCLUDE_NON_IVOTES_VP:
-                non_ivotes = app.ctx.non_ivotes
+                non_ivotes = app.ctx.non_ivotes_vp
 
                 vp_dict = {}
                 for addr in app.ctx.delegations.delegatee_vp.keys():
