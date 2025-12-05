@@ -16,6 +16,10 @@ class ToDo(NotImplementedError):
 
 class NonIVotesVP(DataProduct):
 
+    @property
+    def name(self):
+        return 'non_ivotes_vp'
+
     def __init__(self):
 
         self.change = defaultdict(dict)
