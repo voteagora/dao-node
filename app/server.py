@@ -1318,7 +1318,7 @@ async def voting_power(request):
         delegation_vp = 0
     
     if INCLUDE_NON_IVOTES_VP:
-        non_ivotes_vp = app.ctx.non_ivotes_vp.total
+        non_ivotes_vp = int(app.ctx.non_ivotes_vp.latest_total)
     else:
         non_ivotes_vp = 0
 
