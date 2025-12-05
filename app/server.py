@@ -950,7 +950,7 @@ async def delegates_handler(app, request):
                 vp_dict = dict(app.ctx.delegations.delegatee_vp)
                 latest = non_ivotes.latest
                 for addr, stake in latest.items():
-                    vp_dict[addr] = vp_dict.get(addr, 0) + stake
+                    vp_dict[addr] = vp_dict.get(addr, 0) + latest
                 out = [(addr, vp) for addr, vp in vp_dict.items() if vp > 0]
             else:
                 out = list(app.ctx.delegations.delegatee_vp.items())
