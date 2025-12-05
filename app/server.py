@@ -152,7 +152,7 @@ except:
 ERC20 = public_config['token_spec']['name'] == 'erc20'
 NORMAL_STYLE = public_config['token_spec'].get('style', 'normal') == 'normal'
 INCLUDE_BALANCES = ERC20 and NORMAL_STYLE and ENABLE_BALANCES
-INCLUDE_NON_IVOTES_VP = bool(config['non_ivotes_vp'].get('non_ivotes_vp', False))
+INCLUDE_NON_IVOTES_VP = bool(config['features'].get('non_ivotes_vp', False))
 logr.info(f"{INCLUDE_NON_IVOTES_VP=} ({type(INCLUDE_NON_IVOTES_VP)})")
 
 ########################################################################
