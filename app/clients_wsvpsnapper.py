@@ -32,14 +32,15 @@ class VPSnappercWsClient():
 if __name__ == "__main__":
 
     # client = VPSnappercWsClient('ws://localhost:8001', 'VPSnapper')
-    client = VPSnappercWsClient('wss://vpsnapper-production.up.railway.app')
-
+    
     async def main():
         i = 0
         async for payload in client.read():
+            print(payload)
 
-            with open(f"./tests/data/nonivotes-syndicate/{i}-{payload['timestamp']}.json", "w") as f:
-                f.write(json.dumps(payload))
+            if False:
+                with open(f"./tests/data/nonivotes-syndicate/{i}-{payload['timestamp']}.json", "w") as f:
+                    f.write(json.dumps(payload))
 
-            i += 1
+                i += 1
     asyncio.run(main())
