@@ -103,6 +103,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env*
 .venv
 env/
 venv/
@@ -135,3 +136,11 @@ dmypy.json
 .DS_Store
 
 data
+
+
+.coveragerc
+dao_node.code-workspace
+fork.sh
+hacking/
+performance_results/
+tests/client_outputs/
