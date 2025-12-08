@@ -153,7 +153,7 @@ ERC20 = public_config['token_spec']['name'] == 'erc20'
 NORMAL_STYLE = public_config['token_spec'].get('style', 'normal') == 'normal'
 INCLUDE_BALANCES = ERC20 and NORMAL_STYLE and ENABLE_BALANCES
 INCLUDE_NON_IVOTES_VP = bool(config['features'].get('non_ivotes_vp', False))
-logr.info(f"{INCLUDE_NON_IVOTES_VP=} ({type(INCLUDE_NON_IVOTES_VP)})")
+glogr.info(f"{INCLUDE_NON_IVOTES_VP=} ({type(INCLUDE_NON_IVOTES_VP)})")
 
 ########################################################################
 
@@ -944,34 +944,89 @@ async def delegates_handler(app, request):
     # Get the initial list based on sort criteria
     else:
         if sort_by_vp:
-            # Include staking VP in total VP calculation
+
             if INCLUDE_NON_IVOTES_VP:
-                non_ivotes = app.ctx.non_ivotes_vp
-                vp_dict = dict(app.ctx.delegations.delegatee_vp)
-                latest = non_ivotes.latest
+                vp_dict = deepcopy(app.ctx.delegations.delegatee_vp)
+                latest = app.ctx.non_ivotes_vp.latest
                 for addr, nivvp in latest.items():
                     vp_dict[addr] = vp_dict.get(addr, 0) + int(nivvp)
                 out = [(addr, vp) for addr, vp in vp_dict.items() if vp > 0]
             else:
                 out = list(app.ctx.delegations.delegatee_vp.items())
+    
         elif sort_by_mrd:
-            out = [(addr, int(event['block_number'])) 
-                   for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
-        elif sort_by_pr:
-            out = list(app.ctx.participation_rate_model.rates())
-        elif sort_by_old:
-            out = [(addr, int(event['block_number'])) 
-                   for addr, event in app.ctx.delegations.delegatee_oldest_event.items()]
-        elif sort_by_dc:
-            out = list(app.ctx.delegations.delegatee_cnt.items())
-        elif sort_by_lvb:
-            out = [(addr, int(app.ctx.votes.latest_vote_block.get(addr, 0)))
-                   for addr in app.ctx.delegations.delegatee_vp.keys()]
-            out  = [obj for obj in out if obj[1] > 0] # TODO This should not be necessary. The data model should prune zeros.
-        elif sort_by_vpc:
-            if INCLUDE_NON_IVOTES_VP:
-                non_ivotes = app.ctx.non_ivotes_vp
 
+            if INCLUDE_NON_IVOTES_VP:
+                mrd_dict = {addr : int(event['block_number'])
+                    for addr, event in app.ctx.delegations.delegatee_latest_event.items()}
+                
+                latest = app.ctx.non_ivotes_vp.latest
+                for addr, _ in latest.items():
+                    mrd_dict[addr] = mrd_dict.get(addr, 0) 
+                
+                out = list(mrd_dict.items())
+            else:
+                out = [(addr, int(event['block_number'])) 
+                    for addr, event in app.ctx.delegations.delegatee_latest_event.items()]
+
+        elif sort_by_pr:
+
+            if INCLUDE_NON_IVOTES_VP:
+                pr_dict = deepcopy(app.ctx.participation_rate_model.rates())
+
+                latest = app.ctx.non_ivotes_vp.latest
+                for addr, _ in latest.items():
+                    pr_dict[addr] = pr_dict.get(addr, 0) 
+                
+                out = list(pr_dict.items())
+            else:
+                out = list(app.ctx.participation_rate_model.rates())
+        elif sort_by_old:
+
+            if INCLUDE_NON_IVOTES_VP:
+                old_dict = {addr : int(event['block_number'])
+                    for addr, event in app.ctx.delegations.delegatee_oldest_event.items()}
+                
+                latest = app.ctx.non_ivotes_vp.latest
+                for addr, _ in latest.items():
+                    old_dict[addr] = old_dict.get(addr, 0) 
+                
+                out = list(old_dict.items())
+            else:
+                out = [(addr, int(event['block_number'])) 
+                    for addr, event in app.ctx.delegations.delegatee_oldest_event.items()]
+
+        elif sort_by_dc:
+
+            if INCLUDE_NON_IVOTES_VP:
+                dc_dict = deepcopy(app.ctx.delegations.delegatee_cnt)
+
+                latest = app.ctx.non_ivotes_vp.latest
+                for addr, _ in latest.items():
+                    dc_dict[addr] = dc_dict.get(addr, 0) + 1
+                
+                out = list(dc_dict.items())
+            else:
+                out = list(app.ctx.delegations.delegatee_cnt.items())
+
+        elif sort_by_lvb:
+            
+            delegates = app.ctx.delegations.delegatee_vp.keys()
+            
+            if INCLUDE_NON_IVOTES_VP:
+                nonivotes = app.ctx.non_ivotes_vp.latest.keys()
+
+                addresses = set(delegates) | set(nonivotes)
+            else:
+                addresses = set(delegates)
+                        
+            out = [(addr, int(app.ctx.votes.latest_vote_block.get(addr, 0)))
+                for addr in addresses]
+            out  = [obj for obj in out if obj[1] > 0] # TODO This should not be necessary. The data model should prune zeros.
+            
+        elif sort_by_vpc:
+ 
+            if INCLUDE_NON_IVOTES_VP:
                 vp_dict = {}
                 for addr in app.ctx.delegations.delegatee_vp.keys():
                     vp_dict[addr] = app.ctx.delegations.delegate_seven_day_vp_change(addr)
@@ -1007,13 +1062,22 @@ async def delegates_handler(app, request):
                 return str(app.ctx.delegations.delegatee_vp.get(addr, 0) + int(app.ctx.non_ivotes_vp.latest.get(addr, 0)))
         else:
             voting_power_func = lambda addr, _sort_val: str(app.ctx.delegations.delegatee_vp[addr])
+    
+    if sort_by_vpc:
+        voting_power_change_func = lambda addr, sort_val: str(sort_val)
+    else:
+        if INCLUDE_NON_IVOTES_VP:
+            def voting_power_change_func(addr, _sort_val):
+                return str(app.ctx.delegations.delegate_seven_day_vp_change(addr) + int(app.ctx.non_ivotes_vp.change.get(addr, 0)))
+        else:
+            voting_power_change_func = lambda x, y: str(app.ctx.delegations.delegate_seven_day_vp_change(x))
 
     from_cnt_func = lambda x, y: app.ctx.delegations.delegatee_cnt.get(x, 0)
     participation_func = lambda x, y: app.ctx.participation_rate_model.get_rate(x)
     last_vote_block_func = lambda x, y: app.ctx.votes.latest_vote_block.get(x, 0)
     most_recent_delegation_func = lambda x, y: app.ctx.delegations.delegatee_latest_event.get(x, {}).get('block_number', 0) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
     oldest_delegation_func = lambda x, y: app.ctx.delegations.delegatee_oldest_event.get(x, {}).get('block_number', 100000000000000000000000000) # TODO: this .get() is a bit of a hack, it should be able to be strict.  I think there is an integrity issue somewhere, that causes a delegate_address to be missing, and at which point break the entire endpoint.
-    seven_day_vp_change_func = lambda x, y: str(app.ctx.delegations.delegate_seven_day_vp_change(x))
+
 
     use_sort_key = lambda x, y: y
     addr_func = lambda x, y: x
@@ -1033,7 +1097,7 @@ async def delegates_handler(app, request):
     if add_oldest_delegation:
         transformers.append(('OLD', use_sort_key if sort_by_old else oldest_delegation_func))
     if add_seven_day_vp_change:
-        transformers.append(('VPC', use_sort_key if sort_by_vpc else seven_day_vp_change_func))
+        transformers.append(('VPC', use_sort_key if sort_by_vpc else voting_power_change_func))
 
     # TODO - the zero address shouldn't appear here.  But, if it does, remove it.
     out = [dict([(k, func(addr, sort_val)) for k, func in transformers]) for addr, sort_val in out if addr != '0x0000000000000000000000000000000000000000']
@@ -1651,12 +1715,9 @@ async def read_realtime(app, rt_client_num):
 
 async def read_naive_socket(app, ws_client):
 
-    logr.info(f"read_naive_socket invoked")
     async for event in ws_client.read():
         event['signal'] = 'non_ivotes_vp' # its the only one for now.
-        logr.info(f"reading an event with keys: {event.keys()}.")
         await app.ctx.dispatch_from_realtime(event)
-        logr.info(f"read_naive_socket done")
 
 async def read_polling(app, polling_client_num):
     """
