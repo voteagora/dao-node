@@ -1004,7 +1004,7 @@ async def delegates_handler(app, request):
     else:
         if INCLUDE_NON_IVOTES_VP:
             def voting_power_func(addr, _sort_val):
-                return str(app.ctx.delegations.delegatee_vp.get(addr, 0) + app.ctx.non_ivotes_vp.latest.get(addr, 0))
+                return str(app.ctx.delegations.delegatee_vp.get(addr, 0) + int(app.ctx.non_ivotes_vp.latest.get(addr, 0)))
         else:
             voting_power_func = lambda addr, _sort_val: str(app.ctx.delegations.delegatee_vp[addr])
 
