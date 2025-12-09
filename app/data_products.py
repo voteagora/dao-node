@@ -22,6 +22,8 @@ class NonIVotesVP(DataProduct):
 
     def __init__(self):
 
+        self.rx_event_cnt = 0
+
         self.change = defaultdict(dict)
 
         self.total = []
@@ -33,6 +35,8 @@ class NonIVotesVP(DataProduct):
     def handle(self, event):
 
         if int(event['block_number']) not in self.history_bn_to_pos:
+
+            self.rx_event_cnt += 1
 
             self.change = defaultdict(dict)
             self.change.update(**event['diff'])
@@ -85,6 +89,19 @@ class NonIVotesVP(DataProduct):
         pos = self.history_bn_to_pos[snapshot_bn]
 
         return self.total[pos]
+    
+    def to_dict(self):
+
+        return {
+            'rx_event_cnt' : self.rx_event_cnt,
+            'history': self.history,
+            'total': self.total,
+            'history_bn_to_pos': self.history_bn_to_pos,
+            'history_ts_to_pos': self.history_ts_to_pos,
+            'change': self.change,
+            'history_len': self.history_len,
+
+        }
 
 
 

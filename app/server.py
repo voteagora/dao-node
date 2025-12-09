@@ -1497,6 +1497,17 @@ if INCLUDE_NON_IVOTES_VP:
         })
 
 
+######
+#
+# Intentionally Undocumented Endpoints (do not use in production)
+#
+#####
+
+    @app.route('/v1/nonivotes_data_dump')
+    @measure
+    async def non_ivotes_data_dumpt(request):
+
+        return json(app.ctx.non_ivotes_vp.to_dict())
 
 #################################################################################
 #
