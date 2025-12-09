@@ -34,7 +34,8 @@ class NonIVotesVP(DataProduct):
 
         if int(event['block_number']) not in self.history_bn_to_pos:
 
-        if event['block_number'] not in self.history_bn_to_pos:
+            self.change = defaultdict(dict)
+            self.change.update(**event['diff'])
 
             assert event['timestamp'] not in self.history_ts_to_pos, f"Duplicate timestamp: {event['timestamp']}"
 
