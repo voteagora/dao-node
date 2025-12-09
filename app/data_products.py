@@ -32,7 +32,7 @@ class NonIVotesVP(DataProduct):
 
     def handle(self, event):
 
-        self.change = event['diff']
+        if int(event['block_number']) not in self.history_bn_to_pos:
 
         if event['block_number'] not in self.history_bn_to_pos:
 
@@ -73,6 +73,17 @@ class NonIVotesVP(DataProduct):
             return 0
         
         return self.history[self.history_bn_to_pos[snapshot_bn]].get(address, 0)
+    
+    def get_total_asof_block_number(self, block_number):
+
+        snapshot_bn = self.block_number_to_snapshot_block_number(block_number)
+
+        if snapshot_bn == 0:
+            return 0
+        
+        pos = self.history_bn_to_pos[snapshot_bn]
+
+        return self.total[pos]
 
 
 

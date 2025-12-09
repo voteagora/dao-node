@@ -1435,12 +1435,7 @@ if INCLUDE_NON_IVOTES_VP:
 
         non_ivotes = app.ctx.non_ivotes_vp
 
-        snapshot_bn = non_ivotes.block_number_to_snapshot_block_number(int(block_number))
-
-        if snapshot_bn == 0:
-            total_vp = 0
-        else:
-            total_vp = non_ivotes.total[snapshot_bn]
+        total_vp = non_ivotes.get_total_asof_block_number(int(block_number))
 
         return json({
             'block_number': str(block_number),
