@@ -22,6 +22,8 @@ class NonIVotesVP(DataProduct):
 
     def __init__(self):
 
+        self.rx_event_cnt = 0
+
         self.change = defaultdict(dict)
 
         self.total = []
@@ -32,9 +34,12 @@ class NonIVotesVP(DataProduct):
 
     def handle(self, event):
 
-        self.change = event['diff']
+        if int(event['block_number']) not in self.history_bn_to_pos:
 
-        if event['block_number'] not in self.history_bn_to_pos:
+            self.rx_event_cnt += 1
+
+            self.change = defaultdict(dict)
+            self.change.update(**event['diff'])
 
             assert event['timestamp'] not in self.history_ts_to_pos, f"Duplicate timestamp: {event['timestamp']}"
 
@@ -73,6 +78,30 @@ class NonIVotesVP(DataProduct):
             return 0
         
         return self.history[self.history_bn_to_pos[snapshot_bn]].get(address, 0)
+    
+    def get_total_asof_block_number(self, block_number):
+
+        snapshot_bn = self.block_number_to_snapshot_block_number(block_number)
+
+        if snapshot_bn == 0:
+            return 0
+        
+        pos = self.history_bn_to_pos[snapshot_bn]
+
+        return self.total[pos]
+    
+    def to_dict(self):
+
+        return {
+            'rx_event_cnt' : self.rx_event_cnt,
+            'history': self.history,
+            'total': self.total,
+            'history_bn_to_pos': self.history_bn_to_pos,
+            'history_ts_to_pos': self.history_ts_to_pos,
+            'change': self.change,
+            'history_len': self.history_len,
+
+        }
 
 
 
