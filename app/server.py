@@ -1034,7 +1034,7 @@ async def delegates_handler(app, request):
                 for addr, change in app.ctx.non_ivotes_vp.change.items():
                     vp_dict[addr] = vp_dict.get(addr, 0) + int(change)
                 
-                out = [(addr, vp) for addr, vp in vp_dict.items() if vp > 0]
+                out = [(addr, vp) for addr, vp in vp_dict.items()]
             else:
                 out = [(addr, app.ctx.delegations.delegate_seven_day_vp_change(addr))
                     for addr in app.ctx.delegations.delegatee_vp.keys()]
