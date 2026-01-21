@@ -963,9 +963,8 @@ class VoteAggregation:
                 self.result[param][event['support']] += weight
             if not params:
                 self.result['no-param'][event['support']] += weight
-        else:
-            self.result['no-param'][event['support']] += weight
-        
+
+        self.result['no-param'][event['support']] += weight
         self.num_of_votes += 1
         
         return event
