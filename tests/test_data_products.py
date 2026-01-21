@@ -1,5 +1,5 @@
 import pytest
-from app.data_products import Balances, Delegations, NonIVotesVP, Proposals, Votes, ProposalTypes, Proposal
+from app.data_products import Balances, Delegations, NonIVotesVP, Proposals, Votes, ProposalTypes, Proposal, VoteAggregation
 from app.clients_csv import CSVClient
 import csv
 import os
@@ -564,3 +564,185 @@ def test_NonIvotesVp():
     assert max(non_ivotes_vp.history_bn_to_pos.keys()) == 23943065
 
     assert non_ivotes_vp.latest_total == '6583144304669856863236773'
+
+def test_VoteAggregation_no_params():
+
+    agg = VoteAggregation(module_spec=None)
+
+    event = {
+        'voter': '0x1234567890123456789012345678901234567890',
+        'proposal_id': '1',
+        'support': 1,
+        'votes': 1000,
+        'weight': 1000
+    }
+
+    agg.tally(event)
+
+    assert agg.result['no-param'][1] == 1000
+    assert agg.num_of_votes == 1
+    assert len(agg.result) == 1
+
+def test_VoteAggregation_with_params():
+
+    agg = VoteAggregation(module_spec=None)
+
+    from eth_abi import encode
+    params_encoded = encode(['uint256[]'], [[1, 2, 3]]).hex()
+
+    event = {
+        'voter': '0x1234567890123456789012345678901234567890',
+        'proposal_id': '1',
+        'support': 1,
+        'votes': 1000,
+        'weight': 1000,
+        'params': params_encoded
+    }
+    
+    agg.tally(event)
+    
+    assert agg.result[1][1] == 1000
+    assert agg.result[2][1] == 1000
+    assert agg.result[3][1] == 1000
+    assert agg.result['no-param'][1] == 1000
+    assert agg.num_of_votes == 1
+    assert len(agg.result) == 4
+
+def test_VoteAggregation_with_empty_params():
+
+    agg = VoteAggregation(module_spec=None)
+
+    from eth_abi import encode
+    params_encoded = encode(['uint256[]'], [[]]).hex()
+
+    event = {
+        'voter': '0x1234567890123456789012345678901234567890',
+        'proposal_id': '1',
+        'support': 1,
+        'votes': 1000,
+        'weight': 1000,
+        'params': params_encoded
+    }
+
+    agg.tally(event)
+
+    assert agg.result['no-param'][1] == 2000
+    assert agg.num_of_votes == 1
+    assert len(agg.result) == 1
+
+def test_VoteAggregation_multiple_votes_with_params():
+
+    agg = VoteAggregation(module_spec=None)
+
+    from eth_abi import encode
+
+    event1 = {
+        'voter': '0x1234567890123456789012345678901234567890',
+        'proposal_id': '1',
+        'support': 1,
+        'votes': 1000,
+        'weight': 1000,
+        'params': encode(['uint256[]'], [[1, 2]]).hex()
+    }
+
+    event2 = {
+        'voter': '0xabcdef1234567890123456789012345678901234',
+        'proposal_id': '1',
+        'support': 0,
+        'votes': 500,
+        'weight': 500,
+        'params': encode(['uint256[]'], [[2, 3]]).hex()
+    }
+    
+    event3 = {
+        'voter': '0x9876543210987654321098765432109876543210',
+        'proposal_id': '1',
+        'support': 1,
+        'votes': 750,
+        'weight': 750
+    }
+
+    agg.tally(event1)
+    agg.tally(event2)
+    agg.tally(event3)
+    
+    assert agg.result[1][1] == 1000
+    assert agg.result[2][1] == 1000
+    assert agg.result[2][0] == 500
+    assert agg.result[3][0] == 500
+    assert agg.result['no-param'][1] == 1750
+    assert agg.result['no-param'][0] == 500
+    assert agg.num_of_votes == 3
+
+def test_VoteAggregation_WorldIDVoting_module():
+
+    agg = VoteAggregation(module_spec={'name': 'WorldIDVoting'})
+
+    from eth_abi import encode
+    params_encoded = encode(['uint256', 'uint256', 'uint256[8]', 'uint256[]'], [1, 2, [0]*8, [5, 6, 7]]).hex()
+
+    event = {
+        'voter': '0x1234567890123456789012345678901234567890',
+        'proposal_id': '1',
+        'support': 1,
+        'votes': 1000,
+        'weight': 1000,
+        'params': params_encoded
+    }
+
+    agg.tally(event)
+
+    assert agg.result[5][1] == 1
+    assert agg.result[6][1] == 1
+    assert agg.result[7][1] == 1
+    assert agg.result['no-param'][1] == 1
+    assert agg.num_of_votes == 1
+
+def test_VoteAggregation_totals():
+
+    agg = VoteAggregation(module_spec=None)
+
+    from eth_abi import encode
+
+    event1 = {
+        'voter': '0x1234567890123456789012345678901234567890',
+        'proposal_id': '1',
+        'support': 1,
+        'votes': 1000,
+        'weight': 1000,
+        'params': encode(['uint256[]'], [[1, 2]]).hex()
+    }
+
+    event2 = {
+        'voter': '0xabcdef1234567890123456789012345678901234',
+        'proposal_id': '1',
+        'support': 0,
+        'votes': 500,
+        'weight': 500
+    }
+
+    agg.tally(event1)
+    agg.tally(event2)
+
+    totals = agg.totals()
+
+    assert totals[1]['1'] == '1000'
+    assert totals[2]['1'] == '1000'
+    assert totals['no-param']['1'] == '1000'
+    assert totals['no-param']['0'] == '500'
+
+def test_VoteAggregation_weight_defaults_to_votes():
+
+    agg = VoteAggregation(module_spec=None)
+
+    event = {
+        'voter': '0x1234567890123456789012345678901234567890',
+        'proposal_id': '1',
+        'support': 1,
+        'votes': 2000
+    }
+
+    agg.tally(event)
+
+    assert agg.result['no-param'][1] == 2000
+    assert agg.num_of_votes == 1
