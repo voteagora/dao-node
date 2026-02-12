@@ -25,9 +25,4 @@ else
   git clone --depth 1 "${CLONE_URL}" "${CLONE_DIR}"
 fi
 
-# List all files in the cloned repo with full path
-CLONE_ABS="$(cd "${CLONE_DIR}" && pwd)"
-echo "Files in ${CLONE_ABS}:"
-find "${CLONE_ABS}" -type f | sort
-
 sanic app.server --host=0.0.0.0 --port=8000
