@@ -25,6 +25,7 @@ WORKDIR /app
 
 # copy the dependencies file to the working directory
 COPY requirements.txt .
+COPY railway_deploy.sh .
 
 # install dependencies
 RUN pip install -r requirements.txt --no-cache-dir
