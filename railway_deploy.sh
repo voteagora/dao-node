@@ -25,4 +25,6 @@ else
   git clone --depth 1 "${CLONE_URL}" "${CLONE_DIR}"
 fi
 
+python -m app.cli sync-from-gcs data
+
 sanic app.server --host=0.0.0.0 --port=8000
