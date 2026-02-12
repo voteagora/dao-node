@@ -25,7 +25,6 @@ WORKDIR /app
 
 # copy the dependencies file to the working directory
 COPY requirements.txt .
-COPY railway_deploy.sh .
 
 # install dependencies
 RUN pip install -r requirements.txt --no-cache-dir
@@ -40,7 +39,5 @@ ENV PYTHONPATH=/app
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Make script executable
-RUN chmod +x railway_deploy.sh
-
-CMD ["./railway_deploy.sh"]
+# Command to run the application
+CMD ["sanic", "app.server", "--host=0.0.0.0", "--port=8000"]
