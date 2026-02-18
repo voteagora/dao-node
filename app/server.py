@@ -34,6 +34,7 @@ from .profiling import Profiler
 from .clients_csv import CSVClient
 from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcRtHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
+from .clients_db import DbPollingClient
 
 from .data_products import Balances, NonIVotesVP, ProposalTypes, Delegations, Proposals, Votes
 from .data_models import ParticipationRateModel
@@ -125,6 +126,14 @@ if DAO_NODE_REALTIME_NODE_WS:
         REALTIME_NODE_WS_URL = REALTIME_NODE_WS_URL + os.getenv('QUICKNODE_API_KEY', '')
         glogr.info(f"Using quiknode.pro for Web Socket: {secret_text(REALTIME_NODE_WS_URL, 6)}")
 
+DAO_NODE_DB_URL = os.getenv('DAO_NODE_DB_URL', None)
+DAO_NODE_DB_TABLE_PREFIX = os.getenv('DAO_NODE_DB_TABLE_PREFIX', 'multi_op')
+DAO_NODE_DB_SCHEMA = os.getenv('DAO_NODE_DB_SCHEMA', 'goldsky')
+if DAO_NODE_DB_URL:
+    glogr.info(f"Using DB polling: {secret_text(DAO_NODE_DB_URL, 12)}")
+    glogr.info(f"DB table prefix: {DAO_NODE_DB_TABLE_PREFIX}, schema: {DAO_NODE_DB_SCHEMA}")
+
+NUM_DB_POLLING_CLIENTS = int(os.getenv('NUM_DB_POLLING_CLIENTS', 1))
 
 try:
     AGORA_CONFIG_FILE = Path(os.getenv('AGORA_CONFIG_FILE', '/app/config.yaml'))
@@ -1548,19 +1557,28 @@ async def bootstrap_data_feeds(app, loop):
     if csvc.is_valid():
         clients.append(csvc)
 
-    rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-    if rpcc.is_valid():
-       clients.append(rpcc)
+    if DAO_NODE_DB_URL:
+        # DB polling mode: CSV archive + DbPollingClient (no HTTP/WS clients)
+        for i in range(NUM_DB_POLLING_CLIENTS):
+            dbpc = DbPollingClient(DAO_NODE_DB_URL, DAO_NODE_DB_TABLE_PREFIX,
+                                   db_schema=DAO_NODE_DB_SCHEMA, name=f"DBPOLL{i}")
+            if dbpc.is_valid():
+                clients.append(dbpc)
+    else:
+        # Legacy mode: HTTP archive + WS realtime + HTTP polling
+        rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
+        if rpcc.is_valid():
+           clients.append(rpcc)
 
-    for i in range(NUM_REALTIME_CLIENTS):
-        jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RTWS{i}")
-        if jwsc.is_valid():
-           clients.append(jwsc)
+        for i in range(NUM_REALTIME_CLIENTS):
+            jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RTWS{i}")
+            if jwsc.is_valid():
+               clients.append(jwsc)
 
-    for i in range(NUM_POLLING_CLIENTS):
-        jwhc = JsonRpcRtHttpClient(ARCHIVE_NODE_HTTP_URL, f"POLL{i}")
-        if jwhc.is_valid():
-           clients.append(jwhc)
+        for i in range(NUM_POLLING_CLIENTS):
+            jwhc = JsonRpcRtHttpClient(ARCHIVE_NODE_HTTP_URL, f"POLL{i}")
+            if jwhc.is_valid():
+               clients.append(jwhc)
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
@@ -1718,15 +1736,43 @@ async def read_archive(app, dcqs):
 @app.after_server_start
 async def subscribe_feeds(app):
 
-    for i in range(NUM_REALTIME_CLIENTS):
-        logr.info(f"Realtime client {1 + NUM_ARCHIVE_CLIENTS + i} started")
-        app.add_task(read_realtime(app, 1 + NUM_ARCHIVE_CLIENTS + i))
+    if DAO_NODE_DB_URL:
+        # DB mode – configure DB clients, do one-shot catch-up, then poll for live.
+        sync_from = DAO_NODE_DB_SYNC_FROM_BLOCK if DAO_NODE_DB_SYNC_FROM_BLOCK else app.ctx.feed.block
+        for _i, client in app.ctx.feed.cs:
+            if isinstance(client, DbPollingClient):
+                client.set_last_seen_block(sync_from)
+                if DAO_NODE_MAX_BLOCK:
+                    client.set_max_block(DAO_NODE_MAX_BLOCK)
 
-    app.add_task(index_proposals(app))
+        # One-shot: read DB immediately to fill the gap between archive and head.
+        for i in range(NUM_DB_POLLING_CLIENTS):
+            client_idx = 2 + i  # CSVClient is at index 1, DbPollingClient starts at 2
+            logr.info(f"DB client {client_idx}: one-shot catch-up read")
+            cnt = 0
+            async for event in app.ctx.feed.realtime_async_read(client_idx):
+                await app.ctx.dispatch_from_realtime(event)
+                cnt += 1
+            logr.info(f"DB client {client_idx}: one-shot done, {cnt} events dispatched")
 
-    for i in range(NUM_POLLING_CLIENTS):
-        logr.info(f"Polling client {1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i} started")
-        app.add_task(read_polling(app, 1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i))
+        # Index proposals now that all data (archive + DB gap) is loaded.
+        app.add_task(index_proposals(app))
+
+        # Continue polling for live events.
+        for i in range(NUM_DB_POLLING_CLIENTS):
+            client_idx = 2 + i  # CSVClient is at index 1, DbPollingClient starts at 2
+            logr.info(f"DB client {client_idx}: live polling started")
+            app.add_task(read_db_polling(app, client_idx))
+    else:
+        for i in range(NUM_REALTIME_CLIENTS):
+            logr.info(f"Realtime client {1 + NUM_ARCHIVE_CLIENTS + i} started")
+            app.add_task(read_realtime(app, 1 + NUM_ARCHIVE_CLIENTS + i))
+
+        for i in range(NUM_POLLING_CLIENTS):
+            logr.info(f"Polling client {1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i} started")
+            app.add_task(read_polling(app, 1 + NUM_ARCHIVE_CLIENTS + NUM_REALTIME_CLIENTS + i))
+
+        app.add_task(index_proposals(app))
     
     if INCLUDE_NON_IVOTES_VP:
         logr.info(f"Non IVotes VP client started")
@@ -1741,6 +1787,19 @@ async def read_naive_socket(app, ws_client):
     async for event in ws_client.read():
         event['signal'] = 'non_ivotes_vp' # its the only one for now.
         await app.ctx.dispatch_from_realtime(event)
+
+async def read_db_polling(app, polling_client_num):
+    """DB polling client – polls immediately, then on a cycle."""
+
+    wait_cycle = int(os.getenv('DB_POLLING_WAIT_CYCLE', 30))
+    while True:
+        start_time = time.perf_counter()
+        cnt = 0
+        async for event in app.ctx.feed.realtime_async_read(polling_client_num):
+            await app.ctx.dispatch_from_realtime(event)
+            cnt += 1
+        logr.info(f"DB polling client {polling_client_num} [{time.perf_counter() - start_time:.2f}s] [{cnt} events]")
+        await asyncio.sleep(wait_cycle)
 
 async def read_polling(app, polling_client_num):
     """
