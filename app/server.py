@@ -41,7 +41,7 @@ from .data_models import ParticipationRateModel
 from .signatures import *
 from . import __version__
 from .logsetup import get_logger 
-from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT, ENABLE_BALANCES, ENABLE_DELEGATION
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT, ENABLE_BALANCES, ENABLE_DELEGATION, DAO_NODE_MAX_BLOCK, DAO_NODE_DB_SYNC_FROM_BLOCK
 
 if  CAPTURE_WS_CLIENT_OUTPUTS:
     from copy import deepcopy
@@ -259,7 +259,20 @@ class Feed:
 
                 cnt = 0
  
+                # Determine the effective archive ceiling block.
+                # DAO_NODE_DB_SYNC_FROM_BLOCK caps the archive so the DB client takes over.
+                # DAO_NODE_MAX_BLOCK is the absolute ceiling for all ingestion.
+                archive_ceiling = None
+                if DAO_NODE_DB_SYNC_FROM_BLOCK:
+                    archive_ceiling = DAO_NODE_DB_SYNC_FROM_BLOCK
+                if DAO_NODE_MAX_BLOCK:
+                    archive_ceiling = min(archive_ceiling, DAO_NODE_MAX_BLOCK) if archive_ceiling else DAO_NODE_MAX_BLOCK
+
                 for event, signal, new_signal in reader:
+
+                    if archive_ceiling and int(event['block_number']) > archive_ceiling:
+                        continue
+
                     cnt += 1
 
                     # TODO - make the archive produce a block-history, per tenant, not per chain
@@ -335,6 +348,10 @@ class Feed:
                 async for event in client.read():
 
                     block_num = int(event['block_number'])
+
+                    if DAO_NODE_MAX_BLOCK and block_num > DAO_NODE_MAX_BLOCK:
+                        continue
+
                     self.block = max(self.block, block_num)
 
                     # This right here, makes it possible to have multiple 

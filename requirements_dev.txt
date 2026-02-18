@@ -1,2 +1,3 @@
 sanic-testing
 pytest-asyncio
+requests
