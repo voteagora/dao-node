@@ -59,7 +59,7 @@ class DbClientCaster:
                 row[key] = val.hex()
             elif isinstance(val, Decimal):
                 row[key] = int(val)
-            elif isinstance(val, str) and key in ('value', 'amount', 'weight', 'previous_balance', 'new_balance', 'old_balance', 'start_block', 'end_block', 'proposal_id', 'eta', 'proposal_type'):
+            elif isinstance(val, str) and key in ('value', 'amount', 'weight', 'previous_balance', 'new_balance', 'old_balance', 'start_block', 'end_block', 'proposal_id', 'eta', 'proposal_type', 'support'):
                 # Convert numeric string fields to int
                 try:
                     row[key] = int(val)
@@ -397,7 +397,7 @@ class DbPollingClient(SubscriptionPlannerMixin):
                             event = dict(row)
                             
                             # Filter out DB metadata columns and unnecessary fields
-                            db_metadata_fields = {'event_name', 'block_hash', 'transaction_hash', 'chain_id', 'address'}
+                            db_metadata_fields = {'id', 'event_name', 'block_hash', 'transaction_hash', 'chain_id', 'address'}
                             for field in db_metadata_fields:
                                 event.pop(field, None)
                             

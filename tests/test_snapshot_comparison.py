@@ -10,8 +10,11 @@ GCS Structure:
     gs://<DAONODE_DATA_COMPARE>/<block_number>-<chain_slug>/new/<section>.json
 
 Usage:
-    # Compare old vs new from GCS
+    # Compare old vs new from GCS (same parent folder)
     python tests/test_snapshot_comparison.py --folder 135000000-optimism
+
+    # Compare old vs new from different folders (different block heights)
+    python tests/test_snapshot_comparison.py --old-folder 135000000-optimism/old --new-folder 136000000-optimism/new
 
     # Compare old vs new from local snapshots dir
     python tests/test_snapshot_comparison.py --folder 135000000-optimism --no-gcs
@@ -22,6 +25,9 @@ Usage:
     # Or run via pytest
     SNAPSHOT_FOLDER=135000000-optimism pytest tests/test_snapshot_comparison.py -v
     SNAPSHOT_FOLDER=135000000-optimism SNAPSHOT_NO_GCS=1 pytest tests/test_snapshot_comparison.py -v
+
+    # pytest with separate old/new folders
+    SNAPSHOT_OLD_FOLDER=135000000-optimism/old SNAPSHOT_NEW_FOLDER=136000000-optimism/new pytest tests/test_snapshot_comparison.py -v
 """
 
 import argparse
@@ -30,6 +36,9 @@ import os
 import sys
 
 import pytest
+
+sys.path.insert(0, os.path.dirname(__file__))
+from snapshot_endpoints import normalize
 
 
 def load_snapshot_from_local(folder_path):
@@ -67,19 +76,38 @@ def load_snapshot_from_gcs(bucket_name, prefix):
     return snapshot
 
 
-def load_snapshots(folder, bucket_name=None, no_gcs=False):
-    """Load old and new snapshots from GCS or local disk."""
+def load_snapshots(folder=None, bucket_name=None, no_gcs=False, old_folder=None, new_folder=None):
+    """Load old and new snapshots from GCS or local disk.
+
+    Pass either ``folder`` (expects ``<folder>/old`` and ``<folder>/new`` sub-paths)
+    or explicit ``old_folder`` / ``new_folder`` paths when the two snapshots live
+    at different locations (e.g. different block heights).
+    """
+    if old_folder is None:
+        if folder is None:
+            raise ValueError("Provide either 'folder' or both 'old_folder' and 'new_folder'")
+        old_folder = f"{folder}/old"
+        new_folder = f"{folder}/new"
+    elif new_folder is None:
+        raise ValueError("'new_folder' must be provided when 'old_folder' is set")
+
     if no_gcs:
-        base = os.path.join(os.path.dirname(__file__), "snapshots", folder)
-        print(f"Loading from local: {base}")
-        snap_old = load_snapshot_from_local(os.path.join(base, "old"))
-        snap_new = load_snapshot_from_local(os.path.join(base, "new"))
+        snapshots_base = os.path.join(os.path.dirname(__file__), "snapshots")
+
+        def _local(path):
+            full = path if os.path.isabs(path) else os.path.join(snapshots_base, path)
+            print(f"Loading from local: {full}")
+            return load_snapshot_from_local(full)
+
+        snap_old = _local(old_folder)
+        snap_new = _local(new_folder)
     else:
         bucket_name = bucket_name or os.getenv("DAONODE_DATA_COMPARE", "daonode-data-compare")
-        print(f"Loading from gs://{bucket_name}/{folder}/")
-        snap_old = load_snapshot_from_gcs(bucket_name, f"{folder}/old")
-        snap_new = load_snapshot_from_gcs(bucket_name, f"{folder}/new")
-    return snap_old, snap_new
+        print(f"Loading old from gs://{bucket_name}/{old_folder}/")
+        print(f"Loading new from gs://{bucket_name}/{new_folder}/")
+        snap_old = load_snapshot_from_gcs(bucket_name, old_folder)
+        snap_new = load_snapshot_from_gcs(bucket_name, new_folder)
+    return normalize(snap_old), normalize(snap_new)
 
 
 def diff_values(a, b, path=""):
@@ -203,21 +231,33 @@ def print_report(results, path_a, path_b):
 # ─── pytest-based tests ───────────────────────────────────────────────────────
 
 SNAPSHOT_FOLDER = os.getenv("SNAPSHOT_FOLDER")
+SNAPSHOT_OLD_FOLDER = os.getenv("SNAPSHOT_OLD_FOLDER")
+SNAPSHOT_NEW_FOLDER = os.getenv("SNAPSHOT_NEW_FOLDER")
 SNAPSHOT_NO_GCS = bool(os.getenv("SNAPSHOT_NO_GCS"))
 SNAPSHOT_BUCKET = os.getenv("DAONODE_DATA_COMPARE", "daonode-data-compare")
 
-skip_reason = "Set SNAPSHOT_FOLDER env var to the folder name (e.g. '135000000-optimism')"
+_has_snapshots = bool(SNAPSHOT_FOLDER or (SNAPSHOT_OLD_FOLDER and SNAPSHOT_NEW_FOLDER))
+skip_reason = (
+    "Set SNAPSHOT_FOLDER (e.g. '135000000-optimism') or both "
+    "SNAPSHOT_OLD_FOLDER and SNAPSHOT_NEW_FOLDER env vars"
+)
 skip_if_no_snapshots = pytest.mark.skipif(
-    not SNAPSHOT_FOLDER,
+    not _has_snapshots,
     reason=skip_reason,
 )
 
 
 @pytest.fixture(scope="module")
 def snapshots():
-    if not SNAPSHOT_FOLDER:
+    if not _has_snapshots:
         pytest.skip(skip_reason)
-    return load_snapshots(SNAPSHOT_FOLDER, bucket_name=SNAPSHOT_BUCKET, no_gcs=SNAPSHOT_NO_GCS)
+    return load_snapshots(
+        folder=SNAPSHOT_FOLDER,
+        bucket_name=SNAPSHOT_BUCKET,
+        no_gcs=SNAPSHOT_NO_GCS,
+        old_folder=SNAPSHOT_OLD_FOLDER,
+        new_folder=SNAPSHOT_NEW_FOLDER,
+    )
 
 
 @skip_if_no_snapshots
@@ -257,16 +297,30 @@ def test_snapshot_archive_counts_match(snapshots):
 
 def main():
     parser = argparse.ArgumentParser(description="Compare old vs new endpoint snapshots")
-    parser.add_argument("--folder", required=True, help="Folder name e.g. '135000000-optimism'")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--folder", help="Parent folder; expects <folder>/old and <folder>/new sub-paths")
+    group.add_argument("--old-folder", help="Explicit path for the 'old' snapshot (use with --new-folder)")
+    parser.add_argument("--new-folder", help="Explicit path for the 'new' snapshot (required with --old-folder)")
     parser.add_argument("--bucket", default=None, help="GCS bucket (defaults to DAONODE_DATA_COMPARE env var)")
     parser.add_argument("--no-gcs", action="store_true", help="Load from local tests/snapshots/ instead of GCS")
     args = parser.parse_args()
 
-    bucket_name = args.bucket or os.getenv("DAONODE_DATA_COMPARE", "daonode-data-compare")
-    snap_old, snap_new = load_snapshots(args.folder, bucket_name=bucket_name, no_gcs=args.no_gcs)
+    if args.old_folder and not args.new_folder:
+        parser.error("--new-folder is required when --old-folder is specified")
 
+    bucket_name = args.bucket or os.getenv("DAONODE_DATA_COMPARE", "daonode-data-compare")
+    snap_old, snap_new = load_snapshots(
+        folder=args.folder,
+        bucket_name=bucket_name,
+        no_gcs=args.no_gcs,
+        old_folder=args.old_folder,
+        new_folder=args.new_folder,
+    )
+
+    path_a = args.old_folder or f"{args.folder}/old"
+    path_b = args.new_folder or f"{args.folder}/new"
     results = full_comparison(snap_old, snap_new)
-    ok = print_report(results, f"{args.folder}/old", f"{args.folder}/new")
+    ok = print_report(results, path_a, path_b)
 
     sys.exit(0 if ok else 1)
 

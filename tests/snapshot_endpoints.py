@@ -71,6 +71,35 @@ def fetch(session, base_url, path, label, errors, quiet=False):
         return None
 
 
+def normalize(snapshot):
+    """Sort order-sensitive sections so comparisons are deterministic."""
+    # proposals: sort by block_number, transaction_index, log_index
+    proposals_section = snapshot.get("proposals")
+    if proposals_section and "proposals" in proposals_section:
+        proposals_section["proposals"].sort(
+            key=lambda p: (
+                int(p.get("block_number", 0)),
+                int(p.get("transaction_index", 0)),
+                int(p.get("log_index", 0)),
+            )
+        )
+
+    # voter_histories: sort each voter's list by bn, tid, lid
+    voter_histories = snapshot.get("voter_histories")
+    if voter_histories:
+        for addr, data in voter_histories.items():
+            if data and "voter_history" in data:
+                data["voter_history"].sort(
+                    key=lambda v: (
+                        int(v.get("bn", 0)),
+                        int(v.get("tid", 0)),
+                        int(v.get("lid", 0)),
+                    )
+                )
+
+    return snapshot
+
+
 def strip_volatile(data, label):
     """Remove fields that change between runs (timestamps, worker IDs, etc)."""
     if data is None:
@@ -160,7 +189,7 @@ def detect_chain_slug(session, base_url, errors):
 
 # ─── Snapshot ─────────────────────────────────────────────────────────────────
 
-def snapshot_all(base_url, page_size, max_proposals, max_delegates):
+def snapshot_all(base_url, page_size, max_proposals, max_delegates, block_override=None):
     """Fetch all 21 endpoints and return a dict of {section_name: response_data}."""
     session = requests.Session()
     errors = []
@@ -171,7 +200,7 @@ def snapshot_all(base_url, page_size, max_proposals, max_delegates):
 
     # ── Auto-discover params ──────────────────────────────────────────────
     ctx = discover(session, base_url, page_size, errors)
-    block = ctx["block"]
+    block = block_override or ctx["block"]
     proposal_ids = ctx["proposal_ids"][:max_proposals] if max_proposals else ctx["proposal_ids"]
     delegate_addrs = ctx["delegate_addrs"][:max_delegates] if max_delegates else ctx["delegate_addrs"]
     vote_sample = ctx["vote_sample"]
@@ -349,6 +378,7 @@ def snapshot_all(base_url, page_size, max_proposals, max_delegates):
         "errors": errors,
     }
 
+    normalize(snapshot)
     print(f"\nDone in {elapsed:.1f}s. {len(errors)} errors.")
     return snapshot, block
 
@@ -414,6 +444,7 @@ def main():
         page_size=args.page_size,
         max_proposals=args.max_proposals,
         max_delegates=args.max_delegates,
+        block_override=args.block,
     )
 
     block = args.block or detected_block
