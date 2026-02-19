@@ -669,15 +669,13 @@ async def vote_record_handler(app, request, proposal_id):
 
     if sort_by == 'BN':
         if reverse:
-            vr = deepcopy(app.ctx.votes.proposal_vote_record[proposal_id])
+            vr = list(deepcopy(app.ctx.votes.proposal_vote_record[proposal_id]))
             vr.sort(key=lambda x: int(x['bn']), reverse=True)
         else:
-            # Since the events are ordered, we don't need to take a 
-            # deep copy nor sort.  This reduces the API call from 35 ms to 1 ms 
-            # when loading a chart in chronological order.
+            # SortedKeyList keeps events in (bn, tid, lid) order; no extra sort needed.
             vr = app.ctx.votes.proposal_vote_record[proposal_id]
     elif sort_by == 'VP':
-        vr = deepcopy(app.ctx.votes.proposal_vote_record[proposal_id])
+        vr = list(deepcopy(app.ctx.votes.proposal_vote_record[proposal_id]))
         key = 'weight' if 'weight' in vr[0] else 'votes'    
         vr.sort(key=lambda x: x[key], reverse=reverse)
     else:
@@ -1197,7 +1195,7 @@ async def delegate(request, addr):
 @openapi.summary("Information about a specific delegate's voting history")
 @measure
 async def delegate_voting_history(request, addr):
-    voting_history = app.ctx.votes.voter_history[addr]
+    voting_history = list(app.ctx.votes.voter_history[addr])
 
     return json({'voting_history' : voting_history})
 

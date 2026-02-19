@@ -1,6 +1,6 @@
 from copy import copy
 from collections import defaultdict
-from sortedcontainers import SortedDict
+from sortedcontainers import SortedDict, SortedKeyList
 from abc import ABC, abstractmethod
 import json, time
 from bisect import bisect_left
@@ -992,8 +992,9 @@ class Votes(DataProduct):
     def __init__(self, governor_spec, module_spec=None):
         self.proposal_aggregations = defaultdict(lambda: VoteAggregation(module_spec))
 
-        self.voter_history = defaultdict(list)
-        self.proposal_vote_record = defaultdict(list)
+        _vote_sort_key = lambda x: (int(x['bn']), x['tid'], x['lid'])
+        self.voter_history = defaultdict(lambda: SortedKeyList(key=_vote_sort_key))
+        self.proposal_vote_record = defaultdict(lambda: SortedKeyList(key=_vote_sort_key))
         
         self.latest_vote_block = defaultdict(int)
 
@@ -1041,16 +1042,14 @@ class Votes(DataProduct):
         if self.module_spec and self.module_spec['name'] == 'WorldIDVoting':
             del event_cp['weight']
 
-        self.voter_history[voter].append(event_cp)
-        self.voter_history[voter].sort(key=lambda x: (int(x['bn']), x['tid'], x['lid']))
+        self.voter_history[voter].add(event_cp)
 
         self.participated[voter][proposal_id] = True
 
         event_cp = copy(event_cp)
         del event_cp['proposal_id']
 
-        self.proposal_vote_record[proposal_id].append(event_cp)
-        self.proposal_vote_record[proposal_id].sort(key=lambda x: (int(x['bn']), x['tid'], x['lid']))
+        self.proposal_vote_record[proposal_id].add(event_cp)
 
         voter = event['voter'].lower()
         block_number = int(event['block_number']) if isinstance(event['block_number'], str) else event['block_number']

@@ -21,7 +21,7 @@ class ParticipationRateModel(DataModel):
 
                 if vp > 0:
                         
-                    voted = votes_dp.participated[delegatee_addr][proposal_id]
+                    voted = votes_dp.participated.get(delegatee_addr, {}).get(proposal_id, False)
                         
                     num, den = new_fractions[delegatee_addr]
                         
@@ -52,7 +52,7 @@ class ParticipationRateModel(DataModel):
 
                 if vp > 0:
                         
-                    voted = votes_dp.participated[delegatee_addr][proposal_id]
+                    voted = votes_dp.participated.get(delegatee_addr, {}).get(proposal_id, False)
                     
                     if voted:
                         num += 1
