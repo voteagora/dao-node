@@ -1154,6 +1154,8 @@ async def delegate_handler(app, request, addr):
 
         from_list_with_info.append(row)
 
+    if ENABLE_DELEGATION and 'token' in deployment:
+        app.ctx.participation_rate_model.refresh_if_necessary(app.ctx.proposals, app.ctx.votes, app.ctx.delegations)
     participation = app.ctx.participation_rate_model.get_fraction(addr)
 
     # Get delegated voting power
