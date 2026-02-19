@@ -1042,6 +1042,7 @@ class Votes(DataProduct):
             del event_cp['weight']
 
         self.voter_history[voter].append(event_cp)
+        self.voter_history[voter].sort(key=lambda x: (int(x['bn']), x['tid'], x['lid']))
 
         self.participated[voter][proposal_id] = True
 
@@ -1049,7 +1050,8 @@ class Votes(DataProduct):
         del event_cp['proposal_id']
 
         self.proposal_vote_record[proposal_id].append(event_cp)
-        
+        self.proposal_vote_record[proposal_id].sort(key=lambda x: (int(x['bn']), x['tid'], x['lid']))
+
         voter = event['voter'].lower()
         block_number = int(event['block_number']) if isinstance(event['block_number'], str) else event['block_number']
         if block_number > self.latest_vote_block[voter]:

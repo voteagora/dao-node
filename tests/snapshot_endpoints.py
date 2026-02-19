@@ -71,8 +71,33 @@ def fetch(session, base_url, path, label, errors, quiet=False):
         return None
 
 
+def _deep_add(base, overlay):
+    """Recursively add numeric values from overlay into base (in-place)."""
+    for k, v in overlay.items():
+        if isinstance(v, dict):
+            if k not in base:
+                base[k] = {}
+            _deep_add(base[k], v)
+        elif isinstance(v, (int, float)):
+            base[k] = base.get(k, 0) + v
+
+
 def normalize(snapshot):
     """Sort order-sensitive sections so comparisons are deterministic."""
+
+    # progress: merge archive_counts + realtime_counts into total_counts so that
+    # legacy-mode (all archive) vs DB-mode (archive + realtime split) comparisons
+    # only diff the combined total, not the per-source breakdown.
+    progress = snapshot.get("progress")
+    if progress:
+        merged = {}
+        for key in ("archive_counts", "realtime_counts"):
+            counts = progress.pop(key, None)
+            if counts:
+                _deep_add(merged, counts)
+        if merged:
+            progress["total_counts"] = merged
+
     # proposals: sort by block_number, transaction_index, log_index
     proposals_section = snapshot.get("proposals")
     if proposals_section and "proposals" in proposals_section:
@@ -111,7 +136,7 @@ def strip_volatile(data, label):
         data.pop("boot_time", None)
         data.pop("worker_id", None)
         data.pop("git_commit_sha", None)
-        data.pop("realtime_counts", None)
+        # Keep realtime_counts so DB-mode vs legacy comparisons can verify totals
     return data
 
 
@@ -142,7 +167,7 @@ def discover(session, base_url, page_size, errors):
     # Try silently — don't pollute errors list with discovery attempts
     vote_sample = None
     discovery_errors = []
-    for pid in proposal_ids[:5]:  # only try first 5
+    for pid in sorted(proposal_ids)[:5]:  # only try first 5, sorted for determinism
         vr = fetch(session, base_url,
                    f"/v1/vote_record/{pid}?page_size=1",
                    "discover_vote_sample", discovery_errors)
@@ -241,8 +266,7 @@ def snapshot_all(base_url, page_size, max_proposals, max_delegates, block_overri
 
     # ── 9. GET /v1/proposal/<id> ──────────────────────────────────────────
     snapshot["proposal_details"] = {}
-    # Sort proposals by ID and limit to first 50 to reduce data size
-    sorted_proposals = sorted(proposal_ids)[:50]
+    sorted_proposals = sorted(proposal_ids)
     for pid in sorted_proposals:
         data = fetch(session, base_url, f"/v1/proposal/{pid}", f"proposal/{pid}", errors)
         if data is not None:
@@ -251,10 +275,7 @@ def snapshot_all(base_url, page_size, max_proposals, max_delegates, block_overri
 
     # ── 10. GET /v1/vote_record/<id>?full=true ────────────────────────────
     snapshot["vote_records"] = {}
-    # Sort proposals by ID and limit to first 50 to reduce data size
-    sorted_proposals = sorted(proposal_ids)[:50]
     for pid in sorted_proposals:
-        # Limit vote records to 100 per proposal to reduce data size
         data = fetch(session, base_url, f"/v1/vote_record/{pid}?page_size=100", f"vote_record/{pid}", errors)
         if data is not None:
             snapshot["vote_records"][pid] = data
@@ -430,7 +451,7 @@ def main():
     parser.add_argument("--bucket", default=None, help="GCS bucket (default: DAONODE_DATA_COMPARE env)")
     parser.add_argument("--no-gcs", action="store_true", help="Local only, skip GCS")
     parser.add_argument("--page-size", type=int, default=200)
-    parser.add_argument("--max-proposals", type=int, default=50, help="Max proposals for per-proposal endpoints (default 50)")
+    parser.add_argument("--max-proposals", type=int, help="Max proposals for per-proposal endpoints")
     parser.add_argument("--max-delegates", type=int, default=10, help="Max delegates for per-delegate endpoints (default 10)")
     args = parser.parse_args()
 
@@ -442,7 +463,7 @@ def main():
     snapshot, detected_block = snapshot_all(
         base_url=args.base_url,
         page_size=args.page_size,
-        max_proposals=args.max_proposals,
+        max_proposals=getattr(args, 'max_proposals', None),
         max_delegates=args.max_delegates,
         block_override=args.block,
     )

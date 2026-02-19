@@ -252,6 +252,15 @@ class Feed:
 
     def read_archive(self):
 
+        # Determine the effective archive ceiling block (computed once).
+        # DAO_NODE_DB_SYNC_FROM_BLOCK caps the archive so the DB client takes over.
+        # DAO_NODE_MAX_BLOCK is the absolute ceiling for all ingestion.
+        archive_ceiling = None
+        if DAO_NODE_DB_SYNC_FROM_BLOCK:
+            archive_ceiling = DAO_NODE_DB_SYNC_FROM_BLOCK
+        if DAO_NODE_MAX_BLOCK:
+            archive_ceiling = min(archive_ceiling, DAO_NODE_MAX_BLOCK) if archive_ceiling else DAO_NODE_MAX_BLOCK
+
         for i, client in self.cs:
 
             if client.timeliness == 'archive':
@@ -267,15 +276,6 @@ class Feed:
                 reader = client.read(after=self.block)
 
                 cnt = 0
- 
-                # Determine the effective archive ceiling block.
-                # DAO_NODE_DB_SYNC_FROM_BLOCK caps the archive so the DB client takes over.
-                # DAO_NODE_MAX_BLOCK is the absolute ceiling for all ingestion.
-                archive_ceiling = None
-                if DAO_NODE_DB_SYNC_FROM_BLOCK:
-                    archive_ceiling = DAO_NODE_DB_SYNC_FROM_BLOCK
-                if DAO_NODE_MAX_BLOCK:
-                    archive_ceiling = min(archive_ceiling, DAO_NODE_MAX_BLOCK) if archive_ceiling else DAO_NODE_MAX_BLOCK
 
                 for event, signal, new_signal in reader:
 
@@ -309,8 +309,14 @@ class Feed:
                     self.profiler.report()
 
                 logr.info(f"{emoji} Done reading {cnt} block-headers and event-logs as of block {self.block}.  Took {dur:.2f} seconds.")
-            
-            self.block = self.block + 1
+
+                self.block = self.block + 1
+
+        # Cap self.block so it doesn't inflate past the archive ceiling
+        # (the +1 between archive clients prevents double-processing but
+        # the final +1 would push self.block past the intended max).
+        if archive_ceiling and self.block > archive_ceiling:
+            self.block = archive_ceiling
 
     def capture_ws_client_output(self, event):
         self.event_history.append(event)

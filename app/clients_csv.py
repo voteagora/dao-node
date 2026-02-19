@@ -141,7 +141,7 @@ class CSVClientCaster:
                     if isinstance(obj, str):
                         obj = obj.replace('"', '')
                         obj = obj[1:-1]
-                        obj = obj.split(',')
+                        obj = obj.split(',') if obj else []
                     event['calldatas'] = obj
 
                 obj = event.get('signatures', Ellipsis)
