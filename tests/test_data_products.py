@@ -264,7 +264,7 @@ def test_Proposals_one_op_approval_from_csv(op_governor_abis):
 
     del first_proposal.create_event['description']
 
-    assert first_proposal.create_event['proposal_type'] == 3
+    assert first_proposal.create_event['proposal_type_id'] == 3
     assert first_proposal.create_event['voting_module_name'] == 'approval'
 
     assert first_proposal.create_event['decoded_proposal_data'] == (((0, (), (), (), 'World Foundation'), (0, (), (), (), 'Andrey Petrov'), (0, (), (), (), 'OP Labs'), (0, (), (), (), 'L2BEAT'), (0, (), (), (), 'Alchemy'), (0, (), (), (), 'Maggie Love'), (0, (), (), (), 'Gauntlet'), (0, (), (), (), 'Test in Prod'), (0, (), (), (), 'Yoav Weiss'), (0, (), (), (), 'ml_sudo'), (0, (), (), (), 'Kris Kaczor'), (0, (), (), (), 'Martin Tellechea'), (0, (), (), (), 'Ink'), (0, (), (), (), 'Coinbase'), (0, (), (), (), 'troy')), (15, 1, '0x0000000000000000000000000000000000000000', 6, 0))
@@ -535,7 +535,7 @@ def test_Proposals_agora_v2_proposal_creation(v2_proposal_abi):
     # Verify proposal type is extracted from description
     assert '15955855790422721941705776916809127869130159600460608057182735456172624954953' in proposals.proposals
     assert proposals.proposals['15955855790422721941705776916809127869130159600460608057182735456172624954953'].proposal_type == 9
-    assert proposals.proposals['15955855790422721941705776916809127869130159600460608057182735456172624954953'].create_event['proposal_type'] == 9
+    assert proposals.proposals['15955855790422721941705776916809127869130159600460608057182735456172624954953'].create_event['proposal_type_id'] == 9
     
     proposal = proposals.proposals['15955855790422721941705776916809127869130159600460608057182735456172624954953']
     assert proposal.voting_module_name == 'standard'

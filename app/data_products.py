@@ -699,7 +699,7 @@ class Proposal:
 
     def set_proposal_type(self, proposal_type):
         self.proposal_type = proposal_type
-        self.create_event['proposal_type'] = proposal_type
+        self.create_event['proposal_type_id'] = proposal_type
     
     def reverse_engineer_module_name(self, signature, proposal_data):
         voting_module_name = reverse_engineer_module(signature, proposal_data)
@@ -835,6 +835,10 @@ class Proposals(DataProduct):
 
         try:
             if 'ProposalCreated' == signature[:LCREATED]:
+                if 'proposal_type' in event:
+                    event['proposal_type_id'] = event['proposal_type']
+                    del event['proposal_type']
+
                 if signature == PROPOSAL_CREATED_MODULE:
                     if proposal_id in self.proposals:
                         proposal = self.proposals[proposal_id]
