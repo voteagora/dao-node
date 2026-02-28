@@ -1516,7 +1516,7 @@ if INCLUDE_NON_IVOTES_VP:
 ################################################################################
 
 NUM_ARCHIVE_CLIENTS = int(os.getenv('NUM_ARCHIVE_CLIENTS', 2))
-NUM_REALTIME_CLIENTS = int(os.getenv('NUM_REALTIME_CLIENTS', 2))
+NUM_REALTIME_CLIENTS = int(os.getenv('NUM_REALTIME_CLIENTS', 1))
 NUM_POLLING_CLIENTS = int(os.getenv('NUM_POLLING_CLIENTS', 1))
 
 @app.before_server_start(priority=0)

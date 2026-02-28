@@ -290,6 +290,12 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
                 logr.error(f"{self.name}: Failed to subscribe to block headers: {error.get('message', 'Unknown error')}")
 
     async def _subscribe_to_event_logs(self):
+        """Subscribe to event logs with batched topics per contract.
+        
+        Instead of creating one subscription per topic, this creates ONE subscription
+        per contract address with all topics as an OR filter. This significantly reduces
+        the number of WebSocket subscriptions and Alchemy API consumption.
+        """
 
         for chain_id in self.event_subsription_meta.keys():
 
@@ -298,31 +304,31 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
 
             for cs_address in self.event_subsription_meta[chain_id].keys():
 
-                topics = self.event_subsription_meta[chain_id][cs_address].keys()
+                topics = list(self.event_subsription_meta[chain_id][cs_address].keys())
 
-                for topic in topics:
+                # Batch all topics for this contract into a single subscription
+                # Using [topics] creates an OR filter - matches any of the topics
+                subscribe_params = {
+                    "jsonrpc": "2.0",
+                    "id": self.next_sub_request_id,
+                    "method": "eth_subscribe",
+                    "params": [
+                        "logs",
+                        {
+                            "address": cs_address,
+                            "topics": [topics]  # OR filter: matches any topic in the list
+                        }
+                    ]
+                }
 
-                    """Subscribe to new event logs"""
-                    subscribe_params = {
-                        "jsonrpc": "2.0",
-                        "id": self.next_sub_request_id,
-                        "method": "eth_subscribe",
-                        "params": [
-                            "logs",
-                            {
-                                "address": cs_address,
-                                "topics": [topic]
-                            }
-                        ]
-                    }
+                logr.info(f"{self.name}: Subscription Req ID: {self.next_sub_request_id} to event logs for {cs_address} with {len(topics)} batched topics")
 
-                    logr.info(f"{self.name}: Subscription Req ID: {self.next_sub_request_id} to event logs for {cs_address} with topic {topic}")
+                await self.ws.send(json.dumps(subscribe_params))
 
-                    await self.ws.send(json.dumps(subscribe_params))
+                # Store chain_id and address - topic will be extracted from incoming events
+                mapping_our_id_to_subscription_method[self.next_sub_request_id] = (chain_id, cs_address)
 
-                    mapping_our_id_to_subscription_method[self.next_sub_request_id] = (chain_id, cs_address, topic)
-
-                    self.next_sub_request_id += 1
+                self.next_sub_request_id += 1
 
             while len(new_sub_ids) < len(mapping_our_id_to_subscription_method):
 
@@ -331,7 +337,7 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
                 if "result" in response:
                     sub_id = response["result"]
                     our_id = response["id"]
-                    new_sub_ids[sub_id] = "event",mapping_our_id_to_subscription_method[our_id]
+                    new_sub_ids[sub_id] = "event", mapping_our_id_to_subscription_method[our_id]
                     logr.info(f"{self.name}: Successfully subscribed to event logs with ID: {our_id}")
                 elif "method" in response and response["method"] == "eth_subscription":
                     sub_id = response["params"]["subscription"]
@@ -341,7 +347,7 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
                     error = response.get('error', {})
                     raise Reset(f"{self.name}: E24720250528: Failed to subscribe to event logs: {error}")
             
-            logr.info(f"{self.name}: Successfully subscribed to {len(new_sub_ids)} event logs.")
+            logr.info(f"{self.name}: Successfully subscribed to {len(new_sub_ids)} contract subscriptions (batched topics).")
             self.sub_ids.update(new_sub_ids)
 
 
@@ -387,7 +393,12 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
 
                             elif log_type == "event":
 
-                                chain_id, cs_address, topic = meta
+                                chain_id, cs_address = meta
+
+                                # Extract topic from the incoming event (batched subscription)
+                                topic = event['topics'][0]
+                                if not topic.startswith('0x'):
+                                    topic = '0x' + topic
 
                                 caster_fn, signature = self.event_subsription_meta[chain_id][cs_address][topic]
 
