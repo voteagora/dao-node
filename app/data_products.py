@@ -538,8 +538,21 @@ def reverse_engineer_module(signature, proposal_data):
         crit = '00000000000000000000000000000000000000000000000000000000000000c'
         if proposal_data.startswith(crit):
             return 'approval'
-        else:
-            return 'optimistic'
+        pd = proposal_data.replace('0x', '')
+        data_bytes = bytes.fromhex(pd)
+        if len(data_bytes) == 64:
+            try:
+                decode_abi(["(uint248,bool)"], data_bytes)
+                return 'optimistic'
+            except Exception:
+                pass
+        if len(data_bytes) >= 128:
+            try:
+                decode_abi(["(address[],uint256[],bytes[],(uint248,bool))"], data_bytes)
+                return 'optimistic_execution'
+            except Exception:
+                pass
+        return 'optimistic'
 
     elif signature in (PROPOSAL_CREATED_1, PROPOSAL_CREATED_2):
         return 'standard'
@@ -608,7 +621,12 @@ def decode_proposal_data(proposal_type, proposal_data):
         abi = ["(uint248,bool)"]
         decoded = decode_abi(abi, proposal_data)
         return bytes_to_hex(decoded)
-    
+
+    if proposal_type == 'optimistic_execution':
+        abi = ["(address[],uint256[],bytes[],(uint248,bool))"]
+        decoded = decode_abi(abi, proposal_data)
+        return bytes_to_hex(decoded)
+
     if proposal_type == 'approval':
         abi = ["(uint256,address[],uint256[],bytes[],string)[]", "(uint8,uint8,address,uint128,uint128)"]
         abi2 = ["(address[],uint256[],bytes[],string)[]",        "(uint8,uint8,address,uint128,uint128)"] # OP/alligator only? Only for 0xe1a17f4770769f9d77ef56dd3b92500df161f3a1704ab99aec8ccf8653cae400l
@@ -874,14 +892,14 @@ class Proposals(DataProduct):
 
                     if self.gov_spec['name'] == 'agora' and self.gov_spec['version'] < 2.0:
                         
-                        voting_module_name = proposal.voting_module_name # standard / approval / optimistic
+                        voting_module_name = proposal.voting_module_name # standard / approval / optimistic / optimistic_execution
 
-                        if voting_module_name in ('approval', 'optimistic'):
-                            proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)                
-                        
+                        if voting_module_name in ('approval', 'optimistic', 'optimistic_execution'):
+                            proposal.create_event['decoded_proposal_data'] = decode_proposal_data(voting_module_name, proposal_data)
+
                     self.proposals[proposal_id] = proposal
 
-                    if hasattr(proposal, 'voting_module_name') and proposal.voting_module_name != 'optimistic':
+                    if hasattr(proposal, 'voting_module_name') and proposal.voting_module_name not in ('optimistic', 'optimistic_execution'):
                         self.prst.track_new_proposal(proposal_id, proposal.start_block, proposal.end_block)
 
             elif 'ProposalQueued' == signature[:LQUEUED]:
@@ -903,7 +921,7 @@ class Proposals(DataProduct):
         fresh_completed_proposals = []
         
         for proposal_id, proposal in self.proposals.items():
-            if (proposal.end_block < self.block_number) and (not proposal.canceled) and hasattr(proposal, 'voting_module_name') and (not proposal.voting_module_name == 'optimistic'):
+            if (proposal.end_block < self.block_number) and (not proposal.canceled) and hasattr(proposal, 'voting_module_name') and (proposal.voting_module_name not in ('optimistic', 'optimistic_execution')):
                 fresh_completed_proposals.append((proposal_id, proposal.start_block, proposal.end_block))
         self.prst.update_recently_completed_and_counted_proposal(fresh_completed_proposals)
     
