@@ -1523,14 +1523,23 @@ CLIENT_STYLE = 'csv-db-db'
 
 NUM_ARCHIVE_CLIENTS = int(os.getenv('NUM_ARCHIVE_CLIENTS', -1))
 NUM_REALTIME_CLIENTS = int(os.getenv('NUM_REALTIME_CLIENTS', -1))
-NUM_POLLING_CLIENTS = int(os.getenv('NUM_POLLING_CLIENTS', 1))
+NUM_POLLING_CLIENTS = int(os.getenv('NUM_POLLING_CLIENTS', -1))
 
 if CLIENT_STYLE == 'csv-node-node':
+    # We have two archive clients (1st - csv, 2nd = node)
     NUM_ARCHIVE_CLIENTS = 2 if NUM_ARCHIVE_CLIENTS == -1 else NUM_ARCHIVE_CLIENTS
+    # We have 2 web sockets per event, in case either disconnect
     NUM_REALTIME_CLIENTS = 2 if NUM_REALTIME_CLIENTS == -1 else NUM_REALTIME_CLIENTS
+    # We have 1 polling client, just in case of an extended outage on Web Socket infra
+    NUM_POLLING_CLIENTS = 1 if NUM_POLLING_CLIENTS == -1 else NUM_POLLING_CLIENTS
 elif CLIENT_STYLE == 'csv-db-db':
+    # We have two archive clients (1st - csv, 2nd = db)  
     NUM_ARCHIVE_CLIENTS = 2 if NUM_ARCHIVE_CLIENTS == -1 else NUM_ARCHIVE_CLIENTS
-    NUM_REALTIME_CLIENTS = 2 if NUM_REALTIME_CLIENTS == -1 else NUM_REALTIME_CLIENTS
+    # There are no websocket
+    NUM_REALTIME_CLIENTS = 0 if NUM_REALTIME_CLIENTS == -1 else NUM_REALTIME_CLIENTS
+    # We only need one polling client
+    # TODO - Add the polling client for this client style.
+    NUM_POLLING_CLIENTS =0 if NUM_POLLING_CLIENTS == -1 else NUM_POLLING_CLIENTS
 else:
     raise Exception(f"Client Style: {CLIENT_STYLE} not supported")
 
