@@ -47,7 +47,6 @@ from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS
 if  CAPTURE_WS_CLIENT_OUTPUTS:
     from copy import deepcopy
 
-
 BOOT_TIME = datetime.now().isoformat()
 WORKER_ID = str(randint(0, 100000000000000000)) # just a big number to avoid collissions.
 
@@ -71,7 +70,9 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 # We need a YAML config matching the Agora Governor Deployment Spec.
 #
 ######################################################################
-    
+
+DAO_NODE_DB_TABLE_PREFIX = os.getenv('DAO_NODE_DB_TABLE_PREFIX', 'daonode')
+
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
 GIT_COMMIT_SHA = os.getenv('GIT_COMMIT_SHA', 'n/a')
@@ -1518,9 +1519,20 @@ if INCLUDE_NON_IVOTES_VP:
 #
 ################################################################################
 
-NUM_ARCHIVE_CLIENTS = int(os.getenv('NUM_ARCHIVE_CLIENTS', 2))
-NUM_REALTIME_CLIENTS = int(os.getenv('NUM_REALTIME_CLIENTS', 2))
+CLIENT_STYLE = 'csv-db-db'
+
+NUM_ARCHIVE_CLIENTS = int(os.getenv('NUM_ARCHIVE_CLIENTS', -1))
+NUM_REALTIME_CLIENTS = int(os.getenv('NUM_REALTIME_CLIENTS', -1))
 NUM_POLLING_CLIENTS = int(os.getenv('NUM_POLLING_CLIENTS', 1))
+
+if CLIENT_STYLE == 'csv-node-node':
+    NUM_ARCHIVE_CLIENTS = 2 if NUM_ARCHIVE_CLIENTS == -1 else NUM_ARCHIVE_CLIENTS
+    NUM_REALTIME_CLIENTS = 2 if NUM_REALTIME_CLIENTS == -1 else NUM_REALTIME_CLIENTS
+elif CLIENT_STYLE == 'csv-db-db':
+    NUM_ARCHIVE_CLIENTS = 2 if NUM_ARCHIVE_CLIENTS == -1 else NUM_ARCHIVE_CLIENTS
+    NUM_REALTIME_CLIENTS = 2 if NUM_REALTIME_CLIENTS == -1 else NUM_REALTIME_CLIENTS
+else:
+    raise Exception(f"Client Style: {CLIENT_STYLE} not supported")
 
 @app.before_server_start(priority=0)
 async def bootstrap_data_feeds(app, loop):
@@ -1530,27 +1542,35 @@ async def bootstrap_data_feeds(app, loop):
 
     clients = []
 
-    csvc = CSVClient(DAO_NODE_DATA_PATH)
-    if csvc.is_valid():
-        clients.append(csvc)
+    if CLIENT_STYLE.startswith('csv'):
+        csvc = CSVClient(DAO_NODE_DATA_PATH)
+        if csvc.is_valid():
+            clients.append(csvc)
 
-    dbhc = DbHistClient(DAO_NODE_DB_URL)
-
-    if dbhc.is_valid(DAO_NODE_DB_URL):
-
-        app.ctx.db = await asyncpg.create_pool(
-            dsn=DAO_NODE_DB_URL,
-            min_size=5,
-            max_size=50
-        )
-        dbhc.add_pool(app.ctx.db_pool)
-        clients.append(dbhc)
-
-    else:
+    if CLIENT_STYLE == 'csv-node-node':
 
         rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
         if rpcc.is_valid():
-            clients.append(rpcc)
+           clients.append(rpcc)
+
+        for i in range(NUM_REALTIME_CLIENTS):
+            jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RTWS{i}")
+            if jwsc.is_valid():
+                clients.append(jwsc)
+
+        for i in range(NUM_POLLING_CLIENTS):
+            jwhc = JsonRpcRtHttpClient(ARCHIVE_NODE_HTTP_URL, f"POLL{i}")
+            if jwhc.is_valid():
+                clients.append(jwhc)
+
+    elif CLIENT_STYLE == 'csv-db-db':
+
+        dbhc = DbHistClient(DAO_NODE_DB_URL)
+        if dbhc.is_valid():
+            await dbhc.create_pool()
+            clients.append(dbhc)
+
+
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
@@ -1596,7 +1616,8 @@ async def bootstrap_data_feeds(app, loop):
         voting_module_abi = ABI.from_internet('voting_module', voting_module_addr, chain_id=chain_id, implementation=True)
         abi_list.append(voting_module_abi)
 
-    abis = ABISet('daonode', abi_list)
+
+    abis = ABISet(DAO_NODE_DB_TABLE_PREFIX, abi_list)
     dcqs.set_abis(abis)
 
     #################################################################################
