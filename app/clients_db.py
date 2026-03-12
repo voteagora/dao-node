@@ -1,4 +1,4 @@
-import csv, os, sys
+import csv, json, os, sys
 
 from collections import defaultdict
 
@@ -9,7 +9,7 @@ import asyncpg
 from abifsm import ABISet
 
 from .utils import camel_to_snake
-from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4, PROPOSAL_CREATED_MODULE, DELEGATE_CHANGED_2
+from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4, PROPOSAL_CREATED_MODULE, DELEGATE_CHANGED_2, VOTE_CAST_WITH_PARAMS_1
 
 DB_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 TABLE_PREFIX = os.getenv('TABLE_PREFIX', 'multi_')
@@ -51,6 +51,87 @@ def cast(event, fields, func):
 
     return event
 
+def _parse_json_if_str(obj):
+    if isinstance(obj, str):
+        return json.loads(obj)
+    return obj
+
+
+class DbClientCaster:
+
+    def __init__(self, abis):
+        self.abis = abis
+
+    def lookup(self, signature):
+
+        abi_frag = self.abis.get_by_signature(signature)
+
+        int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
+
+        if signature == TRANSFER:
+            
+            amount_field = camel_to_snake(abi_frag.fields[2])
+            
+            def caster_fn(event):
+                event[amount_field] = int(event[amount_field])
+                return event
+            
+            return caster_fn
+        
+        if signature == DELEGATE_CHANGED_2:
+
+            def caster_fn(event):
+                for field in ('old_delegatees', 'new_delegatees'):
+                    val = event.get(field)
+                    if val is None:
+                        continue
+                    val = _parse_json_if_str(val)
+                    event[field] = [(addr.lower(), int(num)) for addr, num in val]
+                return event
+
+            return caster_fn
+
+        if signature == VOTE_CAST_WITH_PARAMS_1:
+
+            def caster_fn(event):
+                params = event.get('params')
+                if isinstance(params, (bytes, memoryview)):
+                    event['params'] = bytes(params).hex()
+                return event
+
+            return caster_fn
+
+        if signature in (PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4):
+
+            def caster_fn(event):
+                for field in ('values', 'targets', 'calldatas', 'signatures'):
+                    val = event.get(field, Ellipsis)
+                    if val is Ellipsis:
+                        continue
+                    event[field] = _parse_json_if_str(val)
+                return event
+
+            return caster_fn
+
+        if signature == PROPOSAL_CREATED_MODULE:
+
+            def caster_fn(event):
+                for field in ('settings', 'options'):
+                    val = event.get(field, Ellipsis)
+                    if val is Ellipsis:
+                        continue
+                    event[field] = _parse_json_if_str(val)
+                return event
+
+            return caster_fn
+
+        # Default: DB types are already correct, no-op.
+        def caster_fn(event):
+            return event
+
+        return caster_fn
+
+
 class SubscriptionPlannerMixin:
 
     def init(self):
@@ -64,7 +145,8 @@ class SubscriptionPlannerMixin:
 
         self.abis_set = True
         self.abis = abi_set
-        # self.caster = self.casterCls(self.abis)
+        if hasattr(self, 'casterCls'):
+            self.caster = self.casterCls(self.abis)
 
     def plan(self, signal_type, signal_meta):
 
@@ -83,6 +165,7 @@ class DbHistClient(SubscriptionPlannerMixin):
     def __init__(self, url):
 
         self.url = url
+        self.casterCls = DbClientCaster
         self.init()
 
     def add_pool(self, pool):
@@ -144,11 +227,12 @@ class DbHistClient(SubscriptionPlannerMixin):
 
         abi_frag = self.abis.get_by_signature(signature)
         sighash = abi_frag.topic
+        caster_fn = self.caster.lookup(signature)
 
         if not self.check_table(table_name):
             raise Exception(f"Table not found: {table_name}")
         else:
-            self.subscription_meta.append(('event', (table_name, chain_id, address, signature, sighash)))
+            self.subscription_meta.append(('event', (table_name, chain_id, address, signature, sighash, caster_fn)))
 
     def plan_block(self, chain_id):
 
@@ -167,11 +251,11 @@ class DbHistClient(SubscriptionPlannerMixin):
             new_signal = True
 
             if event_or_block == 'event':
-                table_name, chain_id, address, signature, sighash = subscription_meta
+                table_name, chain_id, address, signature, sighash, caster_fn = subscription_meta
 
                 signal = f"{chain_id}.{address}.{signature}"
 
-                for event in self.read_events(table_name, chain_id, address, signature, sighash, after):
+                for event in self.read_events(table_name, chain_id, address, signature, sighash, caster_fn, after):
                     yield event, signal, new_signal
                     new_signal = False
 
@@ -191,7 +275,7 @@ class DbHistClient(SubscriptionPlannerMixin):
     def get_fallback_block(self):
         return 0
 
-    def read_events(self, table_name, chain_id, address, signature, sighash, after):
+    def read_events(self, table_name, chain_id, address, signature, sighash, caster_fn, after):
 
         conn = self._sync_connect()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -210,6 +294,7 @@ class DbHistClient(SubscriptionPlannerMixin):
             event['log_index'] = int(event['log_index'])
             event['signature'] = signature
             event['sighash'] = sighash
+            event = caster_fn(event)
             yield event
 
         cur.close()
@@ -221,7 +306,7 @@ class DbHistClient(SubscriptionPlannerMixin):
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cur.execute(
-            f"""SELECT * FROM {DB_SCHEMA}.blocks_{table_name}
+            f"""SELECT * FROM {DB_SCHEMA}.{table_name}
                 WHERE block_number >= %s
                 ORDER BY block_number;""",
             (after,)
