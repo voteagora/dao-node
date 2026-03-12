@@ -32,6 +32,7 @@ from .middleware import start_timer, add_server_timing_header, measure
 from .profiling import Profiler
 
 from .clients_csv import CSVClient
+from .clients_db import DbHistClient, DbPollClient
 from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcRtHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
 
@@ -77,6 +78,8 @@ GIT_COMMIT_SHA = os.getenv('GIT_COMMIT_SHA', 'n/a')
 glogr.info(f"GIT_COMMIT_SHA={GIT_COMMIT_SHA}")
 
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
+
+DAO_NODE_DB_URL = os.getenv('DAO_NODE_DB_URL', '.')
 
 def secret_text(t, n):
     if len(t) > ((2 * n) + 3):
@@ -1531,19 +1534,37 @@ async def bootstrap_data_feeds(app, loop):
     if csvc.is_valid():
         clients.append(csvc)
 
-    rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-    if rpcc.is_valid():
-       clients.append(rpcc)
+    dbhc = DbHistClient(DAO_NODE_DB_URL)
 
-    for i in range(NUM_REALTIME_CLIENTS):
-        jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RTWS{i}")
-        if jwsc.is_valid():
-           clients.append(jwsc)
+    if dbhc.is_valid(DAO_NODE_DB_URL):
 
-    for i in range(NUM_POLLING_CLIENTS):
-        jwhc = JsonRpcRtHttpClient(ARCHIVE_NODE_HTTP_URL, f"POLL{i}")
-        if jwhc.is_valid():
-           clients.append(jwhc)
+        app.ctx.db = await asyncpg.create_pool(
+            dsn=DAO_NODE_DB_URL,
+            min_size=5,
+            max_size=50
+        )
+        dbhc.add_pool(app.ctx.db_pool)
+        clients.append(dbhc)
+
+        dbpc = DbPollClient(DAO_NODE_DB_URL):
+        dbpc.add_pool(app.ctx.db_pool)
+        clients.append(dbpc)
+
+    else:
+
+        rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
+        if rpcc.is_valid():
+            clients.append(rpcc)
+
+        for i in range(NUM_REALTIME_CLIENTS):
+            jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RTWS{i}")
+            if jwsc.is_valid():
+                clients.append(jwsc)
+
+        for i in range(NUM_POLLING_CLIENTS):
+            jwhc = JsonRpcRtHttpClient(ARCHIVE_NODE_HTTP_URL, f"POLL{i}")
+            if jwhc.is_valid():
+                clients.append(jwhc)
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
