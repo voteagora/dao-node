@@ -32,7 +32,7 @@ from .middleware import start_timer, add_server_timing_header, measure
 from .profiling import Profiler
 
 from .clients_csv import CSVClient
-from .clients_db import DbHistClient
+from .clients_db import DbHistClient, DbRtClient
 from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcRtHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
 
@@ -70,6 +70,8 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 # We need a YAML config matching the Agora Governor Deployment Spec.
 #
 ######################################################################
+
+POLLING_WAIT_CYCLE = int(os.getenv('POLLING_WAIT_CYCLE', 15))
 
 DAO_NODE_DB_TABLE_PREFIX = os.getenv('DAO_NODE_DB_TABLE_PREFIX', 'daonode')
 
@@ -1579,6 +1581,11 @@ async def bootstrap_data_feeds(app, loop):
             await dbhc.create_pool()
             clients.append(dbhc)
 
+        for i in range(NUM_POLLING_CLIENTS):
+            dbrt = DbRtClient(DAO_NODE_DB_URL, f"POLL{i}")
+            if dbrt.is_valid():
+                await dbrt.create_pool()
+                clients.append(dbrt)
 
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
@@ -1776,7 +1783,7 @@ async def read_polling(app, polling_client_num):
     Note that this blocks for the duration of the wait_cycle, so it should be as short as possible, TODO - make it fully async.
     """
 
-    wait_cycle = int(os.getenv('POLLING_WAIT_CYCLE', 120))
+    wait_cycle = POLLING_WAIT_CYCLE
     await asyncio.sleep(wait_cycle)
     while True:
         start_time = time.perf_counter()
