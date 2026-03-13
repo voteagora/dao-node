@@ -95,6 +95,7 @@ class DbClientCaster:
         if signature == VOTE_CAST_WITH_PARAMS_1:
 
             def caster_fn(event):
+                event = cast(event, int_fields, int)
                 params = event.get('params')
                 if isinstance(params, (bytes, memoryview)):
                     event['params'] = bytes(params).hex()
@@ -105,6 +106,7 @@ class DbClientCaster:
         if signature in (PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4):
 
             def caster_fn(event):
+                event = cast(event, int_fields, int)
                 for field in ('values', 'targets', 'calldatas', 'signatures'):
                     val = event.get(field, Ellipsis)
                     if val is Ellipsis:
@@ -117,6 +119,7 @@ class DbClientCaster:
         if signature == PROPOSAL_CREATED_MODULE:
 
             def caster_fn(event):
+                event = cast(event, int_fields, int)
                 for field in ('settings', 'options'):
                     val = event.get(field, Ellipsis)
                     if val is Ellipsis:
@@ -126,8 +129,9 @@ class DbClientCaster:
 
             return caster_fn
 
-        # Default: DB types are already correct, no-op.
+        # Default: cast int fields, everything else is already correct from DB.
         def caster_fn(event):
+            event = cast(event, int_fields, int)
             return event
 
         return caster_fn
