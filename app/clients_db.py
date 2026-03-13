@@ -10,6 +10,7 @@ from abifsm import ABISet
 
 from .utils import camel_to_snake
 from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4, PROPOSAL_CREATED_MODULE, DELEGATE_CHANGED_2, VOTE_CAST_WITH_PARAMS_1
+from .clients_httpjson import resolve_block_count_span
 
 DB_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 TABLE_PREFIX = os.getenv('TABLE_PREFIX', 'multi_')
@@ -322,6 +323,65 @@ class DbHistClient(SubscriptionPlannerMixin):
         conn.close()
 
 
+class DbRtClient(DbHistClient):
+    timeliness = 'polling'
+
+    def __init__(self, url, name):
+        self.url = url
+        self.name = name
+        self.casterCls = DbClientCaster
+        self.init()
+
+    async def read(self):
+
+        all_events = []
+
+        for event_or_block, subscription_meta in self.subscription_meta:
+
+            if event_or_block != 'event':
+                continue
+
+            table_name, chain_id, address, signature, sighash, caster_fn = subscription_meta
+
+            signal = f"{chain_id}.{address}.{signature}"
+
+            span = resolve_block_count_span(chain_id)
+            lookback = max(1, int(span / 200))
+
+            async with self.pool.acquire() as conn:
+
+                max_block = await conn.fetchval(
+                    f"SELECT MAX(block_number) FROM {DB_SCHEMA}.{table_name} WHERE address = $1 AND chain_id = $2",
+                    address, chain_id
+                )
+
+                if max_block is None:
+                    continue
+
+                from_block = max_block - lookback
+
+                rows = await conn.fetch(
+                    f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+                        WHERE address = $1 AND chain_id = $2 AND block_number >= $3
+                        ORDER BY block_number, transaction_index, log_index;""",
+                    address, chain_id, from_block
+                )
+
+            for row in rows:
+                event = dict(row)
+                event['block_number'] = str(event['block_number'])
+                event['transaction_index'] = int(event['transaction_index'])
+                event['log_index'] = int(event['log_index'])
+                event['signal'] = signal
+                event['signature'] = signature
+                event['sighash'] = sighash
+                event = caster_fn(event)
+                all_events.append(event)
+
+        all_events.sort(key=lambda x: (x['block_number'], x['transaction_index'], x['log_index']))
+
+        for event in all_events:
+            yield event
 
 
 if __name__ == '__main__':
