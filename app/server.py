@@ -1540,8 +1540,7 @@ elif CLIENT_STYLE == 'csv-db-db':
     # There are no websocket
     NUM_REALTIME_CLIENTS = 0 if NUM_REALTIME_CLIENTS == -1 else NUM_REALTIME_CLIENTS
     # We only need one polling client
-    # TODO - Add the polling client for this client style.
-    NUM_POLLING_CLIENTS =0 if NUM_POLLING_CLIENTS == -1 else NUM_POLLING_CLIENTS
+    NUM_POLLING_CLIENTS = 1 if NUM_POLLING_CLIENTS == -1 else NUM_POLLING_CLIENTS
 else:
     raise Exception(f"Client Style: {CLIENT_STYLE} not supported")
 
@@ -1744,6 +1743,8 @@ async def read_archive(app, dcqs):
 
 @app.after_server_start
 async def subscribe_feeds(app):
+
+    logr.info("subscribe feeds")
 
     for i in range(NUM_REALTIME_CLIENTS):
         logr.info(f"Realtime client {1 + NUM_ARCHIVE_CLIENTS + i} started")
