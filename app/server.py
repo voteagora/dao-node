@@ -1061,7 +1061,7 @@ async def delegates_handler(app, request):
             def voting_power_func(addr, _sort_val):
                 return str(app.ctx.delegations.delegatee_vp.get(addr, 0) + int(app.ctx.non_ivotes_vp.latest.get(addr, 0)))
         else:
-            voting_power_func = lambda addr, _sort_val: str(app.ctx.delegations.delegatee_vp[addr])
+            voting_power_func = lambda addr, _sort_val: str(app.ctx.delegations.delegatee_vp.get(addr, 0))
     
     if sort_by_vpc:
         voting_power_change_func = lambda addr, sort_val: str(sort_val)
