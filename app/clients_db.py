@@ -340,53 +340,73 @@ class DbRtClient(DbHistClient):
 
         all_events = []
 
+        # Get the latest block from the blocks table (DB equivalent of w3.eth.block_number)
+        obj = await self._get_latest_block()
+
+        if obj is None:
+            return
+        print(f"Latest block & timestamp: {obj} ({type(obj)})")
+        latest_block_number, latest_timestamp = obj['block_number'], obj['timestamp']
+
         for event_or_block, subscription_meta in self.subscription_meta:
 
-            if event_or_block != 'event':
-                continue
+            if event_or_block == 'block':
 
-            table_name, chain_id, address, signature, sighash, caster_fn = subscription_meta
+                chain_id = subscription_meta[1]
+                
+                out = {}
+                out['block_number'] = latest_block_number
+                out['timestamp'] = int(latest_timestamp)
+                out['signal'] = f"{chain_id}.blocks"
 
-            signal = f"{chain_id}.{address}.{signature}"
+                yield out
 
-            span = resolve_block_count_span(chain_id)
-            lookback = max(1, int(span / 200))
+            else:
 
-            async with self.pool.acquire() as conn:
+                table_name, chain_id, address, signature, sighash, caster_fn = subscription_meta
 
-                max_block = await conn.fetchval(
-                    f"SELECT MAX(block_number) FROM {DB_SCHEMA}.{table_name} WHERE address = $1 AND chain_id = $2",
-                    address, chain_id
-                )
+                signal = f"{chain_id}.{address}.{signature}"
 
-                if max_block is None:
-                    continue
+                span = resolve_block_count_span(chain_id)
+                lookback_block = latest_block_number - max(1, int(span / 200))
 
-                from_block = max_block - lookback
+                async with self.pool.acquire() as conn:
 
-                rows = await conn.fetch(
-                    f"""SELECT * FROM {DB_SCHEMA}.{table_name}
-                        WHERE address = $1 AND chain_id = $2 AND block_number >= $3
-                        ORDER BY block_number, transaction_index, log_index;""",
-                    address, chain_id, from_block
-                )
+                    rows = await conn.fetch(
+                        f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+                            WHERE address = $1 AND chain_id = $2 AND block_number >= $3
+                            ORDER BY block_number, transaction_index, log_index;""",
+                        address, chain_id, lookback_block
+                    )
 
-            for row in rows:
-                event = dict(row)
-                event['block_number'] = str(event['block_number'])
-                event['transaction_index'] = int(event['transaction_index'])
-                event['log_index'] = int(event['log_index'])
-                event['signal'] = signal
-                event['signature'] = signature
-                event['sighash'] = sighash
-                event = caster_fn(event)
-                all_events.append(event)
+                for row in rows:
+                    event = dict(row)
+                    event['block_number'] = str(event['block_number'])
+                    event['transaction_index'] = int(event['transaction_index'])
+                    event['log_index'] = int(event['log_index'])
+                    event['signal'] = signal
+                    event['signature'] = signature
+                    event['sighash'] = sighash
+                    event = caster_fn(event)
+                    all_events.append(event)
 
-        all_events.sort(key=lambda x: (x['block_number'], x['transaction_index'], x['log_index']))
+            all_events.sort(key=lambda x: (x['block_number'], x['transaction_index'], x['log_index']))
 
-        for event in all_events:
-            yield event
+            for event in all_events:
+                yield event
 
+    async def _get_latest_block(self):
+        """Get the latest block number from the blocks table, mirroring w3.eth.block_number."""
+
+        for event_or_block, subscription_meta in self.subscription_meta:
+            if event_or_block == 'block':
+                table_name, chain_id = subscription_meta
+                async with self.pool.acquire() as conn:
+                    return await conn.fetchrow(
+                        f"SELECT block_number, timestamp from {DB_SCHEMA}.{table_name} order by block_number desc limit 1;"
+                    )
+
+        return None
 
 if __name__ == '__main__':
 
