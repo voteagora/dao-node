@@ -25,3 +25,4 @@ python-dotenv
 pyenvdiff
 sortedcontainers
 pympler
+psycopg2-binary
