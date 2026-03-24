@@ -152,6 +152,13 @@ class SubscriptionPlannerMixin:
         self.abis = abi_set
         if hasattr(self, 'casterCls'):
             self.caster = self.casterCls(self.abis)
+        
+        # Create a DB-specific ABISet whose pgtable() output matches the
+        # actual table names stored in the database.
+        if hasattr(self, 'db_table_prefix') and self.db_table_prefix:
+            self.db_abis = ABISet(self.db_table_prefix, abi_set.abis)
+        else:
+            self.db_abis = abi_set
 
     def plan(self, signal_type, signal_meta):
 
@@ -167,9 +174,11 @@ class SubscriptionPlannerMixin:
 class DbHistClient(SubscriptionPlannerMixin):
     timeliness = 'archive'
 
-    def __init__(self, url):
+    def __init__(self, url, db_table_prefix='', db_schema='goldsky'):
 
         self.url = url
+        self.db_table_prefix = db_table_prefix
+        self.db_schema = db_schema
         self.casterCls = DbClientCaster
         self.init()
 
@@ -213,7 +222,7 @@ class DbHistClient(SubscriptionPlannerMixin):
             cur.execute("""SELECT column_name, data_type
                         FROM information_schema.columns
                         WHERE table_schema = %s
-                        AND table_name = %s;""", (DB_SCHEMA, table_name,))
+                        AND table_name = %s;""", (self.db_schema, table_name,))
 
             rows = cur.fetchall()
 
@@ -228,9 +237,12 @@ class DbHistClient(SubscriptionPlannerMixin):
 
     def plan_event(self, chain_id, address, signature):
 
-        table_name = TABLE_PREFIX + self.abis.get_pgtable_by_signature(signature)
-
         abi_frag = self.abis.get_by_signature(signature)
+        if abi_frag is None:
+            raise Exception(f"No ABI fragment for {signature}")
+        
+        # Use db_abis to get the correct table name matching the database schema
+        table_name = self.db_abis.pgtable(abi_frag)
         sighash = abi_frag.topic
         caster_fn = self.caster.lookup(signature)
 
@@ -286,7 +298,7 @@ class DbHistClient(SubscriptionPlannerMixin):
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cur.execute(
-            f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+            f"""SELECT * FROM {self.db_schema}.{table_name}
                 WHERE address = %s AND chain_id = %s AND block_number >= %s
                 ORDER BY block_number, transaction_index, log_index;""",
             (address, chain_id, after)
@@ -311,7 +323,7 @@ class DbHistClient(SubscriptionPlannerMixin):
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         cur.execute(
-            f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+            f"""SELECT * FROM {self.db_schema}.{table_name}
                 WHERE block_number >= %s
                 ORDER BY block_number;""",
             (after,)
@@ -330,8 +342,10 @@ class DbHistClient(SubscriptionPlannerMixin):
 class DbRtClient(DbHistClient):
     timeliness = 'polling'
 
-    def __init__(self, url, name):
+    def __init__(self, url, db_table_prefix='', db_schema='goldsky', name='POLL'):
         self.url = url
+        self.db_table_prefix = db_table_prefix
+        self.db_schema = db_schema
         self.name = name
         self.casterCls = DbClientCaster
         self.init()
@@ -373,7 +387,7 @@ class DbRtClient(DbHistClient):
                 async with self.pool.acquire() as conn:
 
                     rows = await conn.fetch(
-                        f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+                        f"""SELECT * FROM {self.db_schema}.{table_name}
                             WHERE address = $1 AND chain_id = $2 AND block_number >= $3
                             ORDER BY block_number, transaction_index, log_index;""",
                         address, chain_id, lookback_block
@@ -403,7 +417,7 @@ class DbRtClient(DbHistClient):
                 table_name, chain_id = subscription_meta
                 async with self.pool.acquire() as conn:
                     return await conn.fetchrow(
-                        f"SELECT block_number, timestamp from {DB_SCHEMA}.{table_name} order by block_number desc limit 1;"
+                        f"SELECT block_number, timestamp from {self.db_schema}.{table_name} order by block_number desc limit 1;"
                     )
 
         return None

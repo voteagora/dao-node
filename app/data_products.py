@@ -658,7 +658,9 @@ class Proposal:
         return self._end_block
 
     def get_proposal_type(self, proposal_types):
-        prop_type_id = self.create_event['proposal_type']
+        prop_type_id = self.create_event.get('proposal_type')
+        if prop_type_id is None:
+            return None
         if hasattr(proposal_types, 'get_proposal_type_with_scopes'):
             out = proposal_types.get_proposal_type_with_scopes(prop_type_id)
         else:

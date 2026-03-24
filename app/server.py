@@ -42,7 +42,7 @@ from .data_models import ParticipationRateModel
 from .signatures import *
 from . import __version__
 from .logsetup import get_logger 
-from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT, ENABLE_BALANCES, ENABLE_DELEGATION
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT, ENABLE_BALANCES, ENABLE_DELEGATION, DAO_NODE_MAX_BLOCK, DAO_NODE_DB_SYNC_FROM_BLOCK
 
 if  CAPTURE_WS_CLIENT_OUTPUTS:
     from copy import deepcopy
@@ -73,7 +73,8 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 
 POLLING_WAIT_CYCLE = int(os.getenv('POLLING_WAIT_CYCLE', 15))
 
-DAO_NODE_DB_TABLE_PREFIX = os.getenv('DAO_NODE_DB_TABLE_PREFIX', 'daonode')
+DAO_NODE_DB_TABLE_PREFIX = os.getenv('DAO_NODE_DB_TABLE_PREFIX', 'multi_op')
+DAO_NODE_DB_SCHEMA = os.getenv('DAO_NODE_DB_SCHEMA', 'goldsky')
 
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
@@ -82,7 +83,7 @@ glogr.info(f"GIT_COMMIT_SHA={GIT_COMMIT_SHA}")
 
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
 
-DAO_NODE_DB_URL = os.getenv('DAO_NODE_DB_URL', '.')
+DAO_NODE_DB_URL = os.getenv('DAO_NODE_DB_URL', None)
 
 def secret_text(t, n):
     if len(t) > ((2 * n) + 3):
@@ -90,6 +91,10 @@ def secret_text(t, n):
     else:
         return t[:n] + "***..."
     
+if DAO_NODE_DB_URL:
+    glogr.info(f"Using DB polling: {secret_text(DAO_NODE_DB_URL, 12)}")
+    glogr.info(f"DB table prefix: {DAO_NODE_DB_TABLE_PREFIX}, schema: {DAO_NODE_DB_SCHEMA}")
+
 DAO_NODE_VPSNAPPER_WS = os.getenv('DAO_NODE_VPSNAPPER_WS', None)
 glogr.info(f"{DAO_NODE_VPSNAPPER_WS=}")
 
@@ -264,8 +269,21 @@ class Feed:
                 reader = client.read(after=self.block)
 
                 cnt = 0
+
+                # DAO_NODE_DB_SYNC_FROM_BLOCK caps non-DB archive clients so the DB client takes over.
+                # DbHistClient is only capped by DAO_NODE_MAX_BLOCK (it IS the DB client).
+                # DAO_NODE_MAX_BLOCK is the absolute ceiling for all ingestion.
+                archive_ceiling = None
+                if DAO_NODE_DB_SYNC_FROM_BLOCK and not isinstance(client, DbHistClient):
+                    archive_ceiling = DAO_NODE_DB_SYNC_FROM_BLOCK
+                if DAO_NODE_MAX_BLOCK:
+                    archive_ceiling = min(archive_ceiling, DAO_NODE_MAX_BLOCK) if archive_ceiling else DAO_NODE_MAX_BLOCK
  
                 for event, signal, new_signal in reader:
+
+                    if archive_ceiling and int(event['block_number']) > archive_ceiling:
+                        continue
+
                     cnt += 1
 
                     # TODO - make the archive produce a block-history, per tenant, not per chain
@@ -342,6 +360,10 @@ class Feed:
                 async for event in client.read():
 
                     block_num = int(event['block_number'])
+
+                    if DAO_NODE_MAX_BLOCK and block_num > DAO_NODE_MAX_BLOCK:
+                        continue
+
                     logr.info(f"{self.block} vs {block_num} : {event}")
                     self.block = max(self.block, block_num)
 
@@ -1577,13 +1599,13 @@ async def bootstrap_data_feeds(app, loop):
 
     elif CLIENT_STYLE == 'csv-db-db':
 
-        dbhc = DbHistClient(DAO_NODE_DB_URL)
+        dbhc = DbHistClient(DAO_NODE_DB_URL, db_table_prefix=DAO_NODE_DB_TABLE_PREFIX, db_schema=DAO_NODE_DB_SCHEMA)
         if dbhc.is_valid():
             await dbhc.create_pool()
             clients.append(dbhc)
 
         for i in range(NUM_POLLING_CLIENTS):
-            dbrt = DbRtClient(DAO_NODE_DB_URL, f"POLL{i}")
+            dbrt = DbRtClient(DAO_NODE_DB_URL, db_table_prefix=DAO_NODE_DB_TABLE_PREFIX, db_schema=DAO_NODE_DB_SCHEMA, name=f"POLL{i}")
             if dbrt.is_valid():
                 await dbrt.create_pool()
                 clients.append(dbrt)
@@ -1911,6 +1933,6 @@ It is not a replacement for JSON-RPC provider, in the sense that contract-calls 
     
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8004, dev=True, debug=True)
+    app.run(host="0.0.0.0", port=8004, dev=True, debug=True, auto_reload=False)
     #app.run(host="0.0.0.0", port=7654, dev=True, workers=1, access_log=True, debug=True)
 
