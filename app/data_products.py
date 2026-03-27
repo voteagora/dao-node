@@ -508,6 +508,9 @@ class Delegations(DataProduct):
 
         k = recent_history.bisect_left(self.seven_day_block_number) - 1
 
+        if k < 0:
+            return 0
+
         vp = recent_history[recent_history.keys()[k]]
 
         self.cached_seven_day_vp[delegatee] = (vp, self.seven_day_block_number)
