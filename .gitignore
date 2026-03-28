@@ -144,3 +144,4 @@ fork.sh
 hacking/
 performance_results/
 tests/client_outputs/
+tests/snapshots/

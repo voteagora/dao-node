@@ -4,13 +4,13 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 from web3 import Web3
-from web3.exceptions import Web3RPCError
+from web3.exceptions import Web3Exception
 from web3.middleware import ExtraDataToPOAMiddleware
 from sanic.log import logger as logr
 
 from .utils import camel_to_snake
 from .clients_csv import SubscriptionPlannerMixin
-from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK
+from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, DAO_NODE_MAX_BLOCK
 from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1, PROPOSAL_CREATED_1, \
     PROPOSAL_CREATED_MODULE, PROPOSAL_CREATED_2
 
@@ -359,7 +359,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
             logs = w3.eth.get_logs(event_filter)
         except Exception as e:
             # catch and attempt to recover block limitation ranges
-            if isinstance(e, Web3RPCError):
+            if isinstance(e, Web3Exception):
                 error_dict = eval(str(e.args[0]))  # Convert string representation to dict
                 api_error_code = error_dict['code']
                 if api_error_code == -32600 or api_error_code == -32602:
@@ -420,6 +420,8 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
         w3 = self.connect()
 
         latest_block = w3.eth.block_number
+        if DAO_NODE_MAX_BLOCK:
+            latest_block = min(latest_block, DAO_NODE_MAX_BLOCK)
 
         chain_id = w3.eth.chain_id
 
@@ -456,7 +458,8 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
 
                 topics = self.event_subsription_meta[chain_id][cs_address].keys()
 
-                logs = self.get_paginated_logs(w3, cs_address, topics, step, start_block)
+                end_block = DAO_NODE_MAX_BLOCK if DAO_NODE_MAX_BLOCK else None
+                logs = self.get_paginated_logs(w3, cs_address, topics, step, start_block, end_block=end_block)
 
                 for log in logs:
 
