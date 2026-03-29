@@ -32,6 +32,7 @@ from .middleware import start_timer, add_server_timing_header, measure
 from .profiling import Profiler
 
 from .clients_csv import CSVClient
+from .clients_db import DbHistClient, DbRtClient
 from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcRtHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
 
@@ -45,7 +46,6 @@ from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS
 
 if  CAPTURE_WS_CLIENT_OUTPUTS:
     from copy import deepcopy
-
 
 BOOT_TIME = datetime.now().isoformat()
 WORKER_ID = str(randint(0, 100000000000000000)) # just a big number to avoid collissions.
@@ -70,13 +70,19 @@ os.environ['ABI_URL'] = 'https://storage.googleapis.com/agora-abis/v2'
 # We need a YAML config matching the Agora Governor Deployment Spec.
 #
 ######################################################################
-    
+
+POLLING_WAIT_CYCLE = int(os.getenv('POLLING_WAIT_CYCLE', 15))
+
+DAO_NODE_DB_TABLE_PREFIX = os.getenv('DAO_NODE_DB_TABLE_PREFIX', 'daonode')
+
 CONTRACT_DEPLOYMENT = os.getenv('CONTRACT_DEPLOYMENT', 'main')
 
 GIT_COMMIT_SHA = os.getenv('GIT_COMMIT_SHA', 'n/a')
 glogr.info(f"GIT_COMMIT_SHA={GIT_COMMIT_SHA}")
 
 DAO_NODE_DATA_PATH = Path(os.getenv('DAO_NODE_DATA_PATH', './data'))
+
+DAO_NODE_DB_URL = os.getenv('DAO_NODE_DB_URL', '.')
 
 def secret_text(t, n):
     if len(t) > ((2 * n) + 3):
@@ -332,9 +338,11 @@ class Feed:
                 if self.block is None:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
+                logr.info(self.block)
                 async for event in client.read():
 
                     block_num = int(event['block_number'])
+                    logr.info(f"{self.block} vs {block_num} : {event}")
                     self.block = max(self.block, block_num)
 
                     # This right here, makes it possible to have multiple 
@@ -1515,9 +1523,28 @@ if INCLUDE_NON_IVOTES_VP:
 #
 ################################################################################
 
-NUM_ARCHIVE_CLIENTS = int(os.getenv('NUM_ARCHIVE_CLIENTS', 2))
-NUM_REALTIME_CLIENTS = int(os.getenv('NUM_REALTIME_CLIENTS', 2))
-NUM_POLLING_CLIENTS = int(os.getenv('NUM_POLLING_CLIENTS', 1))
+CLIENT_STYLE = 'csv-db-db'
+
+NUM_ARCHIVE_CLIENTS = int(os.getenv('NUM_ARCHIVE_CLIENTS', -1))
+NUM_REALTIME_CLIENTS = int(os.getenv('NUM_REALTIME_CLIENTS', -1))
+NUM_POLLING_CLIENTS = int(os.getenv('NUM_POLLING_CLIENTS', -1))
+
+if CLIENT_STYLE == 'csv-node-node':
+    # We have two archive clients (1st - csv, 2nd = node)
+    NUM_ARCHIVE_CLIENTS = 2 if NUM_ARCHIVE_CLIENTS == -1 else NUM_ARCHIVE_CLIENTS
+    # We have 2 web sockets per event, in case either disconnect
+    NUM_REALTIME_CLIENTS = 2 if NUM_REALTIME_CLIENTS == -1 else NUM_REALTIME_CLIENTS
+    # We have 1 polling client, just in case of an extended outage on Web Socket infra
+    NUM_POLLING_CLIENTS = 1 if NUM_POLLING_CLIENTS == -1 else NUM_POLLING_CLIENTS
+elif CLIENT_STYLE == 'csv-db-db':
+    # We have two archive clients (1st - csv, 2nd = db)  
+    NUM_ARCHIVE_CLIENTS = 2 if NUM_ARCHIVE_CLIENTS == -1 else NUM_ARCHIVE_CLIENTS
+    # There are no websocket
+    NUM_REALTIME_CLIENTS = 0 if NUM_REALTIME_CLIENTS == -1 else NUM_REALTIME_CLIENTS
+    # We only need one polling client
+    NUM_POLLING_CLIENTS = 1 if NUM_POLLING_CLIENTS == -1 else NUM_POLLING_CLIENTS
+else:
+    raise Exception(f"Client Style: {CLIENT_STYLE} not supported")
 
 @app.before_server_start(priority=0)
 async def bootstrap_data_feeds(app, loop):
@@ -1527,23 +1554,40 @@ async def bootstrap_data_feeds(app, loop):
 
     clients = []
 
-    csvc = CSVClient(DAO_NODE_DATA_PATH)
-    if csvc.is_valid():
-        clients.append(csvc)
+    if CLIENT_STYLE.startswith('csv'):
+        csvc = CSVClient(DAO_NODE_DATA_PATH)
+        if csvc.is_valid():
+            clients.append(csvc)
 
-    rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
-    if rpcc.is_valid():
-       clients.append(rpcc)
+    if CLIENT_STYLE == 'csv-node-node':
 
-    for i in range(NUM_REALTIME_CLIENTS):
-        jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RTWS{i}")
-        if jwsc.is_valid():
-           clients.append(jwsc)
+        rpcc = JsonRpcHistHttpClient(ARCHIVE_NODE_HTTP_URL)
+        if rpcc.is_valid():
+           clients.append(rpcc)
 
-    for i in range(NUM_POLLING_CLIENTS):
-        jwhc = JsonRpcRtHttpClient(ARCHIVE_NODE_HTTP_URL, f"POLL{i}")
-        if jwhc.is_valid():
-           clients.append(jwhc)
+        for i in range(NUM_REALTIME_CLIENTS):
+            jwsc = JsonRpcRtWsClient(REALTIME_NODE_WS_URL, f"RTWS{i}")
+            if jwsc.is_valid():
+                clients.append(jwsc)
+
+        for i in range(NUM_POLLING_CLIENTS):
+            jwhc = JsonRpcRtHttpClient(ARCHIVE_NODE_HTTP_URL, f"POLL{i}")
+            if jwhc.is_valid():
+                clients.append(jwhc)
+
+    elif CLIENT_STYLE == 'csv-db-db':
+
+        dbhc = DbHistClient(DAO_NODE_DB_URL)
+        if dbhc.is_valid():
+            await dbhc.create_pool()
+            clients.append(dbhc)
+
+        for i in range(NUM_POLLING_CLIENTS):
+            dbrt = DbRtClient(DAO_NODE_DB_URL, f"POLL{i}")
+            if dbrt.is_valid():
+                await dbrt.create_pool()
+                clients.append(dbrt)
+
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
     dcqs = ClientSequencer(clients) 
@@ -1589,7 +1633,8 @@ async def bootstrap_data_feeds(app, loop):
         voting_module_abi = ABI.from_internet('voting_module', voting_module_addr, chain_id=chain_id, implementation=True)
         abi_list.append(voting_module_abi)
 
-    abis = ABISet('daonode', abi_list)
+
+    abis = ABISet(DAO_NODE_DB_TABLE_PREFIX, abi_list)
     dcqs.set_abis(abis)
 
     #################################################################################
@@ -1701,6 +1746,8 @@ async def read_archive(app, dcqs):
 @app.after_server_start
 async def subscribe_feeds(app):
 
+    logr.info("subscribe feeds")
+
     for i in range(NUM_REALTIME_CLIENTS):
         logr.info(f"Realtime client {1 + NUM_ARCHIVE_CLIENTS + i} started")
         app.add_task(read_realtime(app, 1 + NUM_ARCHIVE_CLIENTS + i))
@@ -1739,12 +1786,13 @@ async def read_polling(app, polling_client_num):
     Note that this blocks for the duration of the wait_cycle, so it should be as short as possible, TODO - make it fully async.
     """
 
-    wait_cycle = int(os.getenv('POLLING_WAIT_CYCLE', 120))
+    wait_cycle = POLLING_WAIT_CYCLE
     await asyncio.sleep(wait_cycle)
     while True:
         start_time = time.perf_counter()
         cnt = 0
         async for event in app.ctx.feed.realtime_async_read(polling_client_num):
+            logr.info(f"Polling client {polling_client_num}:  [{event}]")
             await app.ctx.dispatch_from_realtime(event)
             cnt += 1
         logr.info(f"Polling client {polling_client_num} [{time.perf_counter() - start_time:.2f}s] [{cnt} events]")
