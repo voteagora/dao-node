@@ -1,5 +1,5 @@
 import pytest
-from app.data_products import Balances, Delegations, NonIVotesVP, Proposals, Votes, ProposalTypes, Proposal, VoteAggregation
+from app.data_products import Balances, Delegations, NonIVotesVP, Proposals, Votes, ProposalTypes, Proposal, VoteAggregation, OODAOAttestations
 from app.clients_csv import CSVClient
 import csv
 import os
@@ -746,3 +746,144 @@ def test_VoteAggregation_weight_defaults_to_votes():
 
     assert agg.result['no-param'][1] == 2000
     assert agg.num_of_votes == 1
+
+def test_OODAOAttestations_routes_to_proposals_votes_and_types():
+    proposal_types = ProposalTypes()
+    proposals = Proposals(governor_spec={'name': 'none'})
+    votes = Votes(governor_spec={'name': 'none'})
+    delegations = Delegations()
+
+    delegations.handle({
+        'signature': DELEGATE_VOTES_CHANGE,
+        'sighash': '',
+        'block_number': 90,
+        'transaction_index': 0,
+        'log_index': 0,
+        'delegate': '0x1111111111111111111111111111111111111111',
+        'new_votes': 1000,
+        'previous_votes': 0,
+    })
+
+    oodao = OODAOAttestations(
+        chain_id=1,
+        dao_id='0x2222222222222222222222222222222222222222',
+        proposal_types=proposal_types,
+        proposals=proposals,
+        votes=votes,
+        delegations=delegations,
+    )
+
+    oodao.handle({'block_number': 100, 'timestamp': 1000})
+    oodao.handle({'block_number': 200, 'timestamp': 2000})
+
+    oodao.handle({
+        'event_name': 'Attested',
+        'block_number': 110,
+        'transaction_index': 0,
+        'log_index': 0,
+        'topic1_cropped': '0x2222222222222222222222222222222222222222',
+        'topic2_cropped': '0x1111111111111111111111111111111111111111',
+        'topic3': '0xab4e473a3f8a0a0a490619bcd2ecf23ad1be4720d4033fa16f2d1cbd1519caa1',
+        'data': '0xtype1',
+        'ref_uid': '0x0',
+        'decoded_attestation': {
+            'quorum': '1000',
+            'approval_threshold': '5000',
+            'name': 'Standard',
+            'description': 'Default type',
+            'class': 'standard',
+        },
+    })
+
+    oodao.handle({
+        'event_name': 'Attested',
+        'block_number': 120,
+        'transaction_index': 1,
+        'log_index': 0,
+        'topic1_cropped': '0x2222222222222222222222222222222222222222',
+        'topic2_cropped': '0x1111111111111111111111111111111111111111',
+        'topic3': '0x38bfba767c2f41790962f09bcf52923713cfff3ad6d7604de7cc77c15fcf169a',
+        'data': '0xproposal1',
+        'ref_uid': '0x0',
+        'decoded_attestation': {
+            'title': 'Proposal title',
+            'description': 'Proposal description',
+            'startts': '1500',
+            'endts': '2500',
+            'kwargs': '{"proposal_type_uid":"0xtype1"}',
+        },
+    })
+
+    oodao.handle({
+        'event_name': 'Attested',
+        'block_number': 210,
+        'transaction_index': 1,
+        'log_index': 1,
+        'topic1_cropped': '0x2222222222222222222222222222222222222222',
+        'topic2_cropped': '0x1111111111111111111111111111111111111111',
+        'topic3': '0x12cd8679de42e111a5ece9f2aee44dc8b8351024dea881cda97c2ff5b58349f6',
+        'data': '0xvote1',
+        'ref_uid': '0xproposal1',
+        'decoded_attestation': {
+            'choice': '1',
+            'reason': 'yes',
+        },
+    })
+
+    assert '0xtype1' in proposal_types.proposal_types
+    assert proposal_types.proposal_types['0xtype1']['name'] == 'Standard'
+
+    assert '0xproposal1' in proposals.proposals
+    proposal = proposals.proposals['0xproposal1']
+    assert proposal.create_event['start_block'] == 100
+    assert proposal.create_event['end_block'] == 200
+    assert proposal.create_event['proposal_type'] == '0xtype1'
+
+    vote_record = votes.proposal_vote_record['0xproposal1']
+    assert len(vote_record) == 1
+    assert vote_record[0]['votes'] == 1000
+    assert vote_record[0]['support'] == 1
+
+
+def test_OODAOAttestations_revoked_proposal_type_is_hidden():
+    proposal_types = ProposalTypes()
+    proposals = Proposals(governor_spec={'name': 'none'})
+    votes = Votes(governor_spec={'name': 'none'})
+    delegations = Delegations()
+
+    oodao = OODAOAttestations(
+        chain_id=1,
+        dao_id='0x2222222222222222222222222222222222222222',
+        proposal_types=proposal_types,
+        proposals=proposals,
+        votes=votes,
+        delegations=delegations,
+    )
+
+    oodao.handle({
+        'event_name': 'Attested',
+        'block_number': 100,
+        'transaction_index': 0,
+        'log_index': 0,
+        'topic1_cropped': '0x2222222222222222222222222222222222222222',
+        'topic2_cropped': '0x1111111111111111111111111111111111111111',
+        'topic3': '0xab4e473a3f8a0a0a490619bcd2ecf23ad1be4720d4033fa16f2d1cbd1519caa1',
+        'data': '0xtype2',
+        'ref_uid': '0x0',
+        'decoded_attestation': {'quorum': '1000', 'approval_threshold': '5000', 'name': 'X', 'description': 'Y', 'class': 'standard'},
+    })
+    oodao.handle({
+        'event_name': 'Revoked',
+        'block_number': 101,
+        'transaction_index': 0,
+        'log_index': 1,
+        'topic1_cropped': '0x2222222222222222222222222222222222222222',
+        'topic2_cropped': '0x1111111111111111111111111111111111111111',
+        'topic3': '0xab4e473a3f8a0a0a490619bcd2ecf23ad1be4720d4033fa16f2d1cbd1519caa1',
+        'data': '0xtype2',
+        'ref_uid': '0x0',
+        'decoded_attestation': {'verb': 'CREATE_PROPOSAL_TYPE'},
+    })
+
+    assert '0xtype2' in proposal_types.proposal_types
+    assert '0xtype2' not in oodao.active_proposal_types()

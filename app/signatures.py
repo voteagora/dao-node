@@ -29,6 +29,9 @@ SCOPE_DELETED_2 = 'ScopeDeleted(uint8,bytes24,uint8)'
 SCOPE_DISABLED = 'ScopeDisabled(uint8,bytes24)'
 SCOPE_DISABLED_2 = 'ScopeDisabled(uint8,bytes24,uint8)'
 
+EAS_ATTESTED = 'Attested(address,address,bytes32,bytes32)'
+EAS_REVOKED = 'Revoked(address,address,bytes32,bytes32)'
+
 if __name__ == '__main__':
 
     from web3 import Web3 as w3
@@ -41,4 +44,3 @@ if __name__ == '__main__':
             print("     " + var)
 
             print("0x" + w3.keccak(text=val).hex(), " -> ", val)
-

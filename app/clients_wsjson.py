@@ -9,8 +9,9 @@ from sanic.log import logger as logr
 from .utils import camel_to_snake
 from .clients_httpjson import SubscriptionPlannerMixin
 from .signatures import DELEGATE_CHANGED_2, VOTE_CAST_1, VOTE_CAST_WITH_PARAMS_1, PROPOSAL_CREATED_1, \
-    PROPOSAL_CREATED_MODULE, PROPOSAL_CREATED_2
+    PROPOSAL_CREATED_MODULE, PROPOSAL_CREATED_2, EAS_ATTESTED, EAS_REVOKED
 from .dev_modes import CAPTURE_WS_CLIENT_OUTPUTS
+from .eas import event_topic, extract_uid, topic_to_address, EASDecodeClient
 
 DAO_NODE_USE_POA_MIDDLEWARE = os.getenv('DAO_NODE_USE_POA_MIDDLEWARE', "false").lower() in ('true', '1')
 
@@ -21,12 +22,37 @@ class JsonRpcRtWsClientCaster:
     
     def __init__(self, abis):
         self.abis = abis
+        self.eas_decoder = EASDecodeClient()
 
 
-    def lookup(self, signature):
+    def lookup(self, signature, chain_id=None):
+        if signature in (EAS_ATTESTED, EAS_REVOKED):
+            def caster_fn(log):
+                topic1 = log["topics"][1]
+                topic2 = log["topics"][2]
+                topic3 = log["topics"][3]
+                uid = extract_uid(topic2, log["data"])
+                decoded = self.eas_decoder.get_decoded_attestation(chain_id, uid)
+
+                out = {
+                    "event_name": "Revoked" if signature == EAS_REVOKED else "Attested",
+                    "topic1": topic1.lower(),
+                    "topic1_cropped": topic_to_address(topic1),
+                    "topic2": topic2.lower(),
+                    "topic2_cropped": topic_to_address(topic2),
+                    "topic3": topic3.lower(),
+                    "topic3_cropped": topic_to_address(topic3),
+                    "data": uid,
+                }
+                out.update(**decoded)
+
+                header = cast_log_header(log)
+                out.update(header)
+                return out
+            return caster_fn
 
         abi_frag = self.abis.get_by_signature(signature)
-        EVENT_NAME = abi_frag.name       
+        EVENT_NAME = abi_frag.name
         contract_events = Web3().eth.contract(abi=[abi_frag.literal]).events
         processor = getattr(contract_events, EVENT_NAME)().process_log
 
@@ -224,17 +250,17 @@ class JsonRpcRtWsClient(SubscriptionPlannerMixin):
         self.sub_ids = {}
 
     def plan_event(self, chain_id, address, signature):
+        try:
+            abi_frag = self.abis.get_by_signature(signature)
+            topic = abi_frag.topic
+            if topic[:2] != "0x":
+                topic = "0x" + topic
+        except Exception:
+            topic = event_topic(signature)
 
-        abi_frag = self.abis.get_by_signature(signature)
-
-        caster_fn = self.caster.lookup(signature)
+        caster_fn = self.caster.lookup(signature, chain_id=chain_id)
 
         cs_address = Web3.to_checksum_address(address)
-
-        # TODO: the abifsm library should clean this up.
-        topic = abi_frag.topic
-        if topic[:2] != "0x":
-            topic = "0x" + topic
 
         self.event_subsription_meta[chain_id][cs_address][topic] = (caster_fn, signature)
 
