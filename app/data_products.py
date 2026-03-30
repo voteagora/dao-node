@@ -10,6 +10,7 @@ from eth_abi.abi import decode as decode_abi
 
 from .signatures import *
 from .abcs import DataProduct
+from .eas import OODAO_SCHEMAS
 
 class ToDo(NotImplementedError):
     pass
@@ -1057,3 +1058,254 @@ class Votes(DataProduct):
         block_number = int(event['block_number']) if isinstance(event['block_number'], str) else event['block_number']
         if block_number > self.latest_vote_block[voter]:
             self.latest_vote_block[voter] = block_number
+
+
+class OODAOAttestations(DataProduct):
+    def __init__(self, chain_id, dao_id, proposal_types, proposals, votes, delegations):
+        self.chain_id = int(chain_id)
+        self.dao_id = dao_id.lower()
+        self.schemas = {k: v.lower() for k, v in OODAO_SCHEMAS[self.chain_id].items()}
+
+        self.proposal_types = proposal_types
+        self.proposals = proposals
+        self.votes = votes
+        self.delegations = delegations
+
+        self.timestamp_to_block = SortedDict()
+        self.proposal_start_ts = {}
+
+        self.deleted_proposal_types = set()
+
+        self.dao_settings = {}
+        self.badge_definitions = {}
+        self.identity_badges = {}
+
+    @property
+    def name(self):
+        return "oodao_attestations"
+
+    def _estimate_block(self, ts):
+        if not self.timestamp_to_block:
+            return 0
+
+        pos = self.timestamp_to_block.bisect_right(int(ts))
+        if pos == 0:
+            return self.timestamp_to_block.peekitem(0)[1]
+        return self.timestamp_to_block.peekitem(pos - 1)[1]
+
+    def _to_int(self, val, default=0):
+        try:
+            return int(val)
+        except Exception:
+            return default
+
+    def _handle_proposal_type(self, event, decoded):
+        schema = event['topic3']
+        uid = event['data']
+
+        if schema == self.schemas['CREATE_PROPOSAL_TYPE']:
+            if event['event_name'] == 'Revoked':
+                self.deleted_proposal_types.add(uid)
+                return
+
+            out = {
+                'signature': PROP_TYPE_SET_4,
+                'sighash': '',
+                'proposal_type_id': uid,
+                'quorum': self._to_int(decoded.get('quorum')),
+                'approval_threshold': self._to_int(decoded.get('approval_threshold')),
+                'name': decoded.get('name', ''),
+                'module': decoded.get('class', decoded.get('module', '')),
+                'description': decoded.get('description', ''),
+                'block_number': int(event['block_number']),
+                'transaction_index': int(event['transaction_index']),
+                'log_index': int(event['log_index']),
+            }
+            self.proposal_types.handle(out)
+            return
+
+        if schema == self.schemas['SET_PROPOSAL_TYPE']:
+            proposal_id = decoded.get('proposal_id')
+            proposal_type_uid = event.get('ref_uid')
+            if (not proposal_id) or (not proposal_type_uid):
+                return
+
+            proposal = self.proposals.proposals.get(str(proposal_id))
+            if proposal:
+                proposal.set_proposal_type(proposal_type_uid)
+
+    def _handle_proposal(self, event, decoded):
+        schema = event['topic3']
+        uid = event['data']
+
+        if schema == self.schemas['CREATE_PROPOSAL']:
+            if event['event_name'] == 'Revoked':
+                if uid in self.proposals.proposals:
+                    self.proposals.handle({
+                        'signature': PROPOSAL_CANCELED,
+                        'sighash': '',
+                        'proposal_id': uid,
+                        'block_number': int(event['block_number']),
+                        'transaction_index': int(event['transaction_index']),
+                        'log_index': int(event['log_index']),
+                    })
+                return
+
+            start_ts = self._to_int(decoded.get('startts'))
+            end_ts = self._to_int(decoded.get('endts'))
+
+            start_block = self._estimate_block(start_ts)
+            end_block = self._estimate_block(end_ts)
+
+            self.proposal_start_ts[uid] = start_ts
+
+            title = decoded.get('title', '')
+            description = decoded.get('description', '')
+            if title and description:
+                full_description = f"{title}\n\n{description}"
+            else:
+                full_description = title or description
+
+            kwargs = decoded.get('kwargs', None)
+            proposal_type_id = None
+            if kwargs:
+                try:
+                    kwargs = json.loads(kwargs)
+                    proposal_type_id = kwargs.get('proposal_type_uid')
+                except Exception:
+                    pass
+
+            out = {
+                'signature': PROPOSAL_CREATED_2,
+                'sighash': '',
+                'proposal_id': uid,
+                'proposer': event.get('attester') or event.get('topic2_cropped'),
+                'description': full_description,
+                'start_block': start_block,
+                'end_block': end_block,
+                'proposal_type': proposal_type_id or event.get('ref_uid') or '',
+                'block_number': int(event['block_number']),
+                'transaction_index': int(event['transaction_index']),
+                'log_index': int(event['log_index']),
+            }
+            self.proposals.handle(out)
+            return
+
+    def _handle_vote(self, event, decoded):
+        schema = event['topic3']
+        if schema not in (self.schemas['SIMPLE_VOTE'], self.schemas['ADVANCED_VOTE']):
+            return
+
+        if event['event_name'] != 'Attested':
+            return
+
+        proposal_id = event.get('ref_uid')
+        if not proposal_id:
+            return
+
+        voter = (event.get('attester') or event.get('topic2_cropped', '')).lower()
+
+        start_ts = self.proposal_start_ts.get(proposal_id, 0)
+        start_block = self._estimate_block(start_ts) if start_ts else int(event['block_number'])
+        weight = self.delegations.delegatee_vp_at_block(voter, start_block)
+
+        support_raw = decoded.get('choice', 2)
+        try:
+            support = int(support_raw)
+        except Exception:
+            support = {'against': 0, 'for': 1, 'abstain': 2}.get(str(support_raw).lower(), 2)
+
+        out = {
+            'signature': VOTE_CAST_1,
+            'sighash': '',
+            'proposal_id': str(proposal_id),
+            'voter': voter,
+            'support': support,
+            'votes': int(weight),
+            'reason': decoded.get('reason', ''),
+            'block_number': int(event['block_number']),
+            'transaction_index': int(event['transaction_index']),
+            'log_index': int(event['log_index']),
+        }
+        self.votes.handle(out)
+
+    def _handle_dao_settings(self, event, decoded):
+        schema = event['topic3']
+        bn = int(event['block_number'])
+
+        if schema == self.schemas['INSTANTIATE']:
+            if 'voting_period' in decoded:
+                self.dao_settings['voting_period'] = (bn, str(decoded['voting_period']))
+            if 'voting_delay' in decoded:
+                self.dao_settings['voting_delay'] = (bn, str(decoded['voting_delay']))
+            return
+
+        if schema == self.schemas['SET_PARAM_VALUE']:
+            param_name = decoded.get('param_name')
+            if not param_name:
+                return
+            self.dao_settings[param_name] = (bn, str(decoded.get('param_value', '')))
+
+    def _handle_badges(self, event, decoded):
+        schema = event['topic3']
+        bn = int(event['block_number'])
+
+        if schema == self.schemas.get('BADGE_DEFINITION'):
+            key = (self.dao_id, event['data'])
+            existing = self.badge_definitions.get(key)
+            if (not existing) or (bn >= existing['block_number']):
+                self.badge_definitions[key] = {
+                    'dao_id': self.dao_id,
+                    'badge_definition_id': event['data'],
+                    'name': decoded.get('name', ''),
+                    'description': decoded.get('description', ''),
+                    'revocable': decoded.get('revocable', ''),
+                    'block_number': bn,
+                }
+            return
+
+        if schema == self.schemas.get('IDENTITY_BADGE'):
+            key = (self.dao_id, event.get('ref_uid', ''), event['data'], decoded.get('user', '').lower())
+            existing = self.identity_badges.get(key)
+            if (not existing) or (bn >= existing['block_number']):
+                self.identity_badges[key] = {
+                    'dao_id': self.dao_id,
+                    'badge_definition_id': event.get('ref_uid', ''),
+                    'identity_badge_id': event['data'],
+                    'user': decoded.get('user', '').lower(),
+                    'attestation_time': event.get('attestation_time', 0),
+                    'expiration_time': event.get('expiration_time', 0),
+                    'metadata': decoded.get('metadata', ''),
+                    'block_number': bn,
+                    'revoked': event['event_name'] == 'Revoked',
+                }
+
+    def handle(self, event):
+        if 'timestamp' in event:
+            self.timestamp_to_block[int(event['timestamp'])] = int(event['block_number'])
+            return
+
+        decoded = event.get('decoded_attestation', {})
+        if isinstance(decoded, str):
+            try:
+                decoded = json.loads(decoded)
+            except Exception:
+                decoded = {}
+
+        event_recipient = (event.get('recipient') or '').lower()
+        if event.get('topic1_cropped', '').lower() != self.dao_id:
+            if event_recipient != self.dao_id:
+                return
+
+        self._handle_proposal_type(event, decoded)
+        self._handle_proposal(event, decoded)
+        self._handle_vote(event, decoded)
+        self._handle_dao_settings(event, decoded)
+        self._handle_badges(event, decoded)
+
+    def active_proposal_types(self):
+        out = {}
+        for proposal_type_id, proposal_type in self.proposal_types.proposal_types.items():
+            if proposal_type_id not in self.deleted_proposal_types:
+                out[proposal_type_id] = proposal_type
+        return out

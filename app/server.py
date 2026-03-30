@@ -35,10 +35,11 @@ from .clients_csv import CSVClient
 from .clients_httpjson import JsonRpcHistHttpClient, JsonRpcRtHttpClient
 from .clients_wsjson import JsonRpcRtWsClient
 
-from .data_products import Balances, NonIVotesVP, ProposalTypes, Delegations, Proposals, Votes
+from .data_products import Balances, NonIVotesVP, ProposalTypes, Delegations, Proposals, Votes, OODAOAttestations
 from .data_models import ParticipationRateModel
 
 from .signatures import *
+from .eas import EAS_CONTRACTS, OODAO_SCHEMAS, EAS_EVENT_SIGNATURES
 from . import __version__
 from .logsetup import get_logger 
 from .dev_modes import CAPTURE_CLIENT_OUTPUTS_TO_DISK, CAPTURE_WS_CLIENT_OUTPUTS, PROFILE_ARCHIVE_CLIENT, ENABLE_BALANCES, ENABLE_DELEGATION
@@ -731,10 +732,75 @@ async def proposal_types(request):
 
 async def proposal_types_handler(app, request):
     proposal_types_with_scopes = {}
-    for proposal_type_id in app.ctx.proposal_types.proposal_types:
+
+    if hasattr(app.ctx, 'oodao_attestations'):
+        source = app.ctx.oodao_attestations.active_proposal_types()
+    else:
+        source = app.ctx.proposal_types.proposal_types
+
+    for proposal_type_id in source:
         proposal_types_with_scopes[proposal_type_id] = app.ctx.proposal_types.get_proposal_type_with_scopes(proposal_type_id)
     
     return json({'proposal_types' : proposal_types_with_scopes})
+
+
+@app.route('/v1/dao_settings')
+@openapi.tag("OODAO")
+@openapi.summary("Latest OODAO DAO settings")
+@measure
+async def dao_settings(request):
+    if not hasattr(app.ctx, 'oodao_attestations'):
+        return json({'dao_settings': []})
+
+    rows = []
+    for param_name, (block_number, param_value) in app.ctx.oodao_attestations.dao_settings.items():
+        rows.append({
+            'dao_id': app.ctx.oodao_attestations.dao_id,
+            'param_name': param_name,
+            'param_value': param_value,
+            'block_number': block_number,
+        })
+
+    rows.sort(key=lambda x: x['param_name'])
+    return json({'dao_settings': rows})
+
+
+@app.route('/v1/badge_definitions')
+@openapi.tag("OODAO")
+@openapi.summary("Latest OODAO badge definitions")
+@measure
+async def badge_definitions(request):
+    if not hasattr(app.ctx, 'oodao_attestations'):
+        return json({'badge_definitions': []})
+
+    out = list(app.ctx.oodao_attestations.badge_definitions.values())
+    out.sort(key=lambda x: (x['badge_definition_id'], x['block_number']))
+    return json({'badge_definitions': out})
+
+
+@app.route('/v1/identity_badges')
+@openapi.tag("OODAO")
+@openapi.summary("Latest OODAO identity badges")
+@openapi.parameter(
+    "user",
+    str,
+    location="query",
+    required=False,
+    description="Optional user address filter.",
+)
+@measure
+async def identity_badges(request):
+    if not hasattr(app.ctx, 'oodao_attestations'):
+        return json({'identity_badges': []})
+
+    user_filter = request.args.get("user", "").lower()
+
+    out = list(app.ctx.oodao_attestations.identity_badges.values())
+    if user_filter:
+        out = [row for row in out if row['user'] == user_filter]
+
+    out.sort(key=lambda x: (x['badge_definition_id'], x['identity_badge_id'], x['block_number']))
+    return json({'identity_badges': out})
 
 DEFAULT_PAGE_SIZE = 200
 DEFAULT_OFFSET = 0
@@ -1600,10 +1666,9 @@ async def bootstrap_data_feeds(app, loop):
         balances = Balances(token_spec=public_config['token_spec'])
         app.ctx.register_onchain(f'{chain_id}.{token_addr}.{TRANSFER}', balances)
 
+    delegations = Delegations()
     if 'token' in deployment:
-
         if ENABLE_DELEGATION:
-            delegations = Delegations()
             app.ctx.register_onchain(f'{chain_id}.blocks', delegations)
             app.ctx.register_onchain(f'{chain_id}.{token_addr}.{DELEGATE_VOTES_CHANGE}', delegations)
 
@@ -1612,8 +1677,8 @@ async def bootstrap_data_feeds(app, loop):
             else:
                 app.ctx.register_onchain(f'{chain_id}.{token_addr}.{DELEGATE_CHANGED_1}', delegations)
 
+    proposal_types = ProposalTypes()
     if 'ptc' in deployment:
-        proposal_types = ProposalTypes()
 
         for prop_type_set_signature in [PROP_TYPE_SET_1, PROP_TYPE_SET_2, PROP_TYPE_SET_3, PROP_TYPE_SET_4]:
             if abis.get_by_signature(prop_type_set_signature):
@@ -1630,6 +1695,28 @@ async def bootstrap_data_feeds(app, loop):
 
     proposals = Proposals(governor_spec=public_config['governor_spec'])
     votes = Votes(governor_spec=public_config['governor_spec'], module_spec=public_config['module_spec'])
+
+    if config['features'].get('oodao', False) and ('oodao' in deployment):
+        oodao_chain_id = int(deployment['oodao']['chain_id'])
+        oodao_dao_id = deployment['oodao']['address'].lower()
+        eas_contract = EAS_CONTRACTS.get(oodao_chain_id)
+
+        if not eas_contract:
+            logr.warning(f"OODAO enabled but no known EAS contract for chain_id={oodao_chain_id}")
+        elif oodao_chain_id not in OODAO_SCHEMAS:
+            logr.warning(f"OODAO enabled but no known schemas for chain_id={oodao_chain_id}")
+        else:
+            oodao_attestations = OODAOAttestations(
+                chain_id=oodao_chain_id,
+                dao_id=oodao_dao_id,
+                proposal_types=proposal_types,
+                proposals=proposals,
+                votes=votes,
+                delegations=delegations,
+            )
+            app.ctx.register_onchain(f'{oodao_chain_id}.blocks', oodao_attestations)
+            for eas_event in EAS_EVENT_SIGNATURES:
+                app.ctx.register_onchain(f'{oodao_chain_id}.{eas_contract.lower()}.{eas_event}', oodao_attestations)
 
     gov_spec_name = public_config['governor_spec']['name']
     if gov_spec_name in ('compound', 'ENSGovernor'):
@@ -1670,7 +1757,7 @@ async def bootstrap_data_feeds(app, loop):
 
     # This is so certain endpoints can access empty data-products
     # without a bunch of gymnastics.
-    for data_product in [proposals, votes]:
+    for data_product in [delegations, proposal_types, proposals, votes]:
         if not hasattr(app.ctx, data_product.name):
             setattr(app.ctx, data_product.name, data_product)
 
@@ -1865,4 +1952,3 @@ It is not a replacement for JSON-RPC provider, in the sense that contract-calls 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8004, dev=True, debug=True)
     #app.run(host="0.0.0.0", port=7654, dev=True, workers=1, access_log=True, debug=True)
-
