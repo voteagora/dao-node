@@ -1554,6 +1554,8 @@ async def bootstrap_data_feeds(app, loop):
 
     clients = []
 
+    logr.info("{CLIENT_STYLE=}")
+
     if CLIENT_STYLE.startswith('csv'):
         csvc = CSVClient(DAO_NODE_DATA_PATH)
         if csvc.is_valid():
