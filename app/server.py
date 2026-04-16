@@ -1913,6 +1913,7 @@ It is not a replacement for JSON-RPC provider, in the sense that contract-calls 
     
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8004, dev=True, debug=True)
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port, dev=True, debug=True)
     #app.run(host="0.0.0.0", port=7654, dev=True, workers=1, access_log=True, debug=True)
 

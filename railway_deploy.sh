@@ -29,4 +29,4 @@ echo "Starting sync..."
 python -m app.cli sync-from-gcs data
 
 echo "Starting server..."
-python -m app.server --host=0.0.0.0 --port=8000
+python -m app.server
