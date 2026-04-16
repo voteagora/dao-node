@@ -36,8 +36,8 @@ CHAIN_ID_TO_BLOCK_TABLE = {
     957: "derive-testnet",
     59144: "linea",
     59141: "linea-sepolia",
-    42161: "arbitrum",
-    421614: "arbitrum-sepolia"
+    42161: "arbitrum_one",
+    421614: "arbitrum_sepolia"
 }
 
 def cast(event, fields, func):
