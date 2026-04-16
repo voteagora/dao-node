@@ -169,6 +169,7 @@ class ClientSequencer:
     def __init__(self, clients):
         self.clients = clients
         self.num = len(clients)
+        logr.info(f"Instantiated ClientSequencer with: {self.num} clients:" + str(clients))
         self.pos = 0
         self.lock = asyncio.Lock()
 
@@ -338,7 +339,7 @@ class Feed:
                 if self.block is None:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
-                logr.info(self.block)
+                logr.info(f"self.block={self.block}")
                 async for event in client.read():
 
                     block_num = int(event['block_number'])
@@ -1794,10 +1795,10 @@ async def read_polling(app, polling_client_num):
         start_time = time.perf_counter()
         cnt = 0
         async for event in app.ctx.feed.realtime_async_read(polling_client_num):
-            logr.info(f"Polling client {polling_client_num}:  [{event}]")
+            logr.info(f" - Polling client #{polling_client_num} found event:  [{event}]")
             await app.ctx.dispatch_from_realtime(event)
             cnt += 1
-        logr.info(f"Polling client {polling_client_num} [{time.perf_counter() - start_time:.2f}s] [{cnt} events]")
+        logr.info(f"Polling client #{polling_client_num} [{time.perf_counter() - start_time:.2f}s] [{cnt} events]")
         await asyncio.sleep(wait_cycle)
 
 ##################################

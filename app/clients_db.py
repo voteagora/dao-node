@@ -33,9 +33,9 @@ CHAIN_ID_TO_BLOCK_TABLE = {
     7560: "cyber",
     534352: "scroll",
     901: "derive",
-    957: "derive-testnet",
+    957: "derive_testnet",
     59144: "linea",
-    59141: "linea-sepolia",
+    59141: "linea_sepolia",
     42161: "arbitrum_one",
     421614: "arbitrum_sepolia"
 }
@@ -310,12 +310,13 @@ class DbHistClient(SubscriptionPlannerMixin):
         conn = self._sync_connect()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        cur.execute(
-            f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+        params = (f"""SELECT * FROM {DB_SCHEMA}.{table_name}
                 WHERE block_number >= %s
-                ORDER BY block_number;""",
-            (after,)
-        )
+                ORDER BY block_number;""", (after,))
+
+        print(f"{params=}", flush=True)   
+
+        cur.execute(*params)
 
         for row in cur:
             block = dict(row)
@@ -372,12 +373,14 @@ class DbRtClient(DbHistClient):
 
                 async with self.pool.acquire() as conn:
 
-                    rows = await conn.fetch(
-                        f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+                    params = (f"""SELECT * FROM {DB_SCHEMA}.{table_name}
                             WHERE address = $1 AND chain_id = $2 AND block_number >= $3
                             ORDER BY block_number, transaction_index, log_index;""",
-                        address, chain_id, lookback_block
-                    )
+                            address, chain_id, lookback_block)
+
+                    # print(params, flush=True)
+
+                    rows = await conn.fetch(*params)
 
                 for row in rows:
                     event = dict(row)
