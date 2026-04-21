@@ -10,7 +10,10 @@ from abifsm import ABISet
 
 from .utils import camel_to_snake
 from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4, PROPOSAL_CREATED_MODULE, DELEGATE_CHANGED_2, VOTE_CAST_WITH_PARAMS_1
+from .signatures import PROPOSAL_QUEUED, PROPOSAL_EXECUTED
 from .clients_httpjson import resolve_block_count_span
+
+#### TECH DEBT MANAGEMENT ZONE
 
 DB_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 TABLE_PREFIX = os.getenv('TABLE_PREFIX', 'multi_')
@@ -58,6 +61,46 @@ def _parse_json_if_str(obj):
     return obj
 
 
+def proposal_calldata_caster_fn(event, int_fields):
+
+    event = cast(event, int_fields, int)
+
+    obj = event.get('values', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj[1:-1]
+            obj = obj.split(',')
+            obj = [int(x) for x in obj]
+        event['values'] = obj
+
+    obj = event.get('targets', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj.replace('"', '')
+            obj = obj[1:-1]
+            obj = obj.split(',')
+        event['targets'] = obj
+
+    obj = event.get('calldatas', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj.replace('"', '')
+            obj = obj[1:-1]
+            obj = obj.split(',')
+        event['calldatas'] = obj
+
+    obj = event.get('signatures', Ellipsis)
+    if obj is not Ellipsis:
+        if isinstance(obj, str):
+            obj = obj[2:-2]
+            obj = obj.split('","')
+        event['signatures'] = obj
+
+    return event
+
+
+
+
 class DbClientCaster:
 
     def __init__(self, abis):
@@ -72,7 +115,7 @@ class DbClientCaster:
         if signature == TRANSFER:
             
             amount_field = camel_to_snake(abi_frag.fields[2])
-            
+
             def caster_fn(event):
                 event[amount_field] = int(event[amount_field])
                 return event
@@ -106,15 +149,8 @@ class DbClientCaster:
         if signature in (PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4):
 
             def caster_fn(event):
-                event = cast(event, int_fields, int)
-                for field in ('values', 'targets', 'calldatas', 'signatures'):
-                    val = event.get(field, Ellipsis)
-                    if val is Ellipsis:
-                        continue
-                    event[field] = _parse_json_if_str(val)
-                return event
-
-            return caster_fn
+                event = proposal_calldata_caster_fn(event, int_fields)
+                return event 
 
         if signature == PROPOSAL_CREATED_MODULE:
 
@@ -126,6 +162,62 @@ class DbClientCaster:
                         continue
                     event[field] = _parse_json_if_str(val)
                 return event
+
+            return caster_fn
+
+        # Default: cast int fields, everything else is already correct from DB.
+        def caster_fn(event):
+            event = cast(event, int_fields, int)
+            return event
+
+        return caster_fn
+
+class UniswapDbClientCaster(DbClientCaster):
+
+    def lookup(self, signature):
+
+        abi_frag = self.abis.get_by_signature(signature)
+
+        int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
+
+        if signature == TRANSFER:
+            
+            def caster_fn(event):
+                event['amount'] = int(event['value'])
+                return event
+
+            return caster_fn
+        
+        if signature == DELEGATE_CHANGED_2:
+
+            def caster_fn(event):
+                for field in ('old_delegatees', 'new_delegatees'):
+                    val = event.get(field)
+                    if val is None:
+                        continue
+                    val = _parse_json_if_str(val)
+                    event[field] = [(addr.lower(), int(num)) for addr, num in val]
+                return event
+
+            return caster_fn
+
+        if signature == VOTE_CAST_WITH_PARAMS_1:
+
+            def caster_fn(event):
+                event = cast(event, int_fields, int)
+                params = event.get('params')
+                if isinstance(params, (bytes, memoryview)):
+                    event['params'] = bytes(params).hex()
+                return event
+
+            return caster_fn
+
+        if signature in (PROPOSAL_QUEUED, PROPOSAL_EXECUTED, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4):
+
+            def caster_fn(event):
+                event['id'] = event['proposal_id']
+                event = proposal_calldata_caster_fn(event, int_fields)
+                return event 
 
             return caster_fn
 
@@ -150,8 +242,11 @@ class SubscriptionPlannerMixin:
 
         self.abis_set = True
         self.abis = abi_set
-        if hasattr(self, 'casterCls'):
-            self.caster = self.casterCls(self.abis)
+
+        if self.abis.name == 'uni':
+            self.caster = UniswapDbClientCaster(self.abis)
+        else:
+            self.caster = DbClientCaster(self.abis)
 
     def plan(self, signal_type, signal_meta):
 
@@ -334,7 +429,6 @@ class DbRtClient(DbHistClient):
     def __init__(self, url, name):
         self.url = url
         self.name = name
-        self.casterCls = DbClientCaster
         self.init()
 
     async def read(self):
