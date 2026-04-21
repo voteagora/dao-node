@@ -216,6 +216,7 @@ class UniswapDbClientCaster(DbClientCaster):
 
             def caster_fn(event):
                 event['id'] = event['proposal_id']
+                del event['proposal_id']
                 event = proposal_calldata_caster_fn(event, int_fields)
                 return event 
 
@@ -389,6 +390,13 @@ class DbHistClient(SubscriptionPlannerMixin):
 
         for row in cur:
             event = dict(row)
+
+            for field in ['chain_id', 'address', 'block_hash', 'event_name', 'transaction_hash']:
+                try:
+                    del event[field]
+                except:
+                    pass
+
             event['block_number'] = str(event['block_number'])
             event['transaction_index'] = int(event['transaction_index'])
             event['log_index'] = int(event['log_index'])
@@ -478,6 +486,13 @@ class DbRtClient(DbHistClient):
 
                 for row in rows:
                     event = dict(row)
+
+                    for field in ['chain_id', 'address', 'block_hash', 'event_name', 'transaction_hash']:
+                        try:
+                            del event[field]
+                        except:
+                            pass
+
                     event['block_number'] = str(event['block_number'])
                     event['transaction_index'] = int(event['transaction_index'])
                     event['log_index'] = int(event['log_index'])
