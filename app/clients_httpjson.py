@@ -258,7 +258,7 @@ class JsonRpcHistHttpClient(SubscriptionPlannerMixin):
         if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
             days_back = 30 
         else:
-            days_back = 1 # TODO: Change back to 4, after we get infra stable.
+            days_back = 7
 
         target_date = now - timedelta(days=days_back)
 
