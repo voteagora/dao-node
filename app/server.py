@@ -670,10 +670,14 @@ async def vote_record_handler(app, request, proposal_id):
         has_more = len(vr) > page_size
         vr = vr[:page_size]
 
-    proposal_type = app.ctx.proposals.proposals[proposal_id].get_proposal_type(app.ctx.proposal_types.proposal_types)
-    return json({'vote_record' : vr,
-                 'has_more' : has_more,
-                 'proposal_type' : proposal_type})
+    out = {'vote_record' : vr,
+           'has_more' : has_more}
+
+    if hasattr(app.ctx, 'proposal_types'):
+        proposal_type = app.ctx.proposals.proposals[proposal_id].get_proposal_type(app.ctx.proposal_types.proposal_types)
+        out['proposal_type'] = proposal_type
+
+    return json(out)
 
 @app.route('/v1/vote')
 @openapi.tag("Proposal State")
@@ -740,6 +744,10 @@ async def proposal_types(request):
 
 async def proposal_types_handler(app, request):
     proposal_types_with_scopes = {}
+
+    if not hasattr(app.ctx, 'proposal_types'):
+        return json({'proposal_types' : []})
+    
     for proposal_type_id in app.ctx.proposal_types.proposal_types:
         proposal_types_with_scopes[proposal_type_id] = app.ctx.proposal_types.get_proposal_type_with_scopes(proposal_type_id)
     
