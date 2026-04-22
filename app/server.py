@@ -253,7 +253,9 @@ class Feed:
 
                 emoji = random.choice(['😀', '🎉', '🚀', '🐍', '🔥', '🌈', '💡', '😎'])
 
-                logr.info(f"{emoji} Reading from client #{i} of type {type(client).__name__} from block {self.block}")
+                client_type_name = type(client).__name__
+
+                logr.info(f"{emoji} Reading from client #{i} of type {client_type_name} from block {self.block}")
 
                 reader = client.read(after=self.block)
 
@@ -267,7 +269,7 @@ class Feed:
                     if 'blocks' not in signal:
                         self.block = max(self.block, int(event['block_number']))
 
-                    self.archive_signal_counts[signal] += 1
+                    self.archive_signal_counts[signal + "." + client_type_name] += 1
                     self.total_signal_counts[signal] += 1
 
                     if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
@@ -327,7 +329,9 @@ class Feed:
 
             if client.timeliness in ('realtime', 'polling') and rt_client_num == i:
 
-                logr.info(f"Reading from client #{i} of type {type(client)}")
+                client_type_name = type(client).__name__
+
+                logr.info(f"Reading from client #{i} of type {client_type_name}")
 
                 if self.block is None:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
@@ -352,7 +356,7 @@ class Feed:
                             continue                    
                         self.event_history_dict[block_num].append(pair)
 
-                    self.realtime_signal_counts[event['signal']] += 1
+                    self.realtime_signal_counts[event['signal'] + "." + client_type_name] += 1
                     self.total_signal_counts[event['signal']] += 1
                     
                     if CAPTURE_CLIENT_OUTPUTS_TO_DISK:
