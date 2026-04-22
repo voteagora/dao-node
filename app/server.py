@@ -347,7 +347,7 @@ class Feed:
                 async for event in client.read():
 
                     block_num = int(event['block_number'])
-                    logr.info(f"{self.block} vs {block_num} : {event}")
+                    # logr.info(f"{self.block} vs {block_num} : {event}")
                     self.block = max(self.block, block_num)
 
                     # This right here, makes it possible to have multiple 
