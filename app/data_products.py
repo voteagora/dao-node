@@ -346,7 +346,7 @@ class Delegations(DataProduct):
         signature = event['signature']
         block_number = event['block_number']
         block_number_int = int(block_number)
-        self.approx_block_counts[block_number_int - (block_number_int % 1000)] += 1
+        self.approx_block_counts[block_number_int - (block_number_int % 100000)] += 1
         transaction_index = event['transaction_index']
 
         if signature == DELEGATE_CHANGED_1:
