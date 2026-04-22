@@ -10,7 +10,7 @@ from abifsm import ABISet
 
 from .utils import camel_to_snake
 from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4, PROPOSAL_CREATED_MODULE, DELEGATE_CHANGED_2, VOTE_CAST_WITH_PARAMS_1
-from .signatures import PROPOSAL_QUEUED, PROPOSAL_EXECUTED, PROPOSAL_CANCELED
+from .signatures import PROPOSAL_QUEUED, PROPOSAL_EXECUTED, PROPOSAL_CANCELED, VOTE_CAST_1
 from .clients_httpjson import resolve_block_count_span
 
 #### TECH DEBT MANAGEMENT ZONE
@@ -212,6 +212,19 @@ class UniswapDbClientCaster(DbClientCaster):
                 if 'id' in event.keys():
                     if event['id'][:4] == 'log_':
                         del event['id']
+
+                return event
+
+            return caster_fn
+        
+        if signature == VOTE_CAST_1:
+
+            def caster_fn(event):
+                event = cast(event, int_fields, int)
+                
+                # assert event['id'][:4] == 'log_', "Expected goldsky IDs, found something else"
+
+                del event['id']
 
                 return event
 
