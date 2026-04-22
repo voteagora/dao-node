@@ -10,7 +10,7 @@ from abifsm import ABISet
 
 from .utils import camel_to_snake
 from .signatures import TRANSFER, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4, PROPOSAL_CREATED_MODULE, DELEGATE_CHANGED_2, VOTE_CAST_WITH_PARAMS_1
-from .signatures import PROPOSAL_QUEUED, PROPOSAL_EXECUTED
+from .signatures import PROPOSAL_QUEUED, PROPOSAL_EXECUTED, PROPOSAL_CANCELED
 from .clients_httpjson import resolve_block_count_span
 
 #### TECH DEBT MANAGEMENT ZONE
@@ -208,11 +208,16 @@ class UniswapDbClientCaster(DbClientCaster):
                 params = event.get('params')
                 if isinstance(params, (bytes, memoryview)):
                     event['params'] = bytes(params).hex()
+                
+                if 'id' in event.keys():
+                    if event['id'][:4] == 'log_':
+                        del event['id']
+
                 return event
 
             return caster_fn
 
-        if signature in (PROPOSAL_QUEUED, PROPOSAL_EXECUTED, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4):
+        if signature in (PROPOSAL_QUEUED, PROPOSAL_EXECUTED, PROPOSAL_CANCELED, PROPOSAL_CREATED_1, PROPOSAL_CREATED_2, PROPOSAL_CREATED_3, PROPOSAL_CREATED_4):
 
             def caster_fn(event):
                 event['id'] = event['proposal_id']
