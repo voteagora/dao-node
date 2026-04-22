@@ -728,11 +728,14 @@ async def voter_history_handler(app, request, voter):
     vh = deepcopy(app.ctx.votes.voter_history[voter])
 
     out = []
-    for v in vh:
-        v['proposal_type'] = app.ctx.proposals.proposals[v['proposal_id']].get_proposal_type(app.ctx.proposal_types.proposal_types)
-        out.append(v)
-    
-    return json({'voter_history' : out})
+
+    if hasattr(app.ctx, 'proposal_type'):
+        for v in vh:
+            v['proposal_type'] = app.ctx.proposals.proposals[v['proposal_id']].get_proposal_type(app.ctx.proposal_types.proposal_types)
+            out.append(v)
+        return json({'voter_history' : out})
+    else:
+        return json({'voter_history' : vh})
 
 
 @app.route('/v1/proposal_types')
