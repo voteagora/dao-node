@@ -273,9 +273,6 @@ def round_and_seven_days_ago(ts):
 
 class Delegations(DataProduct):
     def __init__(self):
-
-        self.approx_block_counts = defaultdict(int)
-
         # Data about the delegatee (ie, the delegate's influence)
         self.delegatee_list = defaultdict(SortedDict) #  list of delegators
         self.delegatee_cnt = defaultdict(int) #  dele
@@ -345,8 +342,6 @@ class Delegations(DataProduct):
 
         signature = event['signature']
         block_number = event['block_number']
-        block_number_int = int(block_number)
-        self.approx_block_counts[block_number_int - (block_number_int % 100000)] += 1
         transaction_index = event['transaction_index']
 
         if signature == DELEGATE_CHANGED_1:
