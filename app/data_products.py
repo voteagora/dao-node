@@ -280,6 +280,7 @@ class Delegations(DataProduct):
         self.delegatee_vp = defaultdict(int) # delegate, receiving the delegation, this is there most recent VP across all delegators
         self.delegation_amounts = defaultdict(dict)
 
+        self.voting_power_adj = 0
         self.voting_power = 0
 
         self.delegatee_vp_history = defaultdict(list)
@@ -456,6 +457,7 @@ class Delegations(DataProduct):
             assert new_votes is not None
             assert previous_votes is not None
 
+            self.voting_power_adj += 1
             self.voting_power += (new_votes - previous_votes)
             self.delegatee_vp[delegatee] = new_votes
 
