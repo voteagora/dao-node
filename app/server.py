@@ -1325,6 +1325,8 @@ async def integrity(request):
     out['delegations.delegatee_vp_history'] = check(app.ctx.delegations.delegatee_vp_history)
     out['delegations.delegatee_cnt'] = check(app.ctx.delegations.delegatee_cnt)
     out['delegations.delegatee_vp'] = check(app.ctx.delegations.delegatee_vp)
+
+    out['delegations.voting_power_adj'] = app.ctx.delegations.voting_power_adj
     
     out['pass'] = all([v['pass'] for v in out.values()])
     
