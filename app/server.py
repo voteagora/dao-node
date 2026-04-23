@@ -1555,7 +1555,7 @@ if INCLUDE_NON_IVOTES_VP:
 #
 ################################################################################
 
-CLIENT_STYLE = 'csv-db-db'
+CLIENT_STYLE = os.getenv('CLIENT_STYLE', 'csv-node-node')
 
 NUM_ARCHIVE_CLIENTS = int(os.getenv('NUM_ARCHIVE_CLIENTS', -1))
 NUM_REALTIME_CLIENTS = int(os.getenv('NUM_REALTIME_CLIENTS', -1))
