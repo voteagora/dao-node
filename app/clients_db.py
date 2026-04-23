@@ -489,7 +489,7 @@ class DbRtClient(DbHistClient):
                 signal = f"{chain_id}.{address}.{signature}"
 
                 span = resolve_block_count_span(chain_id)
-                lookback_block = latest_block_number - max(1, int(span / 200))
+                lookback_block = latest_block_number - span
 
                 async with self.pool.acquire() as conn:
 
