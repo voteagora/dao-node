@@ -1303,6 +1303,15 @@ def check_uints_as_strs(uint_iter):
         
     return cnts
 
+@app.route('/v1/direct/<data_product>/<attr>')
+async def direct(request, data_product, attr):
+
+    dp = getattr(app.ctx, data_product)
+    field = getattr(dp, attr)
+
+    return json({'direct' : field})
+
+
 @app.route('/v1/integrity')
 @openapi.tag("Diagnostics")
 @openapi.summary("Integrity")
