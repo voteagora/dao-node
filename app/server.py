@@ -344,6 +344,8 @@ class Feed:
                     raise Exception("Unexpected configuration.  Please provide at least one archive, or send a PR to support archive-free mode!")
 
                 # logr.info(f"self.block={self.block}")
+                if hasattr(client, 'set_block_floor'):
+                    client.set_block_floor(self.block)
                 async for event in client.read():
 
                     block_num = int(event['block_number'])

@@ -455,7 +455,11 @@ class DbRtClient(DbHistClient):
     def __init__(self, url, name):
         self.url = url
         self.name = name
+        self.initial_block_floor = 0
         self.init()
+
+    def set_block_floor(self, block):
+        self.initial_block_floor = block
 
     async def read(self):
 
@@ -474,7 +478,7 @@ class DbRtClient(DbHistClient):
             if event_or_block == 'block':
 
                 chain_id = subscription_meta[1]
-                
+
                 out = {}
                 out['block_number'] = latest_block_number
                 out['timestamp'] = int(latest_timestamp)
@@ -489,7 +493,7 @@ class DbRtClient(DbHistClient):
                 signal = f"{chain_id}.{address}.{signature}"
 
                 span = resolve_block_count_span(chain_id)
-                lookback_block = latest_block_number - span
+                lookback_block = max(self.initial_block_floor, latest_block_number - span)
 
                 async with self.pool.acquire() as conn:
 
