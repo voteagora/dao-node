@@ -1135,7 +1135,7 @@ async def delegate_handler(app, request, addr):
 
     addr = addr.lower()
 
-    delegatee_list = app.ctx.delegations.delegatee_list[addr]
+    delegatee_list = app.ctx.delegations.delegatee_list.get(addr, [])
     delegation_amounts = app.ctx.delegations.delegation_amounts.get(addr, {})
 
 
@@ -1151,7 +1151,7 @@ async def delegate_handler(app, request, addr):
     participation = app.ctx.participation_rate_model.get_fraction(addr)
 
     # Get delegated voting power
-    delegated_vp = app.ctx.delegations.delegatee_vp[addr]
+    delegated_vp = app.ctx.delegations.delegatee_vp.get(addr, 0)
 
     # Get staked voting power if staking is available
     if INCLUDE_NON_IVOTES_VP:
@@ -1163,10 +1163,10 @@ async def delegate_handler(app, request, addr):
 
     delegate_info = {
         'addr' : addr,
-        'from_cnt' : app.ctx.delegations.delegatee_cnt[addr],
+        'from_cnt' : app.ctx.delegations.delegatee_cnt.get(addr, 0),
         'from_list' : from_list_with_info,
         'voting_power' : str(total_vp),
-        'history' : app.ctx.delegations.delegatee_vp_history[addr],
+        'history' : app.ctx.delegations.delegatee_vp_history.get(addr, []),
         'participation' : participation
     }
 
