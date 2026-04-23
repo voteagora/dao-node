@@ -650,19 +650,23 @@ async def vote_record_handler(app, request, proposal_id):
     reverse = request.args.get("reverse", "false").lower() == "true"
     full = request.args.get("full", "false").lower() == "true"
 
+    # Use .get() to avoid mutating the defaultdict for unknown proposal_ids.
+    records = app.ctx.votes.proposal_vote_record.get(proposal_id, [])
+
     if sort_by == 'BN':
         if reverse:
-            vr = deepcopy(app.ctx.votes.proposal_vote_record[proposal_id])
+            vr = deepcopy(records)
             vr.sort(key=lambda x: int(x['bn']), reverse=True)
         else:
-            # Since the events are ordered, we don't need to take a 
-            # deep copy nor sort.  This reduces the API call from 35 ms to 1 ms 
+            # Since the events are ordered, we don't need to take a
+            # deep copy nor sort.  This reduces the API call from 35 ms to 1 ms
             # when loading a chart in chronological order.
-            vr = app.ctx.votes.proposal_vote_record[proposal_id]
+            vr = records
     elif sort_by == 'VP':
-        vr = deepcopy(app.ctx.votes.proposal_vote_record[proposal_id])
-        key = 'weight' if 'weight' in vr[0] else 'votes'    
-        vr.sort(key=lambda x: x[key], reverse=reverse)
+        vr = deepcopy(records)
+        if vr:
+            key = 'weight' if 'weight' in vr[0] else 'votes'
+            vr.sort(key=lambda x: x[key], reverse=reverse)
     else:
         raise Exception(f"Invalid sort_by: {sort_by}")
 
