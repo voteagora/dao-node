@@ -1141,7 +1141,7 @@ async def delegate_handler(app, request, addr):
 
     addr = addr.lower()
 
-    delegatee_list = app.ctx.delegations.delegatee_list.get(addr, [])
+    delegatee_list = app.ctx.delegations.delegatee_list.get(addr, {})
     delegation_amounts = app.ctx.delegations.delegation_amounts.get(addr, {})
 
 
