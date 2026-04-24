@@ -111,7 +111,7 @@ class DbClientCaster:
         abi_frag = self.abis.get_by_signature(signature)
 
         int_fields = [camel_to_snake(o['name']) for o in abi_frag.inputs if o['type'] in INT_TYPES]
-
+        
         if signature == TRANSFER:
             
             amount_field = camel_to_snake(abi_frag.fields[2])
@@ -169,6 +169,8 @@ class DbClientCaster:
             def caster_fn(event):
                 event = proposal_calldata_caster_fn(event, int_fields)
                 return event 
+            
+            return caster_fn
 
         if signature == PROPOSAL_CREATED_MODULE:
 
