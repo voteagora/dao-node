@@ -142,6 +142,24 @@ class DbClientCaster:
                 params = event.get('params')
                 if isinstance(params, (bytes, memoryview)):
                     event['params'] = bytes(params).hex()
+                
+                if 'id' in event.keys():
+                    if event['id'][:4] == 'log_':
+                        del event['id']
+
+                return event
+
+            return caster_fn
+        
+        if signature == VOTE_CAST_1:
+
+            def caster_fn(event):
+                event = cast(event, int_fields, int)
+                
+                # assert event['id'][:4] == 'log_', "Expected goldsky IDs, found something else"
+
+                del event['id']
+
                 return event
 
             return caster_fn
