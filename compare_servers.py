@@ -14,7 +14,7 @@ import requests
 
 TIMEOUT = 60
 MAX_VAL_LEN = 80
-RANDOM_SEED = 42 # This is hardcoded, so we get the same set of proposals on a per tenant basis.
+RANDOM_SEED = 41 # This is hardcoded, so we get the same set of proposals on a per tenant basis.
 
 DIAGNOSTIC_ENDPOINTS = \
                     [("/health", []),
@@ -65,6 +65,7 @@ if dao == 'uniswap':
 
     SAMPLE_SIZE = 60
     ENDPOINTS = DIAGNOSTIC_ENDPOINTS + DELEGATE_SORT_ENDPOINTS + DIRECT_ENDPOINTS + APPLICATION_ENDPOINTS
+    RANDOM_SEED = 42
 
 elif dao == 'xai':
 
