@@ -189,7 +189,9 @@ ENDPOINTS = [
     # ("/v1/nonivotes/total/at-block/{block_number}", ["block_number"]),
     # ("/v1/nonivotes/user/{delegate}/at-block/{block_number}", ["delegate", "block_number"]),
     # ("/v1/nonivotes/all/at-block/{block_number}", ["block_number"]),
-    ("/v1/direct/votes/proposal_vote_record", [])
+    ("/v1/direct/votes/proposal_vote_record", []),
+    ("/v1/direct/delegations/delegatee_vp", []),
+    ("/v1/direct/votes/voter_history", [])
 ]
 
 
