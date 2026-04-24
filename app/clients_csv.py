@@ -235,8 +235,8 @@ class CSVClient(SubscriptionPlannerMixin):
 
         UNISWAP_BLOCK = 24027646 # https://vote.uniswapfoundation.org/proposals/92
         ENS_BLOCK = 22339715 # https://agora.ensdao.org/proposals/7404040509873168432228479064563591804702835162347907107082011204120525681390
-        OP_BLOCK = 142523823
-        
+        OP_BLOCK = 150732655
+
         CUT_OFF_BLOCK = OP_BLOCK
         
         for event_or_block, subscription_meta in self.subscription_meta:
