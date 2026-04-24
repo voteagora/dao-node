@@ -15,7 +15,61 @@ import requests
 TIMEOUT = 60
 MAX_VAL_LEN = 80
 RANDOM_SEED = 42 # This is hardcoded, so we get the same set of proposals on a per tenant basis.
-SAMPLE_SIZE = 60
+
+DIAGNOSTIC_ENDPOINTS = \
+                    [("/health", []),
+                    ("/config", []),
+                    ("/deployment", []),
+                    ("/v1/progress", []),
+                    ("/v1/integrity", [])]
+
+DELEGATE_SORT_ENDPOINTS = \
+        [("/v1/delegates?sort_by=DC&page_size=100", []),
+        ("/v1/delegates?sort_by=MRD&page_size=100", []),
+        ("/v1/delegates?sort_by=LVB&page_size=100", []),
+        ("/v1/delegates?sort_by=VPC&page_size=100", [])]
+
+DIRECT_ENDPOINTS = \
+        [("/v1/direct/votes/proposal_vote_record", []),
+        ("/v1/direct/delegations/delegatee_vp", []),
+        ("/v1/direct/votes/voter_history", [])]
+
+APPLICATION_ENDPOINTS = [
+        ("/v1/voting_power", []),
+        ("/v1/proposals", []),
+        ("/v1/proposals?set=relevant", []),
+        ("/v1/proposals?sort=start_block", []),
+        ("/v1/proposal_types", []),
+        # ("/v1/diagnostics/true", []),
+        ("/v1/proposal/{proposal_id}", ["proposal_id"]),
+        # ("/v1/vote_record/{proposal_id}?page_size=25", ["proposal_id"]),
+        # ("/v1/vote_record/{proposal_id}?sort_by=VP&page_size=25", ["proposal_id"]),
+        ("/v1/voter_history/{voter}", ["voter"]),
+        ("/v1/vote?proposal_id={proposal_id}&voter={voter}", ["proposal_voter_pair"]),
+        ("/v1/delegate/{delegate}", ["delegate"]),
+        ("/v1/delegate/{delegate}/voting_history", ["delegate"]),
+        ("/v1/delegate_vp/{delegate}/{block_number}", ["delegate", "block_number"]),
+        # ("/v1/balance/{delegate}", ["delegate"]),
+    ]
+
+NON_IVOTES_ENDPOINTS = [
+        ("/v1/nonivotes/total/at-block/{block_number}", ["block_number"]),
+        ("/v1/nonivotes/user/{delegate}/at-block/{block_number}", ["delegate", "block_number"]),
+        ("/v1/nonivotes/all/at-block/{block_number}", ["block_number"]),
+        ("/v1/nonivotes/total", [])]
+
+
+dao = 'uniswap'
+
+if dao == 'uniswap':
+
+    SAMPLE_SIZE = 60
+    ENDPOINTS = DIAGNOSTIC_ENDPOINTS + DELEGATE_SORT_ENDPOINTS + DIRECT_ENDPOINTS + APPLICATION_ENDPOINTS + NON_IVOTES_ENDPOINTS
+
+else:
+
+    SAMPLE_SIZE = 5
+    ENDPOINTS = DIAGNOSTIC_ENDPOINTS + DELEGATE_SORT_ENDPOINTS + DIRECT_ENDPOINTS + APPLICATION_ENDPOINTS + NON_IVOTES_ENDPOINTS
 
 
 def get_json(url):
@@ -153,47 +207,6 @@ PARAM_PLURAL = {
     "delegate": "delegates",
     "block_number": "block_numbers",
 }
-
-
-# (path_template, required_probe_keys)
-# A plain key like "proposal_id" iterates the matching plural probe list.
-# The sentinel "proposal_voter_pair" iterates correlated (proposal_id, voter)
-# pairs where the voter is known to have voted on that proposal.
-ENDPOINTS = [
-    ("/health", []),
-    ("/config", []),
-    ("/deployment", []),
-    ("/v1/progress", []),
-    ("/v1/integrity", []),
-    ("/v1/voting_power", []),
-    ("/v1/proposals", []),
-    ("/v1/proposals?set=relevant", []),
-    ("/v1/proposals?sort=start_block", []),
-    ("/v1/proposal_types", []),
-    # ("/v1/delegates?page_size=25", []),
-    ("/v1/delegates?sort_by=DC&page_size=100", []),
-    ("/v1/delegates?sort_by=MRD&page_size=100", []),
-    ("/v1/delegates?sort_by=LVB&page_size=100", []),
-    ("/v1/delegates?sort_by=VPC&page_size=100", []),
-    # ("/v1/diagnostics/true", []),
-    # ("/v1/nonivotes/total", []),
-    ("/v1/proposal/{proposal_id}", ["proposal_id"]),
-    # ("/v1/vote_record/{proposal_id}?page_size=25", ["proposal_id"]),
-    # ("/v1/vote_record/{proposal_id}?sort_by=VP&page_size=25", ["proposal_id"]),
-    ("/v1/voter_history/{voter}", ["voter"]),
-    ("/v1/vote?proposal_id={proposal_id}&voter={voter}", ["proposal_voter_pair"]),
-    ("/v1/delegate/{delegate}", ["delegate"]),
-    ("/v1/delegate/{delegate}/voting_history", ["delegate"]),
-    ("/v1/delegate_vp/{delegate}/{block_number}", ["delegate", "block_number"]),
-    # ("/v1/balance/{delegate}", ["delegate"]),
-    # ("/v1/nonivotes/total/at-block/{block_number}", ["block_number"]),
-    # ("/v1/nonivotes/user/{delegate}/at-block/{block_number}", ["delegate", "block_number"]),
-    # ("/v1/nonivotes/all/at-block/{block_number}", ["block_number"]),
-    ("/v1/direct/votes/proposal_vote_record", []),
-    ("/v1/direct/delegations/delegatee_vp", []),
-    ("/v1/direct/votes/voter_history", [])
-]
-
 
 def expand(tmpl, needs, probes):
     """Yield fully formatted paths by iterating parallel probe lists."""
