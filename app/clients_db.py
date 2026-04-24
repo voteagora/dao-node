@@ -459,6 +459,8 @@ class DbHistClient(SubscriptionPlannerMixin):
 
         cur.execute(*params)
 
+        print(params, flush=True)
+
         for row in cur:
             block = dict(row)
             block['timestamp'] = int(block['timestamp'])
@@ -522,7 +524,7 @@ class DbRtClient(DbHistClient):
                             ORDER BY block_number, transaction_index, log_index;""",
                             address, chain_id, lookback_block)
 
-                    # print(params, flush=True)
+                    print(params, flush=True)
 
                     rows = await conn.fetch(*params)
 
