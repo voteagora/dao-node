@@ -232,12 +232,6 @@ class CSVClient(SubscriptionPlannerMixin):
     def read(self, after):
 
         assert after == 0
-
-        UNISWAP_BLOCK = 24027646 # https://vote.uniswapfoundation.org/proposals/92
-        ENS_BLOCK = 22339715 # https://agora.ensdao.org/proposals/7404040509873168432228479064563591804702835162347907107082011204120525681390
-        OP_BLOCK = 150732655
-
-        CUT_OFF_BLOCK = OP_BLOCK
         
         for event_or_block, subscription_meta in self.subscription_meta:
 
@@ -250,9 +244,8 @@ class CSVClient(SubscriptionPlannerMixin):
 
                 for event in self.read_events(fname, signature, abi_frag, caster_fn):
 
-                    if int(event['block_number']) < CUT_OFF_BLOCK:
-                        yield event, signal, new_signal
-                        new_signal = False
+                    yield event, signal, new_signal
+                    new_signal = False
 
             elif event_or_block == 'block':
                 fname, chain_id = subscription_meta
@@ -260,9 +253,8 @@ class CSVClient(SubscriptionPlannerMixin):
                 signal = f"{chain_id}.blocks"
 
                 for block in self.read_blocks(fname):
-                    if block['block_number'] < CUT_OFF_BLOCK:
-                        yield block, signal, new_signal
-                        new_signal = False
+                    yield block, signal, new_signal
+                    new_signal = False
             else:
                 raise Exception(f"Unknown event_or_block: {event_or_block}")
 
