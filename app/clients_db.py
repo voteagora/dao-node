@@ -1,3 +1,4 @@
+import asyncio
 import csv, json, os, sys
 
 from collections import defaultdict
@@ -5,6 +6,8 @@ from collections import defaultdict
 import psycopg2
 import psycopg2.extras
 import asyncpg
+
+from sanic.log import logger as logr
 
 from abifsm import ABISet
 
@@ -310,11 +313,14 @@ class DbHistClient(SubscriptionPlannerMixin):
     def add_pool(self, pool):
         self.pool = pool
 
-    async def create_pool(self): 
+    async def create_pool(self):
         self.pool = await asyncpg.create_pool(
                 dsn=self.url,
                 min_size=5,
-                max_size=50
+                max_size=50,
+                max_inactive_connection_lifetime=300,
+                command_timeout=30,
+                timeout=10,
             )
 
     def _sync_connect(self):
@@ -485,71 +491,90 @@ class DbRtClient(DbHistClient):
 
     async def read(self):
 
-        all_events = []
+        base_delay, max_delay, attempt = 1, 60, 0
 
-        # Get the latest block from the blocks table (DB equivalent of w3.eth.block_number)
-        obj = await self._get_latest_block()
+        while True:
+            try:
+                all_events = []
 
-        if obj is None:
-            return
-        print(f"Latest block & timestamp: {obj} ({type(obj)})")
-        latest_block_number, latest_timestamp = obj['block_number'], obj['timestamp']
+                # Get the latest block from the blocks table (DB equivalent of w3.eth.block_number)
+                obj = await self._get_latest_block()
 
-        for event_or_block, subscription_meta in self.subscription_meta:
+                if obj is None:
+                    return
+                print(f"Latest block & timestamp: {obj} ({type(obj)})")
+                latest_block_number, latest_timestamp = obj['block_number'], obj['timestamp']
 
-            if event_or_block == 'block':
+                for event_or_block, subscription_meta in self.subscription_meta:
 
-                chain_id = subscription_meta[1]
+                    if event_or_block == 'block':
 
-                out = {}
-                out['block_number'] = latest_block_number
-                out['timestamp'] = int(latest_timestamp)
-                out['signal'] = f"{chain_id}.blocks"
+                        chain_id = subscription_meta[1]
 
-                yield out
+                        out = {}
+                        out['block_number'] = latest_block_number
+                        out['timestamp'] = int(latest_timestamp)
+                        out['signal'] = f"{chain_id}.blocks"
 
-            else:
+                        yield out
 
-                table_name, chain_id, address, signature, sighash, caster_fn = subscription_meta
+                    else:
 
-                signal = f"{chain_id}.{address}.{signature}"
+                        table_name, chain_id, address, signature, sighash, caster_fn = subscription_meta
 
-                span = resolve_block_count_span(chain_id)
-                lookback_block = max(self.initial_block_floor, latest_block_number - span)
+                        signal = f"{chain_id}.{address}.{signature}"
 
-                async with self.pool.acquire() as conn:
+                        span = resolve_block_count_span(chain_id)
+                        lookback_block = max(self.initial_block_floor, latest_block_number - span)
 
-                    params = (f"""SELECT * FROM {DB_SCHEMA}.{table_name}
-                            WHERE address = $1 AND chain_id = $2 AND block_number >= $3
-                            ORDER BY block_number, transaction_index, log_index;""",
-                            address, chain_id, lookback_block)
+                        async with self.pool.acquire() as conn:
 
-                    print(params, flush=True)
+                            params = (f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+                                    WHERE address = $1 AND chain_id = $2 AND block_number >= $3
+                                    ORDER BY block_number, transaction_index, log_index;""",
+                                    address, chain_id, lookback_block)
 
-                    rows = await conn.fetch(*params)
+                            # print(params, flush=True)
 
-                for row in rows:
-                    event = dict(row)
+                            rows = await conn.fetch(*params)
 
-                    for field in ['chain_id', 'address', 'block_hash', 'event_name', 'transaction_hash']:
-                        try:
-                            del event[field]
-                        except:
-                            pass
+                        for row in rows:
+                            event = dict(row)
 
-                    event['block_number'] = str(event['block_number'])
-                    event['transaction_index'] = int(event['transaction_index'])
-                    event['log_index'] = int(event['log_index'])
-                    event['signal'] = signal
-                    event['signature'] = signature
-                    event['sighash'] = sighash
-                    event = caster_fn(event)
-                    all_events.append(event)
+                            for field in ['chain_id', 'address', 'block_hash', 'event_name', 'transaction_hash']:
+                                try:
+                                    del event[field]
+                                except:
+                                    pass
 
-            all_events.sort(key=lambda x: (x['block_number'], x['transaction_index'], x['log_index']))
+                            event['block_number'] = str(event['block_number'])
+                            event['transaction_index'] = int(event['transaction_index'])
+                            event['log_index'] = int(event['log_index'])
+                            event['signal'] = signal
+                            event['signature'] = signature
+                            event['sighash'] = sighash
+                            event = caster_fn(event)
+                            all_events.append(event)
 
-            for event in all_events:
-                yield event
+                    all_events.sort(key=lambda x: (x['block_number'], x['transaction_index'], x['log_index']))
+
+                    for event in all_events:
+                        yield event
+
+                attempt = 0
+                return
+
+            except (asyncpg.PostgresConnectionError,
+                    asyncpg.InterfaceError,
+                    asyncio.TimeoutError,
+                    OSError) as e:
+                attempt += 1
+                delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                logr.error(
+                    f"{self.name}: DB read failed: {e!r}. "
+                    f"Retrying in {delay:.1f}s (attempt {attempt})"
+                )
+                await asyncio.sleep(delay)
 
     async def _get_latest_block(self):
         """Get the latest block number from the blocks table, mirroring w3.eth.block_number."""

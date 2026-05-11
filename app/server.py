@@ -1611,16 +1611,20 @@ async def bootstrap_data_feeds(app, loop):
 
     elif CLIENT_STYLE == 'csv-db-db':
 
+        app.ctx._db_clients = []
+
         dbhc = DbHistClient(DAO_NODE_DB_URL)
         if dbhc.is_valid():
             await dbhc.create_pool()
             clients.append(dbhc)
+            app.ctx._db_clients.append(dbhc)
 
         for i in range(NUM_POLLING_CLIENTS):
             dbrt = DbRtClient(DAO_NODE_DB_URL, f"POLL{i}")
             if dbrt.is_valid():
                 await dbrt.create_pool()
                 clients.append(dbrt)
+                app.ctx._db_clients.append(dbrt)
 
 
     # Create a sequence of clients to pull events from.  Each with their own standards for comms, drivers, API, etc. 
@@ -1795,6 +1799,14 @@ async def subscribe_feeds(app):
     if INCLUDE_NON_IVOTES_VP:
         logr.info(f"Non IVotes VP client started")
         app.add_task(read_naive_socket(app, VPSnappercWsClient(DAO_NODE_VPSNAPPER_WS)))
+
+@app.before_server_stop
+async def close_db_pools(app):
+    for client in getattr(app.ctx, "_db_clients", []):
+        pool = getattr(client, "pool", None)
+        if pool is not None:
+            logr.info(f"Closing DB pool for {type(client).__name__}")
+            await pool.close()
 
 async def read_realtime(app, rt_client_num):
     async for event in app.ctx.feed.realtime_async_read(rt_client_num):
