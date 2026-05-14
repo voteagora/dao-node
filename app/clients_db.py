@@ -566,6 +566,8 @@ class DbRtClient(DbHistClient):
 
             except (asyncpg.PostgresConnectionError,
                     asyncpg.InterfaceError,
+                    asyncpg.SerializationError,
+                    asyncpg.QueryCanceledError,
                     asyncio.TimeoutError,
                     OSError) as e:
                 attempt += 1
