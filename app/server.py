@@ -1837,11 +1837,14 @@ async def read_polling(app, polling_client_num):
     while True:
         start_time = time.perf_counter()
         cnt = 0
-        async for event in app.ctx.feed.realtime_async_read(polling_client_num):
-            # logr.info(f" - Polling client #{polling_client_num} found event:  [{event}]")
-            await app.ctx.dispatch_from_realtime(event)
-            cnt += 1
-        logr.info(f"Polling client #{polling_client_num} [{time.perf_counter() - start_time:.2f}s] [{cnt} events]")
+        try:
+            async for event in app.ctx.feed.realtime_async_read(polling_client_num):
+                # logr.info(f" - Polling client #{polling_client_num} found event:  [{event}]")
+                await app.ctx.dispatch_from_realtime(event)
+                cnt += 1
+            logr.info(f"Polling client #{polling_client_num} [{time.perf_counter() - start_time:.2f}s] [{cnt} events]")
+        except Exception as e:
+            logr.exception(f"Polling client #{polling_client_num} crashed after {cnt} events in {time.perf_counter() - start_time:.2f}s: {e!r}. Will retry next cycle.")
         await asyncio.sleep(wait_cycle)
 
 ##################################
