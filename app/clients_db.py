@@ -21,6 +21,11 @@ from .clients_httpjson import resolve_block_count_span
 DB_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 TABLE_PREFIX = os.getenv('TABLE_PREFIX', 'multi_')
 
+# Seconds a single query may run before asyncpg cancels it (raises TimeoutError).
+DB_COMMAND_TIMEOUT = float(os.getenv('DB_COMMAND_TIMEOUT', '30'))
+# Seconds to wait for a free connection from the pool / to establish a new one.
+DB_POOL_TIMEOUT = float(os.getenv('DB_POOL_TIMEOUT', '10'))
+
 INT_TYPES = [f"uint{i}" for i in range(8, 257, 8)]
 INT_TYPES.append("uint")
 
@@ -319,8 +324,8 @@ class DbHistClient(SubscriptionPlannerMixin):
                 min_size=5,
                 max_size=50,
                 max_inactive_connection_lifetime=300,
-                command_timeout=30,
-                timeout=10,
+                command_timeout=DB_COMMAND_TIMEOUT,
+                timeout=DB_POOL_TIMEOUT,
             )
 
     def _sync_connect(self):
