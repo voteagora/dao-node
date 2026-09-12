@@ -492,7 +492,7 @@ class JsonRpcRtHttpClient(JsonRpcHistHttpClient):
     def __init__(self, url, name):
         self.url = url
         self.name = name
-        
+
         self.init()
 
         self.casterCls = JsonRpcHistHttpClientCaster
@@ -500,8 +500,12 @@ class JsonRpcRtHttpClient(JsonRpcHistHttpClient):
         self.event_subsription_meta = defaultdict(lambda: defaultdict(dict))
         self.block_subsription_meta = []
 
+        self.initial_block_floor = 0
+
         self.noisy = False
 
+    def set_block_floor(self, block):
+        self.initial_block_floor = block
 
     async def read(self):
 
@@ -513,8 +517,8 @@ class JsonRpcRtHttpClient(JsonRpcHistHttpClient):
 
         for chain_id in self.event_subsription_meta.keys():
 
-            span = resolve_block_count_span(chain_id) 
-            lookback_block = latest_block - int(span / 200) # 10 blocks back for ETH, for example.
+            span = resolve_block_count_span(chain_id)
+            lookback_block = max(self.initial_block_floor, latest_block - int(span / 200)) # 10 blocks back for ETH, for example.
 
             for cs_address in self.event_subsription_meta[chain_id].keys():
 

@@ -243,6 +243,7 @@ class CSVClient(SubscriptionPlannerMixin):
                 signal = f"{chain_id}.{address}.{signature}"
 
                 for event in self.read_events(fname, signature, abi_frag, caster_fn):
+
                     yield event, signal, new_signal
                     new_signal = False
 

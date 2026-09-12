@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euxo pipefail
 
 # railway_deploy.sh
 # On Railway (or any host), clone the private tenants repo and build/run its Docker image.
@@ -25,6 +25,8 @@ else
   git clone --depth 1 "${CLONE_URL}" "${CLONE_DIR}"
 fi
 
+echo "Starting sync..."
 python -m app.cli sync-from-gcs data
 
-sanic app.server --host=0.0.0.0 --port=8000
+echo "Starting server..."
+python -m app.server
