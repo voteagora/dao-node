@@ -21,6 +21,9 @@ from .clients_httpjson import resolve_block_count_span
 DB_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 TABLE_PREFIX = os.getenv('TABLE_PREFIX', 'multi_')
 
+# Tenant name (== DAO_NODE_DB_TABLE_PREFIX / ABISet name) whose Transfer table is queried without address/chain_id filters.
+OPTIMISM_TENANT = 'op'
+
 # Seconds a single query may run before asyncpg cancels it (raises TimeoutError).
 DB_COMMAND_TIMEOUT = float(os.getenv('DB_COMMAND_TIMEOUT', '30'))
 # Seconds to wait for a free connection from the pool / to establish a new one.
@@ -304,6 +307,35 @@ class SubscriptionPlannerMixin:
         else:
             raise Exception(f"Unknown signal type: {signal_type}")
 
+    def build_event_query(self, table_name, chain_id, address, signature, after, paramstyle):
+        """Return (sql, params) for reading events from `table_name` at or after block `after`.
+
+        Optimism's Transfer table (multi_op_token_transfer) is enormous, and it only ever
+        holds one address on one chain, so the address/chain_id filters are pure overhead there.
+        Hardcoded: skip those filters for the Optimism tenant; every other tenant keeps them.
+
+        `paramstyle` is 'pyformat' (%s, psycopg2) or 'numeric' ($1.., asyncpg).
+        """
+
+        assert paramstyle in ('pyformat', 'numeric')
+
+        skip_addr_chain_filter = (self.abis.name == OPTIMISM_TENANT) and (signature == TRANSFER)
+
+        if skip_addr_chain_filter:
+            ph = '%s' if paramstyle == 'pyformat' else '$1'
+            sql = f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+                WHERE block_number >= {ph}
+                ORDER BY block_number, transaction_index, log_index;"""
+            params = (after,)
+        else:
+            ph = ('%s', '%s', '%s') if paramstyle == 'pyformat' else ('$1', '$2', '$3')
+            sql = f"""SELECT * FROM {DB_SCHEMA}.{table_name}
+                WHERE address = {ph[0]} AND chain_id = {ph[1]} AND block_number >= {ph[2]}
+                ORDER BY block_number, transaction_index, log_index;"""
+            params = (address, chain_id, after)
+
+        return sql, params
+
 
 
 class DbHistClient(SubscriptionPlannerMixin):
@@ -430,12 +462,9 @@ class DbHistClient(SubscriptionPlannerMixin):
         conn = self._sync_connect()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        cur.execute(
-            f"""SELECT * FROM {DB_SCHEMA}.{table_name}
-                WHERE address = %s AND chain_id = %s AND block_number >= %s
-                ORDER BY block_number, transaction_index, log_index;""",
-            (address, chain_id, after)
-        )
+        sql, params = self.build_event_query(table_name, chain_id, address, signature, after, paramstyle='pyformat')
+
+        cur.execute(sql, params)
 
         for row in cur:
             event = dict(row)
@@ -540,14 +569,9 @@ class DbRtClient(DbHistClient):
 
                         async with self.pool.acquire() as conn:
 
-                            params = (f"""SELECT * FROM {DB_SCHEMA}.{table_name}
-                                    WHERE address = $1 AND chain_id = $2 AND block_number >= $3
-                                    ORDER BY block_number, transaction_index, log_index;""",
-                                    address, chain_id, lookback_block)
+                            sql, params = self.build_event_query(table_name, chain_id, address, signature, lookback_block, paramstyle='numeric')
 
-                            # print(params, flush=True)
-
-                            rows = await conn.fetch(*params)
+                            rows = await conn.fetch(sql, *params)
 
                         for row in rows:
                             event = dict(row)
