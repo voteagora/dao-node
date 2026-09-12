@@ -1,5 +1,5 @@
 import asyncio
-import csv, json, os, sys
+import csv, json, os, sys, time
 
 from collections import defaultdict
 
@@ -499,6 +499,9 @@ class DbRtClient(DbHistClient):
         base_delay, max_delay, attempt = 1, 60, 0
 
         while True:
+            # Describes the query in flight so a failure can be attributed to it.
+            current_query = 'latest block'
+            started = time.monotonic()
             try:
                 all_events = []
 
@@ -531,6 +534,9 @@ class DbRtClient(DbHistClient):
 
                         span = resolve_block_count_span(chain_id)
                         lookback_block = max(self.initial_block_floor, latest_block_number - span)
+
+                        current_query = f"{table_name} {signal} block_number>={lookback_block}"
+                        started = time.monotonic()
 
                         async with self.pool.acquire() as conn:
 
@@ -577,8 +583,11 @@ class DbRtClient(DbHistClient):
                     OSError) as e:
                 attempt += 1
                 delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                elapsed = time.monotonic() - started
                 logr.error(
-                    f"{self.name}: DB read failed: {e!r}. "
+                    f"{self.name}: DB read failed: {e!r} "
+                    f"[query: {current_query}] after {elapsed:.1f}s "
+                    f"(pool timeout={DB_POOL_TIMEOUT}s, command timeout={DB_COMMAND_TIMEOUT}s). "
                     f"Retrying in {delay:.1f}s (attempt {attempt})"
                 )
                 await asyncio.sleep(delay)
